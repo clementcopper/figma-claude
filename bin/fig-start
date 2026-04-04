@@ -1,12 +1,11 @@
 #!/bin/bash
 
-# fig-start — Launch Figma CLI + Claude Code
-# Connects to Figma, lets you pick an open file, then launches Claude Code.
+# fig-start — Connect Figma CLI
+# Connects to Figma and starts the daemon. Launch Claude separately.
 #
 # Usage:
 #   fig-start          → Yolo Mode (default) with file selector
 #   fig-start --safe   → Safe Mode (plugin-based, no patching)
-#   fig-start --here   → Stay in current directory (don't cd to repo)
 #   fig-start --setup  → set/change the figma-cli repo path
 
 CONFIG_DIR="$HOME/.figma-cli"
@@ -113,12 +112,10 @@ select_file() {
 
 # Handle flags
 SAFE_MODE=false
-STAY_HERE=false
 
 for arg in "$@"; do
     case "$arg" in
         --safe) SAFE_MODE=true ;;
-        --here) STAY_HERE=true ;;
     esac
 done
 
@@ -167,14 +164,7 @@ else
 fi
 echo ""
 
-# Step 1: Check if Figma is running, start if not
-if ! pgrep -x "Figma" > /dev/null 2>&1; then
-    echo -e "  ${YELLOW}Starting Figma...${NC}"
-    open -a Figma
-    sleep 3
-fi
-
-# Step 2: Connect to Figma
+# Step 1: Connect to Figma
 if [ "$SAFE_MODE" = true ]; then
     # ── Safe Mode: plugin-based connection ──
     # Run connect --safe interactively so user sees plugin setup instructions
@@ -188,12 +178,9 @@ if [ "$SAFE_MODE" = true ]; then
     echo ""
 
     # Skip file selector (Safe Mode only sees the active file via plugin)
-    echo -e "  ${GREEN}Launching Claude Code...${NC}"
+    echo -e "  ${GREEN}✓ Ready.${NC} Start Claude from your project folder:"
+    echo -e "  ${DIM}figma-claude${NC}  ${DIM}(or: claude --add-dir \"$REPO_PATH\")${NC}"
     echo ""
-    if [ "$STAY_HERE" = false ]; then
-        cd "$REPO_PATH" || exit 1
-    fi
-    exec claude
 else
     # ── Yolo Mode: CDP-based connection ──
     # Check if CDP is already accessible (avoid killing/restarting Figma)
@@ -218,19 +205,43 @@ else
         fi
         echo -e "  ${GREEN}✓ Connected${NC}"
     else
-        # Not accessible — run full connect (will kill + restart Figma)
-        echo -e "  Connecting to Figma..."
-        CONNECT_OUT=$(node "$CLI" connect 2>&1)
+        # Patch app.asar if not yet patched (non-destructive to running Figma)
+        echo -e "  Configuring Figma..."
+        node --input-type=module --eval "
+import { isPatched, patchFigma } from '$REPO_PATH/src/figma-patch.js';
+const s = isPatched();
+if (s === false) { try { patchFigma(); } catch(e) { process.stderr.write(e.message); process.exit(1); } }
+" 2>/tmp/fig-patch-err
         if [ $? -ne 0 ]; then
-            echo -e "  ${RED}Connection failed:${NC}"
-            echo "$CONNECT_OUT"
-            echo ""
-            echo -e "  ${YELLOW}Tip:${NC} Try ${BOLD}fig-start --safe${NC} if patching fails."
+            echo -e "  ${RED}Could not configure Figma:${NC} $(cat /tmp/fig-patch-err)"
+            echo -e "  ${DIM}macOS: System Settings → Privacy → Full Disk Access → add Terminal${NC}"
             exit 1
         fi
+
+        if pgrep -x "Figma" > /dev/null 2>&1; then
+            # Figma is running but without --remote-debugging-port — user must quit it
+            echo -e "  ${GREEN}✓ Figma configured.${NC}"
+            echo -e "  ${YELLOW}Please quit Figma (Cmd+Q), then run fig-start again.${NC}"
+            echo ""
+            exit 0
+        fi
+
+        # Figma is not running — start it with the debug flag
+        echo -e "  Starting Figma..."
+        open -a Figma --args --remote-debugging-port=9222
+        echo -e "  Waiting for Figma to start..."
+        for i in $(seq 1 15); do
+            sleep 2
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:9222/json 2>/dev/null | grep -q "200"; then
+                break
+            fi
+        done
+
+        # Start daemon
+        echo -e "  Starting daemon..."
+        node "$CLI" daemon restart > /dev/null 2>&1
+        sleep 1
         echo -e "  ${GREEN}✓ Connected${NC}"
-        # Wait for Figma to fully restore all tabs after restart
-        sleep 3
     fi
 
     # Step 3: List open files and let user pick
@@ -259,12 +270,10 @@ for f in files:
     if [ ${#FILE_TITLES[@]} -eq 0 ]; then
         echo -e "  ${YELLOW}No Figma files detected.${NC} Open a file in Figma first."
         echo ""
-        echo -e "  Launching Claude Code anyway..."
+        echo -e "  ${GREEN}✓ Ready.${NC} Start Claude from your project folder:"
+        echo -e "  ${DIM}figma-claude${NC}  ${DIM}(or: claude --add-dir \"$REPO_PATH\")${NC}"
         echo ""
-        if [ "$STAY_HERE" = false ]; then
-            cd "$REPO_PATH" || exit 1
-        fi
-        exec claude
+        exit 0
     fi
 
     SELECTED_TITLE=""
@@ -279,11 +288,8 @@ for f in files:
     echo -e "  ${GREEN}✓ File: ${BOLD}${SELECTED_TITLE}${NC}"
     echo ""
 
-    # Step 4: Launch Claude Code
-    echo -e "  ${GREEN}Launching Claude Code...${NC}"
+    # Step 4: Done — Claude starts separately
+    echo -e "  ${GREEN}✓ Ready.${NC} Start Claude from your project folder:"
+    echo -e "  ${DIM}figma-claude${NC}  ${DIM}(or: claude --add-dir \"$REPO_PATH\")${NC}"
     echo ""
-    if [ "$STAY_HERE" = false ]; then
-        cd "$REPO_PATH" || exit 1
-    fi
-    exec claude
 fi

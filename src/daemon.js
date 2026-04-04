@@ -11,7 +11,7 @@
  * - Session token authentication (X-Daemon-Token header)
  * - No CORS headers (blocks cross-origin browser requests)
  * - Host header validation (blocks DNS rebinding)
- * - Idle timeout auto-shutdown (configurable, default 10 minutes)
+ * - Idle timeout auto-shutdown (configurable, default 60 minutes)
  */
 
 import { createServer } from 'http';
@@ -71,7 +71,7 @@ async function getFigmaClient() {
 
 const PORT = parseInt(process.env.DAEMON_PORT) || 3456;
 const MODE = process.env.DAEMON_MODE || 'auto'; // 'auto', 'cdp', 'plugin'
-const IDLE_TIMEOUT_MS = parseInt(process.env.DAEMON_IDLE_TIMEOUT) || 10 * 60 * 1000; // Default: 10 minutes
+const IDLE_TIMEOUT_MS = parseInt(process.env.DAEMON_IDLE_TIMEOUT) || 60 * 60 * 1000; // Default: 60 minutes
 
 // ============ SECURITY ============
 
