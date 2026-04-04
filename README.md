@@ -128,15 +128,11 @@ All components use `var:` syntax to bind directly to shadcn variables. When you 
 
 ## Why This CLI?
 
-This project includes a `CLAUDE.md` file that Claude reads automatically. It contains:
-
-- All available commands and their syntax
-- Best practices (e.g., "use `render` for text-heavy designs")
-- Common requests mapped to solutions
+This project includes a `CLAUDE.md` file that Claude reads automatically when started with `figma-claude`. It contains all available commands, JSX syntax, design patterns, and best practices.
 
 **Want to teach Claude new tricks?** Just update `CLAUDE.md`. No code changes needed.
 
-**Example:** You type "Create Tailwind colors" -> Claude already knows to run `node src/index.js tokens tailwind` because it's documented in `CLAUDE.md`.
+**Example:** You type "Create Tailwind colors" → Claude already knows to run `node src/index.js tokens tailwind` because it's documented in `CLAUDE.md`.
 
 ---
 
@@ -160,21 +156,29 @@ npm run setup-alias
 source ~/.zshrc
 ```
 
-That's it. Now open a **new terminal** and type:
+That's it. Now open a **new terminal** and run the two-step workflow:
 
+**Step 1 — Connect Figma** (once per session, from any directory)
 ```bash
 fig-start
 ```
 
 This will:
-1. Start Figma (if not running)
-2. Connect to Figma (Yolo Mode: patches Figma once for direct access)
+1. Patch Figma once (first run only) — asks you to quit and reopen Figma
+2. Start the daemon and connect via CDP
 3. Show your open Figma files: pick one with arrow keys
-4. Launch Claude Code with all commands pre-loaded
 
-**Done.** Talk to Claude about your Figma file.
+**Step 2 — Start Claude in your project folder**
+```bash
+cd ~/my-project
+figma-claude
+```
 
-> **Note:** `fig-start` works from any directory. The setup script saves the repo location to `~/.figma-cli/config.json`.
+`figma-claude` is an alias added to your `~/.zshrc` by the setup script. It opens Claude with both your project context and the full figma-cli command reference loaded automatically.
+
+**Done.** Talk to Claude about your Figma file while having full access to your project.
+
+> **Note:** `fig-start` never kills a running Figma. If Figma is open without the debug port, it patches the app and asks you to quit and reopen once. After that it connects automatically.
 
 ### fig-start Options
 
@@ -197,8 +201,8 @@ This uses a Figma plugin instead of patching. See [Safe Mode](#-safe-mode--for-r
 ### Manual Setup (without fig-start)
 
 ```bash
-cd figma-cli
-claude
+cd my-project
+figma-claude
 ```
 
 Then tell Claude: `Connect to Figma`
@@ -387,11 +391,26 @@ Windows is supported but less tested than macOS.
 
 **Safe Mode:** If Yolo Mode doesn't work, use Safe Mode: `node src/index.js connect --safe`
 
+### Connection Lost Mid-Session
+
+If a command fails with a connection error, **do not run `connect`** — it kills and restarts Figma.
+
+```bash
+# Fix 99% of issues — restarts daemon only, Figma untouched
+node src/index.js daemon restart
+
+# If daemon is running but connection is stale
+node src/index.js reconnect
+
+# Only if Figma itself is fully closed
+node src/index.js connect
+```
+
 ### Figma Not Connecting
 
 1. Make sure Figma Desktop is running (not the web version)
 2. Open a design file in Figma (not just the home screen)
-3. Restart connection: `node src/index.js connect`
+3. Run `fig-start` again — it will guide you through the setup
 
 ---
 
@@ -421,7 +440,7 @@ The CLI runs a local daemon for faster command execution. Security features:
 - **Session token authentication**: Random 32-byte token required for all requests
 - **No CORS headers**: Blocks cross-origin browser requests
 - **Host header validation**: Only accepts localhost/127.0.0.1
-- **Idle timeout**: Auto-shutdown after 10 minutes of inactivity (configurable)
+- **Idle timeout**: Auto-shutdown after 60 minutes of inactivity (configurable)
 - **Random port**: CDP uses a random port between 9222-9322 per session
 
 Token is stored at `~/.figma-ds-cli/.daemon-token` with owner-only permissions (0600).
