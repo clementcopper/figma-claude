@@ -769,19 +769,19 @@ node src/index.js daemon restart
 
 ## Connection Recovery (CRITICAL)
 
-**NEVER run `connect` mid-session** — it kills and restarts Figma, closing all open files.
-
 When a command fails with a connection error, use this decision tree:
 
 ```
 Is Figma running?
 ├── YES → node src/index.js daemon restart   # restart daemon only, Figma untouched
 │         node src/index.js reconnect        # if daemon runs but connection is stale
-└── NO  → node src/index.js connect          # only if Figma is fully closed
+└── NO  → node src/index.js connect          # starts Figma fresh
 ```
+
+**`connect` is now safe** — it checks CDP availability first. If Figma is already running with the debug port, it only restarts the daemon. It never kills a running Figma session.
 
 **Quick check:**
 ```bash
-node src/index.js daemon status   # check if daemon is alive
+fig-status                        # show Figma / CDP / Daemon / File status
 node src/index.js daemon restart  # fix 99% of connection issues
 ```
