@@ -171,7 +171,7 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
     return result.result;
   } catch (e) {
     if (e.name === 'TimeoutError' || e.message.includes('timeout')) {
-      throw new Error(`Execution timeout (${timeoutMs/1000}s). Try reconnecting: node src/index.js connect`);
+      throw new Error(`Execution timeout (${timeoutMs/1000}s). Try: node src/index.js daemon restart`);
     }
     throw e;
   }
@@ -1121,32 +1121,55 @@ program
     // Stop any existing daemon
     stopDaemon();
 
-    console.log(chalk.blue('Starting Figma...'));
+    // Check if Figma is already running with debug port accessible
+    let cdpAccessible = false;
     try {
-      killFigma();
-      await new Promise(r => setTimeout(r, 500));
+      const cdpCheck = await fetch('http://localhost:9222/json', { signal: AbortSignal.timeout(2000) });
+      cdpAccessible = cdpCheck.ok;
     } catch {}
 
-    startFigma();
-    console.log(chalk.green('✓ Figma started\n'));
+    if (!cdpAccessible) {
+      // Check if Figma is running but without debug port
+      const figmaRunning = (() => {
+        try { execSync('pgrep -x Figma', { stdio: 'pipe' }); return true; } catch { return false; }
+      })();
 
-    // Wait and check connection
-    const spinner = ora('Waiting for connection...').start();
-    let connected = false;
-    for (let i = 0; i < 8; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const result = figmaUse('status', { silent: true });
-      if (result && result.includes('Connected')) {
-        spinner.succeed('Connected to Figma');
-        console.log(chalk.gray(result.trim()));
-        connected = true;
-        break;
+      if (figmaRunning) {
+        console.log(chalk.yellow('\n  Figma is running but not accessible via debug port.'));
+        console.log(chalk.white('  Please quit Figma (Cmd+Q), then run ') + chalk.cyan('fig-start') + chalk.white(' again.\n'));
+        return;
       }
-    }
 
-    if (!connected) {
-      spinner.warn('Open a file in Figma to connect');
-      return;
+      // Figma not running — safe to start fresh
+      console.log(chalk.blue('Starting Figma...'));
+      try {
+        killFigma();
+        await new Promise(r => setTimeout(r, 500));
+      } catch {}
+
+      startFigma();
+      console.log(chalk.green('✓ Figma started\n'));
+
+      // Wait and check connection
+      const spinner = ora('Waiting for connection...').start();
+      let connected = false;
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const result = figmaUse('status', { silent: true });
+        if (result && result.includes('Connected')) {
+          spinner.succeed('Connected to Figma');
+          console.log(chalk.gray(result.trim()));
+          connected = true;
+          break;
+        }
+      }
+
+      if (!connected) {
+        spinner.warn('Open a file in Figma to connect');
+        return;
+      }
+    } else {
+      console.log(chalk.green('✓ Figma already running'));
     }
 
     // Start daemon for fast commands (force restart to get fresh connection)

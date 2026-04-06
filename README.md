@@ -164,9 +164,10 @@ fig-start
 ```
 
 This will:
-1. Patch Figma once (first run only) — asks you to quit and reopen Figma
+1. Patch Figma once (first run only) — automatically restarts Figma with the debug port
 2. Start the daemon and connect via CDP
 3. Show your open Figma files: pick one with arrow keys
+4. Display a status summary (Figma, CDP, Daemon, active file)
 
 **Step 2 — Start Claude in your project folder**
 ```bash
@@ -178,7 +179,7 @@ figma-claude
 
 **Done.** Talk to Claude about your Figma file while having full access to your project.
 
-> **Note:** `fig-start` never kills a running Figma. If Figma is open without the debug port, it patches the app and asks you to quit and reopen once. After that it connects automatically.
+> **Note:** `fig-start` never kills a running Figma unnecessarily. If Figma is open without the debug port, it patches the app and restarts Figma automatically with the debug flag. After that it connects automatically on every `fig-start`.
 
 ### fig-start Options
 
@@ -187,6 +188,7 @@ figma-claude
 | `fig-start` | Yolo Mode (default), interactive file picker |
 | `fig-start --safe` | Safe Mode (plugin-based, no patching) |
 | `fig-start --setup` | Change the figma-cli repo path |
+| `fig-status` | Show connection status at any time (Figma, CDP, Daemon, File) |
 
 ### Safe Mode (no patching)
 
@@ -393,18 +395,23 @@ Windows is supported but less tested than macOS.
 
 ### Connection Lost Mid-Session
 
-If a command fails with a connection error, **do not run `connect`** — it kills and restarts Figma.
+If a command fails with a connection error:
 
 ```bash
+# Check what's wrong
+fig-status
+
 # Fix 99% of issues — restarts daemon only, Figma untouched
 node src/index.js daemon restart
 
 # If daemon is running but connection is stale
 node src/index.js reconnect
 
-# Only if Figma itself is fully closed
+# connect is now safe to run — it won't kill Figma if CDP is already accessible
 node src/index.js connect
 ```
+
+> **Note:** `connect` checks if Figma is already reachable on port 9222 before doing anything. If it is, it just restarts the daemon. It only starts Figma fresh if Figma is not running at all.
 
 ### Figma Not Connecting
 

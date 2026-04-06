@@ -201,7 +201,14 @@ else
         if [ "$DAEMON_OK" = false ]; then
             echo -e "  Starting daemon..."
             node "$CLI" daemon restart > /dev/null 2>&1
-            sleep 1
+            # Wait up to 5s for daemon to be ready
+            for i in $(seq 1 5); do
+                sleep 1
+                NEW_TOKEN=$(get_daemon_token)
+                if [ -n "$NEW_TOKEN" ] && curl -s -H "X-Daemon-Token: $NEW_TOKEN" http://localhost:3456/health 2>/dev/null | grep -q '"status":"ok"'; then
+                    break
+                fi
+            done
         fi
         echo -e "  ${GREEN}✓ Connected${NC}"
     else
@@ -219,14 +226,13 @@ if (s === false) { try { patchFigma(); } catch(e) { process.stderr.write(e.messa
         fi
 
         if pgrep -x "Figma" > /dev/null 2>&1; then
-            # Figma is running but without --remote-debugging-port — user must quit it
-            echo -e "  ${GREEN}✓ Figma configured.${NC}"
-            echo -e "  ${YELLOW}Please quit Figma (Cmd+Q), then run fig-start again.${NC}"
-            echo ""
-            exit 0
+            # Figma is running but without --remote-debugging-port — restart it with the flag
+            echo -e "  Restarting Figma with debug port..."
+            pkill -x "Figma" 2>/dev/null || true
+            sleep 2
         fi
 
-        # Figma is not running — start it with the debug flag
+        # Start Figma with the debug flag
         echo -e "  Starting Figma..."
         open -a Figma --args --remote-debugging-port=9222
         echo -e "  Waiting for Figma to start..."
@@ -288,7 +294,55 @@ for f in files:
     echo -e "  ${GREEN}✓ File: ${BOLD}${SELECTED_TITLE}${NC}"
     echo ""
 
-    # Step 4: Done — Claude starts separately
+    # Step 4: Status summary
+    # box_row: label (fixed width) + icon (1 visible char, colored) + plain value, padded to BOX_W
+    BOX_W=44
+    box_row() {
+        local label="$1" icon="$2" color="$3" value="$4"
+        local visible_len=$(( ${#label} + 1 + 2 + ${#value} + 2 ))
+        local pad=$(( BOX_W - visible_len ))
+        [ $pad -lt 0 ] && pad=0
+        printf "  \033[2m│\033[0m  %s${color}%s\033[0m  %s%${pad}s\033[2m│\033[0m\n" \
+            "$label" "$icon" "$value" ""
+    }
+
+    DAEMON_TOKEN=$(get_daemon_token)
+    DAEMON_HEALTH=""
+    if [ -n "$DAEMON_TOKEN" ]; then
+        DAEMON_HEALTH=$(curl -s -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:3456/health 2>/dev/null)
+    fi
+
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:9222/json 2>/dev/null | grep -q "200"; then
+        CDP_ICON="✓"; CDP_COLOR="$GREEN"; CDP_VAL="port 9222"
+    else
+        CDP_ICON="✗"; CDP_COLOR="$RED";   CDP_VAL="not reachable"
+    fi
+
+    if echo "$DAEMON_HEALTH" | grep -q '"status":"ok"'; then
+        DAEMON_MODE=$(echo "$DAEMON_HEALTH" | python3 -c "import json,sys; d=json.load(sys.stdin); print('CDP' if d.get('cdp') else ('Plugin' if d.get('plugin') else 'unknown'))" 2>/dev/null)
+        DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port 3456 (${DAEMON_MODE})"
+    else
+        DAEMON_ICON="✗"; DAEMON_COLOR="$RED";   DAEMON_VAL="not running"
+    fi
+
+    if pgrep -x "Figma" > /dev/null 2>&1; then
+        FIGMA_ICON="✓"; FIGMA_COLOR="$GREEN"; FIGMA_VAL="running"
+    else
+        FIGMA_ICON="○"; FIGMA_COLOR="$YELLOW"; FIGMA_VAL="not running"
+    fi
+
+    SEP=$(printf '─%.0s' {1..44})
+    echo -e "  ${DIM}┌${SEP}┐${NC}"
+    printf "  \033[2m│\033[0m  \033[1mStatus\033[0m%36s\033[2m│\033[0m\n" ""
+    echo -e "  ${DIM}├${SEP}┤${NC}"
+    box_row "Figma   " "$FIGMA_ICON"  "$FIGMA_COLOR"  "$FIGMA_VAL"
+    box_row "CDP     " "$CDP_ICON"    "$CDP_COLOR"    "$CDP_VAL"
+    box_row "Daemon  " "$DAEMON_ICON" "$DAEMON_COLOR" "$DAEMON_VAL"
+    box_row "File    " " "            "$NC"           "$SELECTED_TITLE"
+    echo -e "  ${DIM}└${SEP}┘${NC}"
+    echo ""
+
+    # Step 5: Done — Claude starts separately
     echo -e "  ${GREEN}✓ Ready.${NC} Start Claude from your project folder:"
     echo -e "  ${DIM}figma-claude${NC}  ${DIM}(or: claude --add-dir \"$REPO_PATH\")${NC}"
     echo ""
