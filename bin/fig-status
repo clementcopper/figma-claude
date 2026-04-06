@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# fig-status — Show Figma CLI connection status
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
+
+get_daemon_token() {
+    local token_file="$HOME/.figma-ds-cli/.daemon-token"
+    if [ -f "$token_file" ]; then
+        cat "$token_file" 2>/dev/null
+    fi
+}
+
+get_repo_path() {
+    local config_file="$HOME/.figma-cli/config.json"
+    if [ -f "$config_file" ]; then
+        python3 -c "import json; print(json.load(open('$config_file')).get('repoPath',''))" 2>/dev/null
+    fi
+}
+
+# Print a box row: label (9 chars) + icon (colored) + value (plain), padded to BOX_W
+# Usage: box_row "Label   " "✓" "$GREEN" "some value"
+BOX_W=44
+box_row() {
+    local label="$1"    # fixed-width label
+    local icon="$2"     # single visible char (✓ / ✗ / ○)
+    local color="$3"    # color for icon
+    local value="$4"    # plain text value
+    local inner="  ${label}${icon}  ${value}"
+    local visible_len=$(( ${#label} + 1 + 2 + ${#value} + 2 ))
+    local pad=$(( BOX_W - visible_len ))
+    [ $pad -lt 0 ] && pad=0
+    printf "  \033[2m│\033[0m  %s${color}%s\033[0m  %s%${pad}s\033[2m│\033[0m\n" \
+        "$label" "$icon" "$value" ""
+}
+
+REPO_PATH=$(get_repo_path)
+CLI=""
+if [ -n "$REPO_PATH" ] && [ -f "$REPO_PATH/src/index.js" ]; then
+    CLI="$REPO_PATH/src/index.js"
+fi
+
+echo ""
+echo -e "  ${BOLD}fig-status${NC}"
+echo ""
+
+# ── Figma process ──
+if pgrep -x "Figma" > /dev/null 2>&1; then
+    FIGMA_ICON="✓"; FIGMA_COLOR="$GREEN"; FIGMA_VAL="running"
+else
+    FIGMA_ICON="○"; FIGMA_COLOR="$YELLOW"; FIGMA_VAL="not running"
+fi
+
+# ── CDP ──
+if curl -s -o /dev/null -w "%{http_code}" http://localhost:9222/json 2>/dev/null | grep -q "200"; then
+    CDP_ICON="✓"; CDP_COLOR="$GREEN"; CDP_VAL="port 9222"
+else
+    CDP_ICON="✗"; CDP_COLOR="$RED"; CDP_VAL="not reachable"
+fi
+
+# ── Daemon ──
+DAEMON_TOKEN=$(get_daemon_token)
+DAEMON_ICON="○"; DAEMON_COLOR="$YELLOW"; DAEMON_VAL="not running"
+if [ -n "$DAEMON_TOKEN" ]; then
+    DAEMON_HEALTH=$(curl -s -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:3456/health 2>/dev/null)
+    if echo "$DAEMON_HEALTH" | grep -q '"status":"ok"'; then
+        DAEMON_MODE=$(echo "$DAEMON_HEALTH" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print('CDP' if d.get('cdp') else ('Plugin' if d.get('plugin') else 'unknown'))
+" 2>/dev/null)
+        DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port 3456 (${DAEMON_MODE})"
+    fi
+fi
+
+# ── Active file ──
+FILE_ICON=" "; FILE_COLOR="$NC"; FILE_VAL="—"
+if [ -n "$CLI" ] && [ -n "$DAEMON_TOKEN" ]; then
+    FILES_JSON=$(node "$CLI" files 2>/dev/null)
+    if [ -n "$FILES_JSON" ] && ! echo "$FILES_JSON" | grep -q '"error"'; then
+        ACTIVE=$(echo "$FILES_JSON" | python3 -c "
+import json,sys
+files=json.load(sys.stdin)
+if files:
+    t=files[0].get('title','Untitled')
+    t=t.replace(' \u2013 Figma','').replace(' - Figma','')
+    print(t)
+" 2>/dev/null)
+        if [ -n "$ACTIVE" ]; then
+            FILE_ICON=" "; FILE_COLOR="$NC"; FILE_VAL="$ACTIVE"
+        fi
+    fi
+fi
+
+SEP=$(printf '─%.0s' {1..44})
+echo -e "  ${DIM}┌${SEP}┐${NC}"
+printf "  \033[2m│\033[0m  \033[1mStatus\033[0m%36s\033[2m│\033[0m\n" ""
+echo -e "  ${DIM}├${SEP}┤${NC}"
+box_row "Figma   " "$FIGMA_ICON"  "$FIGMA_COLOR"  "$FIGMA_VAL"
+box_row "CDP     " "$CDP_ICON"    "$CDP_COLOR"    "$CDP_VAL"
+box_row "Daemon  " "$DAEMON_ICON" "$DAEMON_COLOR" "$DAEMON_VAL"
+box_row "File    " "$FILE_ICON"   "$FILE_COLOR"   "$FILE_VAL"
+echo -e "  ${DIM}└${SEP}┘${NC}"
+echo ""
