@@ -149,7 +149,7 @@ This project includes a `CLAUDE.md` file that Claude reads automatically when st
 ## Setup
 
 ```bash
-git clone https://github.com/silships/figma-cli.git
+git clone https://github.com/clementcopper/figma-cli.git
 cd figma-cli
 npm install
 npm run setup-alias
