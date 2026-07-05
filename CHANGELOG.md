@@ -4,6 +4,17 @@
 
 ### New
 
+- **Browser Mode (`figma-cli connect --browser`).** A connection mode that never
+  patches or modifies the local Figma Desktop app. It launches a Chromium-based
+  browser (Chrome/Edge/Brave/Chromium) with remote debugging enabled — in a
+  dedicated persistent profile so your Figma login survives and your everyday
+  browser profile is untouched — waits for you to open a design file, then drives
+  it over the exact same CDP path as Yolo Mode (the CDP client already discovers
+  the `figma.com/(design|file)` tab, so no other code path changes). For anyone who
+  can't or won't modify Figma's signed binary (compliance, no macOS "App
+  Management" permission, locked-down machines). Yolo Mode (desktop patch) and Safe
+  Mode (plugin) are unchanged.
+
 - **Variable-collection roundtrip.** `figma-cli extract` now captures the file's real variable collections , every variable with its true name, all its modes (light/dark, high-contrast, colour-blind, whatever the system defines) and its alias chains , into a `## Variables` section plus the machine-readable JSON token block. This is the authoritative token layer, not the palette sampled from fills. `figma-cli import` recreates those collections faithfully (modes and aliases included) in any other file, closing the variables roundtrip. Captured in bounded chunks so large systems (thousands of variables) don't time out, and aliases to library/remote variables resolve to their real names.
 - **`figma-cli extract --sections variables`** for a variables-only export.
 

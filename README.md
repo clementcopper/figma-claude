@@ -100,9 +100,9 @@ Cursor builds it in Figma instantly.
 
 ---
 
-## How it connects to Figma: Yolo vs Safe mode
+## How it connects to Figma: Yolo, Browser, or Safe mode
 
-figma-cli talks to your Figma Desktop in one of two ways. Claude picks one during setup , here's what they mean, so you know what's happening:
+figma-cli talks to Figma in one of three ways. Claude picks one during setup , here's what they mean, so you know what's happening:
 
 ### ⚡ Yolo Mode , the default, recommended
 - **Fully automatic.** Claude sets it up, you do nothing.
@@ -110,13 +110,19 @@ figma-cli talks to your Figma Desktop in one of two ways. Claude picks one durin
 - "Yolo" sounds scary, but it's **safe and undoable** , Claude can un-patch it anytime, and nothing ever leaves your machine.
 - Just tell Claude *"connect to Figma"* and you're done.
 
+### 🌐 Browser Mode , same speed, without touching the Figma app
+- Runs Figma in a **normal Chromium browser** (Chrome / Edge / Brave / Chromium) and drives it over the same fast direct connection , **the Figma Desktop app is never patched or modified.**
+- Claude opens a browser window with remote debugging on, in its **own dedicated profile** (your Figma login and everyday browser stay untouched); you open your file there and keep working.
+- Best when you can't or don't want to modify the desktop app , company policy, a locked-down machine, or macOS won't grant the "App Management" permission the patch needs. Just as fast as Yolo, and still fully local (no API key, no cloud).
+- Tell Claude *"connect to Figma in browser mode"*.
+
 ### 🛡️ Safe Mode , no changes to the Figma app
 - **Doesn't touch the Figma app at all.** Instead it uses a tiny built-in Figma plugin.
 - You run it once from Figma's **Plugins → Development → FigCli** and keep that plugin open while you work.
 - A little more manual (you start the plugin), but **zero modifications** to Figma itself , good if you, or your company's IT policy, don't want the app patched.
 - Tell Claude *"connect to Figma in safe mode"*.
 
-**Both do exactly the same things.** Unsure? Use Yolo. Want nothing changed on your Figma app? Use Safe. You can switch anytime , just ask Claude.
+**All three do exactly the same things.** Unsure? Use Yolo. Want nothing changed on your Figma app but still want the fast direct path? Use **Browser**. Prefer the official plugin route? Use Safe. You can switch anytime , just ask Claude.
 
 ---
 
@@ -298,7 +304,7 @@ Prefer to keep everything on your machine? figma-cli also works with **local LLM
 Everything above is powered by a CLI that the AI calls for you. If you want to use it directly, script it, or see every command:
 
 - **[REFERENCE.md](REFERENCE.md)** , full command reference (tokens, render/JSX, components, gradients, a11y, export, the offline Figma API spec, and more).
-- Two connection modes: **Yolo** (direct, recommended) and **Safe** (plugin-based, no patching). Claude picks the right one during setup.
+- Three connection modes: **Yolo** (direct, patches the desktop app, recommended), **Browser** (same direct speed via a Chromium browser, never modifies the Figma app), and **Safe** (plugin-based, no patching). Claude picks the right one during setup.
 
 You don't need any of this to use the tool , it's here for tinkerers.
 
