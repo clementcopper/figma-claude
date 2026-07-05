@@ -70,6 +70,25 @@ Claude builds it in Figma instantly.
 
 ---
 
+## Install as a Claude Code plugin (optional)
+
+Prefer Claude Code's plugin system? This repo is also a **plugin marketplace**, so
+Claude Code learns the figma-cli workflow in *any* project (not just this one) after
+a two-line install:
+
+```
+/plugin marketplace add silships/figma-cli
+/plugin install figma-cli@intodesignsystems
+```
+
+That installs a skill that teaches Claude Code how to drive figma-cli (connect
+modes, the render/JSX rules, tokens, verify, a11y). The **CLI itself still needs
+Node ≥ 18 and its dependencies** , clone this repo and run `npm install` once (or
+ask Claude to), then open Figma Desktop and say *"connect to Figma"*. The plugin
+supplies the know-how; the local CLI does the work.
+
+---
+
 ## Using Cursor
 
 Prefer **Cursor**? It works exactly the same , the CLI controls Figma Desktop, not your editor, so nothing about it is Claude-only. Most people use Claude Code, but if Cursor is your tool, here's the whole setup.

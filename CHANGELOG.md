@@ -4,6 +4,14 @@
 
 ### New
 
+- **Claude Code plugin + marketplace.** The repo is now installable as a Claude
+  Code plugin: `/plugin marketplace add silships/figma-cli` then
+  `/plugin install figma-cli@intodesignsystems`. Ships a `figma-cli` skill (the
+  condensed operating rules — connect modes, render/JSX, tokens, verify, a11y) so
+  Claude Code is fluent with the CLI in any project. Manifests live in
+  `.claude-plugin/` (`plugin.json` + `marketplace.json`); the skill lives in
+  `skills/figma-cli/`. The CLI itself is unchanged; the plugin only carries the
+  know-how (the local Node CLI still does the work).
 - **Variable-collection roundtrip.** `figma-cli extract` now captures the file's real variable collections , every variable with its true name, all its modes (light/dark, high-contrast, colour-blind, whatever the system defines) and its alias chains , into a `## Variables` section plus the machine-readable JSON token block. This is the authoritative token layer, not the palette sampled from fills. `figma-cli import` recreates those collections faithfully (modes and aliases included) in any other file, closing the variables roundtrip. Captured in bounded chunks so large systems (thousands of variables) don't time out, and aliases to library/remote variables resolve to their real names.
 - **`figma-cli extract --sections variables`** for a variables-only export.
 
