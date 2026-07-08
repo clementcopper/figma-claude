@@ -56,3 +56,29 @@ describe('parseTextRuns', () => {
     assert.equal(text.slice(styled.start, styled.end), 'alert');
   });
 });
+
+describe('parseJSX inline runs codegen', () => {
+  const client = new FigmaClient();
+
+  it('emits setRangeFontName for a <b> run and no setRange for plain text', async () => {
+    const bold = await client.parseJSX('<Frame name="P" flex="col"><Text size={28} color="#9E9EA0">a <b>bold</b> c</Text></Frame>');
+    assert.ok(/setRangeFontName\(2, 6,/.test(bold), 'bold range 2..6');
+    assert.ok(bold.includes('a bold c'), 'flattened characters');
+
+    const plain = await client.parseJSX('<Frame name="P" flex="col"><Text size={28}>just plain</Text></Frame>');
+    assert.ok(!/setRange/.test(plain), 'no setRange calls for plain text (fast path)');
+  });
+
+  it('emits setRangeFills for a <span color> run', async () => {
+    const code = await client.parseJSX('<Frame name="P" flex="col"><Text size={28} color="#9E9EA0">use <span color="#FAFAFA" weight="bold">figma-cli</span> now</Text></Frame>');
+    assert.ok(/setRangeFills\(4, 13,/.test(code), 'colored range 4..13');
+    assert.ok(/setRangeFontName\(4, 13,/.test(code), 'bold range 4..13');
+    assert.ok(/r:0\.9803921568627451/.test(code) || /r:0\.98/.test(code), 'white-ish fill');
+    assert.doesNotThrow(() => new Function(code), SyntaxError);
+  });
+
+  it('emits setRangeTextDecoration for <u>', async () => {
+    const code = await client.parseJSX('<Frame name="P" flex="col"><Text size={28}>a <u>x</u></Text></Frame>');
+    assert.ok(/setRangeTextDecoration\(2, 3, 'UNDERLINE'\)/.test(code), 'underline range');
+  });
+});

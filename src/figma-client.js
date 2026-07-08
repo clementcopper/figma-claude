@@ -912,7 +912,7 @@ export class FigmaClient {
 
     // Parse Text elements, but skip those inside nested Frames/Slots
     // Use (?:\s+([^>]*?))? to allow Text with or without attributes
-    const textRegex = /<Text(?:\s+([^>]*?))?>([^<]*)<\/Text>/g;
+    const textRegex = /<Text(?:\s+([^>]*?))?>([\s\S]*?)<\/Text>/g;
     while ((match = textRegex.exec(childrenStr)) !== null) {
       const idx = match.index;
       // Check if this text is inside a nested frame
@@ -920,7 +920,9 @@ export class FigmaClient {
       if (!insideFrame) {
         const textProps = this.parseProps(match[1] || '');
         textProps._type = 'text';
-        textProps.content = this.decodeEntities(match[2]);
+        const __parsed = this.parseTextRuns(match[2]);
+        textProps.content = __parsed.text;
+        textProps._runs = __parsed.runs;
         textProps._index = idx;
         children.push(textProps);
       }
@@ -1104,6 +1106,18 @@ export class FigmaClient {
           const style = this.weightToStyle(item.weight, item.italic);
           fontMap.set(family + '/' + style, { family, style });
           check(item.color || '#000000');
+          if (Array.isArray(item._runs)) {
+            item._runs.forEach(r => {
+              const st = r.style || {};
+              if (st.weight !== undefined || st.italic !== undefined) {
+                const rStyle = this.weightToStyle(
+                  st.weight !== undefined ? st.weight : item.weight,
+                  st.italic !== undefined ? st.italic : item.italic
+                );
+                fontMap.set(family + '/' + rStyle, { family, style: rStyle });
+              }
+            });
+          }
         } else if (item._type === 'frame' || item._type === 'slot') {
           check(item.bg || item.fill || null);
           if (item.stroke) check(item.stroke);
@@ -1191,6 +1205,35 @@ export class FigmaClient {
           const tTruncate = item.truncate === true || item.truncate === 'true';
           const tMaxLines = item.maxLines !== undefined ? parseInt(item.maxLines) : null;
 
+          const runStyleCode = (item._runs || [])
+            .filter(r => r.style && Object.keys(r.style).length)
+            .map(r => {
+              const st = r.style;
+              const parts = [];
+              if (st.weight !== undefined || st.italic !== undefined) {
+                const rStyle = this.weightToStyle(
+                  st.weight !== undefined ? st.weight : item.weight,
+                  st.italic !== undefined ? st.italic : item.italic
+                );
+                parts.push(`try { el${idx}.setRangeFontName(${r.start}, ${r.end}, __font(${JSON.stringify(family)}, ${JSON.stringify(rStyle)})); } catch(e) {}`);
+              }
+              if (st.size !== undefined && !isNaN(Number(st.size))) {
+                parts.push(`try { el${idx}.setRangeFontSize(${r.start}, ${r.end}, ${Number(st.size)}); } catch(e) {}`);
+              }
+              if (st.color && this.hexToRgb(st.color)) {
+                parts.push(`try { el${idx}.setRangeFills(${r.start}, ${r.end}, [{ type: 'SOLID', color: ${this.hexToRgbCode(st.color)} }]); } catch(e) {}`);
+              }
+              if (st.underline) {
+                parts.push(`try { el${idx}.setRangeTextDecoration(${r.start}, ${r.end}, 'UNDERLINE'); } catch(e) {}`);
+              }
+              if (st.letterSpacing !== undefined) {
+                parts.push(`try { el${idx}.setRangeLetterSpacing(${r.start}, ${r.end}, ${dimUnit(st.letterSpacing)}); } catch(e) {}`);
+              }
+              return parts.join('\n        ');
+            })
+            .filter(Boolean)
+            .join('\n        ');
+
           // Auto-FILL text in column layouts so Safe Mode wraps text correctly.
           const isCol = parentFlex === 'col' || parentFlex === 'column';
           const parentNone = parentFlex === 'none' || parentFlex === 'stack' || parentFlex === 'free';
@@ -1205,6 +1248,7 @@ export class FigmaClient {
         ${tAlign ? `el${idx}.textAlignHorizontal = '${tAlign}';` : ''}
         el${idx}.characters = ${JSON.stringify(item.content)};
         ${textFillCode.code}
+        ${runStyleCode ? runStyleCode : ''}
         ${parentVar}.appendChild(el${idx});
         ${numW !== null ? `el${idx}.textAutoResize = 'HEIGHT';
         try { el${idx}.layoutSizingHorizontal = 'FIXED'; } catch(e) {}
