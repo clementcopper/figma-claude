@@ -920,7 +920,7 @@ export class FigmaClient {
       if (!insideFrame) {
         const textProps = this.parseProps(match[1] || '');
         textProps._type = 'text';
-        textProps.content = match[2];
+        textProps.content = this.decodeEntities(match[2]);
         textProps._index = idx;
         children.push(textProps);
       }
@@ -1801,6 +1801,36 @@ export class FigmaClient {
         }
       })()
     `;
+  }
+
+  /**
+   * Decode a curated set of HTML entities (numeric + named) in text content.
+   * Hand-rolled (no dependency). Unknown entities are left verbatim.
+   */
+  decodeEntities(str) {
+    if (typeof str !== 'string' || str.indexOf('&') === -1) return str;
+    const named = {
+      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+      copy: '©', reg: '®', trade: '™', hellip: '…',
+      mdash: '—', ndash: '–', times: '×', divide: '÷',
+      rarr: '→', larr: '←', uarr: '↑', darr: '↓',
+      rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”',
+      bull: '•', middot: '·', deg: '°', plusmn: '±',
+      ne: '≠', le: '≤', ge: '≥', approx: '≈',
+    };
+    return str.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, body) => {
+      if (body[0] === '#') {
+        const cp = (body[1] === 'x' || body[1] === 'X')
+          ? parseInt(body.slice(2), 16)
+          : parseInt(body.slice(1), 10);
+        if (Number.isFinite(cp) && cp >= 0 && cp <= 0x10FFFF) {
+          try { return String.fromCodePoint(cp); } catch (e) { return m; }
+        }
+        return m;
+      }
+      const key = body.toLowerCase();
+      return Object.prototype.hasOwnProperty.call(named, key) ? named[key] : m;
+    });
   }
 
   hexToRgb(hex) {
