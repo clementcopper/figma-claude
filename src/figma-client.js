@@ -1072,6 +1072,23 @@ export class FigmaClient {
       stack.push(style);
     }
     pushPlain(inner.slice(last));
+    // Trim outer whitespace off the assembled text (padding can live inside a
+    // boundary tag, e.g. "<span> alert </span>"), re-mapping run offsets and
+    // dropping runs that fall entirely in the trimmed region.
+    const lead = (text.match(/^\s+/) || [''])[0].length;
+    const trail = (text.match(/\s+$/) || [''])[0].length;
+    if (lead || trail) {
+      const newLen = text.length - trail;
+      text = text.slice(lead, newLen);
+      const remapped = [];
+      for (const r of runs) {
+        const s = Math.max(r.start, lead) - lead;
+        const e = Math.min(r.end, newLen) - lead;
+        if (e > s) remapped.push({ start: s, end: e, style: r.style });
+      }
+      runs.length = 0;
+      runs.push(...remapped);
+    }
     if (runs.length === 0) runs.push({ start: 0, end: 0, style: {} });
     return { text, runs };
   }

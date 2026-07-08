@@ -47,4 +47,12 @@ describe('parseTextRuns', () => {
     const { text } = client.parseTextRuns('a <b>&amp;</b> b');
     assert.equal(text, 'a & b');
   });
+
+  it('trims outer whitespace even when content is wrapped in a boundary tag', () => {
+    const { text, runs } = client.parseTextRuns('<span color="#FAFAFA"> alert </span>');
+    assert.equal(text, 'alert');
+    const styled = runs.find(r => r.style.color === '#FAFAFA');
+    assert.ok(styled, 'styled run present');
+    assert.equal(text.slice(styled.start, styled.end), 'alert');
+  });
 });
