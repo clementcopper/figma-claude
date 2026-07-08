@@ -1105,6 +1105,7 @@ export class FigmaClient {
           const size = item.size || 14;
           const color = item.color || '#000000';
           const fillWidth = item.w === 'fill';
+          const numW = (item.w !== undefined && item.w !== 'fill' && item.w !== 'hug' && item.w !== 'auto' && !isNaN(Number(item.w))) ? Number(item.w) : null;
           const textFillCode = this.generateFillCode(color, `el${idx}`);
 
           // Typography props that used to be in the known-prop list but were
@@ -1127,7 +1128,7 @@ export class FigmaClient {
           // Auto-FILL text in column layouts so Safe Mode wraps text correctly.
           const isCol = parentFlex === 'col' || parentFlex === 'column';
           const parentNone = parentFlex === 'none' || parentFlex === 'stack' || parentFlex === 'free';
-          const autoFill = isCol && !fillWidth;
+          const autoFill = isCol && !fillWidth && numW === null;
           return `
         __currentNode = 'Text: ${item.content.substring(0, 30).replace(/'/g, "\\'")}';
         const el${idx} = figma.createText();
@@ -1139,6 +1140,9 @@ export class FigmaClient {
         el${idx}.characters = ${JSON.stringify(item.content)};
         ${textFillCode.code}
         ${parentVar}.appendChild(el${idx});
+        ${numW !== null ? `el${idx}.textAutoResize = 'HEIGHT';
+        try { el${idx}.layoutSizingHorizontal = 'FIXED'; } catch(e) {}
+        try { el${idx}.resize(${numW}, el${idx}.height); } catch(e) {}` : ''}
         ${fillWidth && !parentNone ? `el${idx}.layoutSizingHorizontal = 'FILL'; el${idx}.textAutoResize = 'HEIGHT';` : ''}
         ${autoFill ? `// Auto-FILL: text in col layout needs FILL for Safe Mode wrapping
         if (${parentVar}.layoutMode === 'VERTICAL' && (${parentVar}.counterAxisSizingMode === 'FIXED' || ${parentVar}.primaryAxisSizingMode === 'FIXED')) {
