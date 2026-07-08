@@ -345,7 +345,26 @@ node src/index.js run /tmp/script.js
 
 **Native effects:** `noise="mono|duo|multi"` (grain), `texture={true}` (paper grain), `progressiveBlur={40}` (`progressiveBlurDir=down|up|left|right`), `glass={true}` (liquid glass: `glassRefraction`/`glassDepth`/`glassRadius`/`glassDispersion`/`glassLight`/`glassLightAngle`). Wallpapers: `gradient mesh "<colors>" --grain|--texture`.
 
-**Text:** `<Text size={18} weight="bold" color="#000" font="Inter">Hello</Text>` — any font family via `font=`, weights thin..black, `italic={true}`; missing fonts fall back to Inter.
+### `<Text>` sizing and inline styling
+
+- **Wrapping:** `w="fill"` fills the parent; a **numeric** `w={480}` sets a fixed
+  width and wraps (works inside `flex="row"`, not just columns).
+- **Inline runs:** style words inside one `<Text>` — `<b>`/`<strong>` (bold),
+  `<em>`/`<i>` (italic), `<u>` (underline), and `<span weight= italic= color= size=
+  letterSpacing=>` for arbitrary overrides. Runs inherit the base `<Text>` style;
+  span attrs override. Run `color` is hex only.
+- **HTML entities:** numeric (`&#8250;`, `&#x203A;`) and common named entities
+  (`&amp; &lt; &gt; &rarr; &times; &hellip; &mdash; &nbsp;` …) are decoded.
+- **Whitespace:** runs of spaces/newlines in `<Text>` content collapse to a single space (outer whitespace trimmed), so you can indent multi-line content freely.
+
+```jsx
+<Text size={28} w={620} color="#9E9EA0">
+  An MCP server loads every tool, <b>confidently</b> wrong, while
+  <span color="#FAFAFA" weight="bold">figma-cli</span> keeps memory empty.
+</Text>
+```
+
+**Other Text props:** `font="Inter"`, `size={18}`, `weight="bold"` (thin..black), `italic={true}`, `color="#000"` (hex); missing fonts fall back to Inter.
 
 **Undo:** `figma-cli undo` removes the node(s) created by the last render / render-batch.
 
