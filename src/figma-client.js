@@ -1810,7 +1810,7 @@ export class FigmaClient {
   decodeEntities(str) {
     if (typeof str !== 'string' || str.indexOf('&') === -1) return str;
     const named = {
-      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
       copy: '©', reg: '®', trade: '™', hellip: '…',
       mdash: '—', ndash: '–', times: '×', divide: '÷',
       rarr: '→', larr: '←', uarr: '↑', darr: '↓',
@@ -1818,7 +1818,7 @@ export class FigmaClient {
       bull: '•', middot: '·', deg: '°', plusmn: '±',
       ne: '≠', le: '≤', ge: '≥', approx: '≈',
     };
-    return str.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, body) => {
+    return str.replace(/&(#[0-9]+|#x[0-9a-f]+|[a-z]+);/gi, (m, body) => {
       if (body[0] === '#') {
         const cp = (body[1] === 'x' || body[1] === 'X')
           ? parseInt(body.slice(2), 16)

@@ -23,6 +23,14 @@ describe('decodeEntities', () => {
   it('is a no-op on strings without &', () => {
     assert.equal(client.decodeEntities('plain text'), 'plain text');
   });
+
+  it('decodes nbsp to a non-breaking space (U+00A0)', () => {
+    assert.equal(client.decodeEntities('a&nbsp;b'), 'a b');
+  });
+
+  it('leaves a malformed numeric entity untouched', () => {
+    assert.equal(client.decodeEntities('&#12e;'), '&#12e;');
+  });
 });
 
 describe('parseJSX decodes entities in <Text>', () => {
