@@ -1027,6 +1027,55 @@ export class FigmaClient {
     return base;
   }
 
+  /**
+   * Tokenize the inner content of a <Text> into styled runs.
+   * Recognizes inline tags: <b>/<strong>, <em>/<i>, <u>, and <span ...>.
+   * Plain text between tags inherits the base <Text> style (empty style {}).
+   * Returns { text, runs } with half-open UTF-16 offsets into text.
+   */
+  parseTextRuns(inner) {
+    inner = String(inner == null ? '' : inner).replace(/^\s+|\s+$/g, '');
+    const runs = [];
+    let text = '';
+    const collapse = (s) => s.replace(/\s+/g, ' ');
+    const stack = [];
+    const curStyle = () => Object.assign({}, ...stack);
+    const pushPlain = (raw) => {
+      if (!raw) return;
+      const decoded = this.decodeEntities(collapse(raw));
+      if (!decoded) return;
+      const start = text.length;
+      text += decoded;
+      runs.push({ start, end: text.length, style: curStyle() });
+    };
+    const tagRe = /<(\/?)(b|strong|em|i|u|span)((?:\s+[^>]*)?)>/gi;
+    let last = 0, m;
+    while ((m = tagRe.exec(inner)) !== null) {
+      pushPlain(inner.slice(last, m.index));
+      last = m.index + m[0].length;
+      const closing = m[1] === '/';
+      const tag = m[2].toLowerCase();
+      if (closing) { if (stack.length) stack.pop(); continue; }
+      let style;
+      if (tag === 'b' || tag === 'strong') style = { weight: 'bold' };
+      else if (tag === 'em' || tag === 'i') style = { italic: true };
+      else if (tag === 'u') style = { underline: true };
+      else {
+        const p = this.parseProps((m[3] || '').trim());
+        style = {};
+        if (p.weight !== undefined) style.weight = p.weight;
+        if (p.italic !== undefined) style.italic = p.italic;
+        if (p.color !== undefined) style.color = p.color;
+        if (p.size !== undefined) style.size = Number(p.size);
+        if (p.letterSpacing !== undefined) style.letterSpacing = p.letterSpacing;
+      }
+      stack.push(style);
+    }
+    pushPlain(inner.slice(last));
+    if (runs.length === 0) runs.push({ start: 0, end: 0, style: {} });
+    return { text, runs };
+  }
+
   collectFontsAndVarUsage(items) {
     const fontMap = new Map(); // 'family/style' -> { family, style }
     let usesVars = false;
