@@ -143,6 +143,16 @@ figma-cli talks to Figma in one of three ways. Claude picks one during setup , h
 
 **All three do exactly the same things.** Unsure? Use Yolo. Want nothing changed on your Figma app but still want the fast direct path? Use **Browser**. Prefer the official plugin route? Use Safe. You can switch anytime , just ask Claude.
 
+### Custom debug port (advanced)
+Yolo and Browser mode both talk to Figma over CDP on port **9222** by default. If something else on your machine already uses that port (another Chrome with remote debugging, a browser automation tool), point figma-cli at a different one:
+
+```bash
+figma-cli --port 9333 connect     # flag
+FIGMA_PORT=9333 figma-cli connect  # or env var
+```
+
+Invalid values fall back to 9222, so `connect` keeps working out of the box.
+
 ---
 
 ## figma-cli vs the MCP servers (the question I get asked most)
