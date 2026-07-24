@@ -7,10 +7,12 @@ import { tmpdir } from 'os';
 import { join, basename } from 'path';
 import { FigmaClient } from '../figma-client.js';
 import * as apiDocs from '../api-docs.js';
-import { isPatched, patchFigma, unpatchFigma } from '../figma-patch.js';
+import { isPatched, patchFigma, unpatchFigma, getCdpPort } from '../figma-patch.js';
+import { detectBrowser, startBrowserApp, getBrowserCommand } from '../platform.js';
 import { convert, detectSourceType } from '../code-import/index.js';
 import {
   program,
+  CONFIG_DIR,
   DAEMON_PORT,
   figmaUse,
   getDaemonToken,
@@ -510,18 +512,119 @@ program
     }
   });
 
+// ============ BROWSER MODE ============
+
+// Probe the CDP endpoint the browser exposes on the debug port.
+// Returns whether the endpoint is up and whether a Figma design/file tab
+// (not just the home/feed) is open — the same target figma-client.js drives.
+async function probeBrowserCdp(port) {
+  try {
+    const res = await fetch(`http://localhost:${port}/json`);
+    const pages = await res.json();
+    return {
+      up: true,
+      designTab: pages.some(p => p.url && /figma\.com\/(design|file)\//.test(p.url)),
+      figmaTab: pages.some(p => p.url && p.url.includes('figma.com'))
+    };
+  } catch {
+    return { up: false, designTab: false, figmaTab: false };
+  }
+}
+
+// Browser Mode connect flow. Unlike Yolo Mode this never patches or launches
+// Figma Desktop: it launches (or reuses) a Chromium browser with remote
+// debugging, waits for a Figma design file to be open there, then starts the
+// daemon in pure-CDP mode pointed at that browser tab.
+async function connectBrowser(config) {
+  console.log(chalk.hex('#4ECDC4')('  🌐 Browser Mode ') + chalk.gray('(CDP to your browser — the Figma app is never modified)\n'));
+
+  const port = getCdpPort();
+  const profileDir = join(CONFIG_DIR, 'chrome-profile');
+
+  let state = await probeBrowserCdp(port);
+
+  if (!state.up) {
+    // No debug endpoint yet — launch a browser for the user (best effort).
+    const browser = detectBrowser();
+    const spinner = ora('Launching browser with remote debugging...').start();
+    if (browser) {
+      try {
+        startBrowserApp(browser.path, port, profileDir);
+        spinner.succeed(`Launched ${browser.name} with a dedicated debug profile`);
+      } catch (e) {
+        spinner.fail('Could not launch a browser automatically');
+      }
+    } else {
+      spinner.warn('No Chromium-based browser found automatically');
+    }
+    console.log(chalk.gray('\n  If a browser window did not open, run this yourself:\n'));
+    console.log('  ' + chalk.cyan(getBrowserCommand(port, profileDir)) + '\n');
+    console.log(chalk.white('  Then sign in to Figma and open your design file in that window.\n'));
+  } else if (!state.designTab) {
+    // Endpoint is live but no design file is open yet.
+    console.log(chalk.white('  Browser debug port is live. ') + chalk.yellow('Open your Figma design file') + chalk.white(' in that browser.\n'));
+  }
+
+  // Wait for a design/file tab to appear.
+  const spinner = ora('Waiting for a Figma design file...').start();
+  let connected = state.designTab;
+  const MAX_WAIT_S = 90;
+  for (let i = 0; i < MAX_WAIT_S && !connected; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const s = await probeBrowserCdp(port);
+    if (s.designTab) { connected = true; break; }
+    if (i === Math.floor(MAX_WAIT_S / 2)) {
+      spinner.text = `Waiting for a Figma design file (${MAX_WAIT_S - i}s left)…`;
+    }
+  }
+
+  if (!connected) {
+    spinner.warn('No Figma design file detected yet.');
+    console.log(chalk.gray('\n  Open a design file in the debug browser, then run ') + chalk.cyan('figma-cli connect --browser') + chalk.gray(' again.\n'));
+    return;
+  }
+  spinner.succeed('Figma design file detected in the browser');
+
+  // Persist the mode and start the CDP daemon. The daemon reuses the same
+  // figma-client.js target discovery, so it connects to the browser tab.
+  config.browser = true;
+  config.patched = false;
+  saveConfig(config);
+
+  const daemonSpinner = ora('Starting speed daemon...').start();
+  try {
+    startDaemon(true, 'cdp');
+    await new Promise(r => setTimeout(r, 1500));
+    if (isDaemonRunning()) {
+      daemonSpinner.succeed('Speed daemon running (Browser Mode — no app patch)');
+      console.log(chalk.green('\n  ✓ Ready! Browser Mode active — your Figma app was never modified.\n'));
+    } else {
+      daemonSpinner.warn('Daemon failed to start, commands will be slower');
+    }
+  } catch (e) {
+    daemonSpinner.warn('Daemon failed: ' + e.message);
+  }
+}
+
 // ============ CONNECT ============
 
 program
   .command('connect')
   .description('Connect to Figma Desktop')
   .option('--safe', 'Use Safe Mode (plugin-based, no patching required)')
+  .option('--browser', 'Use Browser Mode (drive Figma in a Chromium browser via CDP — never modifies the Figma app)')
   .action(async (options) => {
     // Fun welcome message
     console.log(chalk.hex('#FF6B35')('\n  ✨ Hey designer! ') + chalk.white("Don't be afraid of the terminal!"));
     console.log(chalk.hex('#4ECDC4')('  🎨 Happy vibe coding! ') + chalk.gray('— Sil · ') + chalk.hex('#FF6B35')('intodesignsystems.com\n'));
 
     const config = loadConfig();
+
+    // Browser Mode: CDP to a normal browser — the Figma app is never modified.
+    if (options.browser) {
+      await connectBrowser(config);
+      return;
+    }
 
     // Safe Mode: Plugin-based connection (no patching, no CDP)
     if (options.safe) {
