@@ -341,6 +341,118 @@ export function walkerCode(pageId, { maxDepth = 8, textLimit = 80 } = {}) {
 }
 
 /**
+ * Eval snippet: audit EVERY variant of every component set on the given pages.
+ *
+ * Why this is separate from the walker: the walker samples one child of a set
+ * because carrying 144 deep variant trees would blow the payload. But the
+ * questions that matter for a contract — "is every colour token-bound?", "what
+ * transitions exist?" — need all of them. So the aggregation happens INSIDE
+ * Figma and only counts (plus a few examples) come back. Payload is O(number of
+ * component sets), not O(nodes), so a 144-variant set costs the same as a
+ * 2-variant one.
+ *
+ * Returns [{ page, name, variants, fills:{total,bound,raw[]}, strokes:{…},
+ *            transitions:[{from,on,to,do}], tokens:[names…] }].
+ */
+export function componentAuditCode(pageIds, { maxUnbound = 8, maxDepth = 12 } = {}) {
+  return `(async () => {
+    const PAGE_IDS = ${JSON.stringify(pageIds.map(String))};
+    const MAX_UNBOUND = ${Number(maxUnbound)};
+    const MAX_DEPTH = ${Number(maxDepth)};
+    const hex = (c) => '#' + [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+    const nameCache = new Map();
+    const varName = async (id) => {
+      if (nameCache.has(id)) return nameCache.get(id);
+      let name = null;
+      try { const v = await figma.variables.getVariableByIdAsync(id); if (v) name = v.name; } catch (e) {}
+      nameCache.set(id, name);
+      return name;
+    };
+    const out = [];
+    for (const pid of PAGE_IDS) {
+      let page;
+      try { page = await figma.getNodeByIdAsync(pid); } catch (e) { continue; }
+      if (!page) continue;
+      if (typeof page.loadAsync === 'function') await page.loadAsync();
+      // id → name for the page, so reaction destinations resolve to stable
+      // names instead of volatile ids.
+      const nameById = new Map();
+      const index = (n) => { nameById.set(n.id, n.name); if ('children' in n) n.children.forEach(index); };
+      index(page);
+
+      const sets = [];
+      const findSets = (n) => {
+        if (n.type === 'COMPONENT_SET') { sets.push(n); return; }
+        if ('children' in n) n.children.forEach(findSets);
+      };
+      page.children.forEach(findSets);
+
+      for (const set of sets) {
+        const mk = () => ({ total: 0, bound: 0, raw: [], ids: [] });
+        const acc = { fills: mk(), strokes: mk() };
+        const transitions = [];
+        const visit = (n, depth) => {
+          for (const kind of ['fills', 'strokes']) {
+            let paints;
+            try { paints = n[kind]; } catch (e) { paints = null; }
+            if (!Array.isArray(paints) || !paints.length) continue;
+            let bv = null;
+            try { bv = n.boundVariables && n.boundVariables[kind]; } catch (e) {}
+            for (let i = 0; i < paints.length; i++) {
+              const p = paints[i];
+              if (!p || p.visible === false || p.type !== 'SOLID') continue;
+              acc[kind].total++;
+              const alias = Array.isArray(bv) ? bv[i] : null;
+              if (alias && alias.id) { acc[kind].bound++; acc[kind].ids.push(alias.id); }
+              else if (acc[kind].raw.length < MAX_UNBOUND) acc[kind].raw.push({ node: n.name, value: hex(p.color) });
+            }
+          }
+          let rs = null;
+          try { rs = n.reactions; } catch (e) {}
+          if (Array.isArray(rs)) {
+            for (const r of rs) {
+              const trigger = r.trigger && r.trigger.type;
+              for (const a of (r.actions || (r.action ? [r.action] : []))) {
+                if (!a) continue;
+                const e = { from: n.name, on: trigger || 'UNKNOWN', do: a.type, to: null };
+                if (a.destinationId != null) e.to = nameById.get(a.destinationId) || '(outside page)';
+                transitions.push(e);
+              }
+            }
+          }
+          if (depth < MAX_DEPTH && 'children' in n) for (const c of n.children) visit(c, depth + 1);
+        };
+        visit(set, 0);
+
+        // Resolve the distinct bound-variable ids to token names. A binding
+        // whose target cannot be named is NOT counted as bound: the contract
+        // could not verify a claim about a token it cannot see.
+        const tokens = new Set();
+        for (const kind of ['fills', 'strokes']) {
+          let unnameable = 0;
+          for (const id of acc[kind].ids) {
+            const nm = await varName(id);
+            if (nm) tokens.add(nm); else unnameable++;
+          }
+          acc[kind].bound -= unnameable;
+          delete acc[kind].ids;
+        }
+        out.push({
+          page: page.name,
+          name: set.name,
+          variants: set.children.length,
+          fills: acc.fills,
+          strokes: acc.strokes,
+          transitions,
+          tokens: [...tokens].sort(),
+        });
+      }
+    }
+    return JSON.stringify(out);
+  })()`;
+}
+
+/**
  * Marker for a bound variable whose target was not part of this export (it
  * lives in a library that was not captured). The raw id is deliberately NOT
  * kept: ids are volatile, so keeping one would make the snapshot report drift

@@ -305,6 +305,12 @@ figma-cli check --only rules    # run a single part (snapshot | rules | roundtri
 - **Axes come from Figma's `variantGroupProperties`**, never from the sampled
   variant — the extraction samples ONE child of a set, so deriving axes from it
   would describe a 1×1 matrix and silently enforce nothing.
+- **Token binding and transitions cover EVERY variant**, via a separate audit
+  eval that aggregates inside Figma and returns only counts (payload is O(sets),
+  not O(nodes)). Primer's Button: 576 fills + 144 strokes across 144 variants,
+  vs 1 fill when only the sample was measured. Contracts record which coverage
+  they were built with (`scope: all-variants` vs `sample-variant`), and `check`
+  REFUSES to pass an all-variant contract on sample-only evidence.
 - **`--resolve-remote` matters here:** a token bound into an uncaptured library
   cannot be named, so it does NOT count as bound. Pass the flag for both
   `rules gen` and `check` when the system aliases into a shared library.

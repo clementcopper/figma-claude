@@ -10,7 +10,7 @@
 
 import {
   listPagesCode, walkerCode, variableCollectionsCode, variableChunkCode,
-  remoteAliasTargetsCode, resolveBoundVars,
+  remoteAliasTargetsCode, resolveBoundVars, componentAuditCode,
 } from '../design-extract.js';
 
 const DEPTH_FLOOR = 3;
@@ -53,6 +53,7 @@ export async function runExtraction({
   pages: pageFilter,
   selection = false,
   resolveRemote = false,
+  auditComponents = false,
   onProgress = () => {},
 } = {}) {
   if (typeof evalFn !== 'function') throw new TypeError('runExtraction requires an evalFn');
@@ -186,6 +187,19 @@ export async function runExtraction({
     results.push(result);
   }
 
+  // Component audit: every variant of every set, aggregated inside Figma so a
+  // 144-variant component costs the same payload as a 2-variant one. Only the
+  // rule layer needs it, so it is opt-in.
+  let audit = null;
+  if (auditComponents) {
+    onProgress('Auditing component sets…');
+    try {
+      audit = await ev(componentAuditCode(pages.map(p => p.id))) || [];
+    } catch (e) {
+      audit = { error: e.message };
+    }
+  }
+
   return {
     extraction: {
       fileName,
@@ -195,6 +209,7 @@ export async function runExtraction({
       // passes have run.
       pages: resolveBoundVars(results, variables),
       variables,
+      ...(audit ? { audit } : {}),
     },
     droppedVars,
     remoteStats,

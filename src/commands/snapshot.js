@@ -32,12 +32,13 @@ const scopeOf = (options) => ({
 });
 
 /** Extract + canonicalize. Shared by both commands so they can never diverge. */
-async function takeSnapshot(options, spinner) {
+async function takeSnapshot(options, spinner, { auditComponents = false } = {}) {
   const { extraction, droppedVars, remoteStats } = await runExtraction({
     evalFn: fastEval,
     pages: options.pages,
     selection: options.selection,
     resolveRemote: options.resolveRemote,
+    auditComponents,
     onProgress: (t) => { if (spinner) spinner.text = t; },
   });
   return {
@@ -175,7 +176,9 @@ addScopeFlags(program
     await checkConnection();
     const spinner = options.json ? null : ora('Reading file info...').start();
     try {
-      const { snapshot, droppedVars, extraction } = await takeSnapshot(options, spinner);
+      // The rule layer needs every variant measured, so the audit runs whenever
+      // contracts are being enforced.
+      const { snapshot, droppedVars, extraction } = await takeSnapshot(options, spinner, { auditComponents: doRules });
       const limit = Math.max(1, parseInt(options.limit, 10) || 40);
       const warnings = completenessWarnings(snapshot, droppedVars);
       const out = { ok: true, parts: {}, warnings };

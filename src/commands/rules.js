@@ -11,7 +11,7 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, resolve } from 'path';
 import { program, checkConnection, fastEval } from '../lib/cli-core.js';
 import { runExtraction, ExtractionError } from '../lib/extract-run.js';
-import { findComponentSets, generateRule, ruleToYaml, ruleFromYaml } from '../lib/design-rules.js';
+import { findComponentSets, generateRule, ruleToYaml, ruleFromYaml, auditFor } from '../lib/design-rules.js';
 
 export const DEFAULT_RULES_DIR = 'rules';
 
@@ -58,6 +58,7 @@ rulesCmd
         pages: options.pages,
         selection: options.selection,
         resolveRemote: options.resolveRemote,
+        auditComponents: true,
         onProgress: (t) => { spinner.text = t; },
       });
 
@@ -85,7 +86,7 @@ rulesCmd
         const name = `${base}${n > 1 ? `-${n}` : ''}.yaml`;
         const path = join(outDir, name);
         if (existsSync(path) && !options.force) { skipped.push(name); continue; }
-        writeFileSync(path, ruleToYaml(generateRule(s)));
+        writeFileSync(path, ruleToYaml(generateRule({ ...s, audit: auditFor(extraction, s.node.n, s.page) })));
         written.push({ name, component: s.node.n });
       }
 

@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import {
   findComponentSets, parseVariantName, countTokenBinding, collectTransitions,
   generateRule, ruleToYaml, ruleFromYaml, checkRule, checkRules, axesOf,
+  auditFor, evidenceFor,
 } from '../src/lib/design-rules.js';
 import { resolveBoundVars, UNRESOLVED_VAR } from '../src/design-extract.js';
 
@@ -296,6 +297,99 @@ describe('checkRule — the defects it must catch', () => {
     const r = checkRule(contractAtPartial, extractionOf(worse));
     assert.equal(r.pass, false);
     assert.ok(r.results.some(x => !x.ok && /token coverage regressed/.test(x.msg)));
+  });
+});
+
+describe('full-variant audit — covering ALL variants, not just the sample', () => {
+  // The extraction samples one child of a component set for payload reasons.
+  // The audit aggregates every variant INSIDE Figma and returns counts, so a
+  // 144-variant set costs the same payload as a 2-variant one. Without it,
+  // "all fills bound" would only ever mean "the one variant we looked at".
+  const set = () => ({
+    t: 'COMPONENT_SET', n: 'Button', kidCount: 144,
+    vp: { size: { values: ['small', 'large'] }, state: { values: ['rest', 'hover'] } },
+    kids: [{ t: 'COMPONENT', n: 'size=small, state=rest', h: 28, fills: ['#0969da'], bv: { fills: ['semantic:btn/bg'] } }],
+  });
+  const audit = (over = {}) => ({
+    page: 'Page 1', name: 'Button', variants: 144,
+    fills: { total: 432, bound: 432, raw: [] },
+    strokes: { total: 144, bound: 144, raw: [] },
+    transitions: [
+      { from: 'size=small, state=rest', on: 'ON_HOVER', to: 'size=small, state=hover', do: 'NODE' },
+      { from: 'size=large, state=rest', on: 'ON_HOVER', to: 'size=large, state=hover', do: 'NODE' },
+    ],
+    tokens: ['btn/bg'],
+    ...over,
+  });
+  const extraction = (a) => ({ pages: [{ name: 'Page 1', frames: [set()] }], ...(a ? { audit: [a] } : {}) });
+
+  test('auditFor matches by component name and page', () => {
+    assert.equal(auditFor(extraction(audit()), 'Button', 'Page 1').variants, 144);
+    assert.equal(auditFor(extraction(audit()), 'Nope', 'Page 1'), null);
+    assert.equal(auditFor(extraction(null), 'Button', 'Page 1'), null);
+  });
+
+  test('evidenceFor prefers the audit and marks the evidence complete', () => {
+    const withAudit = evidenceFor(set(), audit());
+    assert.equal(withAudit.complete, true);
+    assert.equal(withAudit.binding.fills.total, 432, 'all variants, not the 1 sampled fill');
+    const without = evidenceFor(set(), null);
+    assert.equal(without.complete, false);
+    assert.equal(without.binding.fills.total, 1);
+  });
+
+  test('the contract now claims all-variant coverage instead of sample-variant', () => {
+    const r = generateRule({ node: set(), page: 'Page 1', audit: audit() });
+    assert.deepEqual(r.require.tokens, { fills: 'bound', scope: 'all-variants' });
+    assert.equal(r.require.variants, 144);
+  });
+
+  test('a hardcoded colour in ANY variant is caught, not just the sampled one', () => {
+    // The sampled variant is still perfectly token-bound; the defect is in one
+    // of the other 143. This is exactly what the old sample-only check missed.
+    const contract = generateRule({ node: set(), page: 'Page 1', audit: audit() });
+    const drifted = audit({ fills: { total: 432, bound: 431, raw: [{ node: 'size=large, state=hover', value: '#ff0000' }] } });
+    const res = checkRule(contract, extraction(drifted));
+    assert.equal(res.pass, false);
+    assert.ok(res.results.some(x => !x.ok && /tokens\.fills: 1 of 432 not bound.*size=large, state=hover #ff0000/.test(x.msg)),
+      res.results.map(x => x.msg).join(' | '));
+  });
+
+  test('captures transitions from every variant and dedupes repeats', () => {
+    const repeated = audit({
+      transitions: [
+        { from: 'a', on: 'ON_HOVER', to: 'b', do: 'NODE' },
+        { from: 'a', on: 'ON_HOVER', to: 'b', do: 'NODE' },
+        { from: 'c', on: 'ON_CLICK', to: 'd', do: 'NODE' },
+      ],
+    });
+    const r = generateRule({ node: set(), page: 'Page 1', audit: repeated });
+    assert.equal(r.require.states.length, 2, 'the same promise repeated across variants is one promise');
+  });
+
+  test('catches a transition that only existed on a non-sampled variant', () => {
+    const contract = generateRule({ node: set(), page: 'Page 1', audit: audit() });
+    assert.equal(contract.require.states.length, 2);
+    const lost = audit({ transitions: [{ from: 'size=small, state=rest', on: 'ON_HOVER', to: 'size=small, state=hover', do: 'NODE' }] });
+    const res = checkRule(contract, extraction(lost));
+    assert.equal(res.pass, false);
+    assert.ok(res.results.some(x => !x.ok && /state: missing size=large, state=rest --ON_HOVER--> size=large, state=hover/.test(x.msg)));
+  });
+
+  test('refuses to pass an all-variant contract on sample-only evidence', () => {
+    // Otherwise a green run would mean "one variant was fine", which is not
+    // what the contract promises.
+    const contract = generateRule({ node: set(), page: 'Page 1', audit: audit() });
+    const res = checkRule(contract, extraction(null));
+    assert.equal(res.pass, false);
+    assert.ok(res.results.some(x => !x.ok && /only measured the sampled one/.test(x.msg)),
+      res.results.map(x => x.msg).join(' | '));
+  });
+
+  test('still passes when the audit confirms the contract', () => {
+    const contract = generateRule({ node: set(), page: 'Page 1', audit: audit() });
+    const res = checkRule(contract, extraction(audit()));
+    assert.equal(res.pass, true, res.results.filter(x => !x.ok).map(x => x.msg).join(' | '));
   });
 });
 

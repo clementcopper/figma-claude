@@ -125,19 +125,48 @@ export function collectTransitions(root) {
 }
 
 /**
+ * The audit entry for a component set, if the extraction carries one.
+ * The audit covers EVERY variant (aggregated inside Figma); without it we can
+ * only see the sampled variant, and any rule derived from it must say so. Pure.
+ */
+export function auditFor(extraction, name, page) {
+  const list = Array.isArray(extraction?.audit) ? extraction.audit : null;
+  if (!list) return null;
+  return list.find(a => a.name === name && (!page || a.page === page))
+    || list.find(a => a.name === name)
+    || null;
+}
+
+/**
+ * Token binding + transitions for a set, preferring the full audit and falling
+ * back to the sampled variant. Returns { binding, transitions, complete },
+ * where `complete` is false when only the sample could be measured. Pure.
+ */
+export function evidenceFor(node, audit) {
+  if (audit) {
+    return {
+      binding: { fills: audit.fills || { total: 0, bound: 0, raw: [] }, strokes: audit.strokes || { total: 0, bound: 0, raw: [] } },
+      transitions: [...(audit.transitions || [])].sort((a, b) => `${a.from}|${a.on}|${a.to}`.localeCompare(`${b.from}|${b.on}|${b.to}`)),
+      complete: true,
+    };
+  }
+  return { binding: countTokenBinding(node), transitions: collectTransitions(node), complete: false };
+}
+
+/**
  * Generate a rule contract for one component set from the live extraction.
  * The generated file is a DESCRIPTION of what is true today — a human reviews
  * it once and it becomes the contract.
  */
-export function generateRule({ node, page }) {
+export function generateRule({ node, page, audit = null }) {
   const variants = (node.kids || []);
   const axisObj = axesOf(node);
   const declared = Object.keys(axisObj).length
     ? Object.values(axisObj).reduce((a, vals) => a * vals.length, 1)
     : 0;
-  const variantCount = node.kidCount ?? variants.length;
+  const variantCount = audit?.variants ?? node.kidCount ?? variants.length;
 
-  const binding = countTokenBinding(node);
+  const { binding, transitions, complete } = evidenceFor(node, audit);
   const fullyBound = binding.fills.total > 0 && binding.fills.bound === binding.fills.total;
 
   const rule = {
@@ -160,10 +189,10 @@ export function generateRule({ node, page }) {
   // catch REGRESSION without demanding an unfinished migration be finished.
   if (binding.fills.total) {
     rule.require.tokens = fullyBound ? { fills: 'bound' } : { fills: { minBound: binding.fills.bound } };
-    // Be explicit about what was measured: the extraction samples ONE variant
-    // of a set, so this rule covers that variant's subtree, not all 144. Saying
-    // so in the file beats a contract that quietly overpromises.
-    if (variantCount > 1) rule.require.tokens.scope = 'sample-variant';
+    // Be explicit about what was measured. With the audit this covers every
+    // variant; without it only the sampled one, and a contract must never
+    // quietly overpromise its own coverage.
+    if (variantCount > 1) rule.require.tokens.scope = complete ? 'all-variants' : 'sample-variant';
   }
   // Geometry of the sample variant: the number that catches "the rebuild is too
   // tall" without anyone eyeballing a screenshot.
@@ -171,9 +200,18 @@ export function generateRule({ node, page }) {
   if (sample && sample.h != null) {
     rule.require.geometry = { [sample.n]: { height: sample.h, tolerance: 2 } };
   }
-  const transitions = collectTransitions(node);
   if (transitions.length) {
-    rule.require.states = transitions.map(t => ({ from: t.from, on: t.on, to: t.to }));
+    // Deduped: the same "on X go to Y" repeated across variants is one promise,
+    // not N. Sorted so reaction order can never cause drift.
+    const seen = new Set();
+    const states = [];
+    for (const t of transitions) {
+      const k = `${t.from}|${t.on}|${t.to}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      states.push({ from: t.from, on: t.on, to: t.to });
+    }
+    rule.require.states = states;
   }
   return rule;
 }
@@ -227,7 +265,17 @@ export function checkRule(rule, extraction) {
   const node = found.node;
   const req = rule.require || {};
   const variants = node.kids || [];
-  const variantCount = node.kidCount ?? variants.length;
+  const audit = auditFor(extraction, rule.component, found.page);
+  const evidence = evidenceFor(node, audit);
+  const variantCount = audit?.variants ?? node.kidCount ?? variants.length;
+
+  // A contract generated with full-variant evidence cannot be honestly enforced
+  // against a sampled extraction — it would pass on the strength of one variant.
+  // Say so rather than reporting a green that does not mean what it looks like.
+  const wantsAllVariants = req.tokens && req.tokens.scope === 'all-variants';
+  if (wantsAllVariants && !evidence.complete) {
+    results.push(fail('tokens: contract covers all variants but this run only measured the sampled one — run `figma-cli check` (rules are audited automatically) or regenerate the contract'));
+  }
 
   if (req.variants != null) {
     const good = variantCount === req.variants;
@@ -265,7 +313,7 @@ export function checkRule(rule, extraction) {
   }
 
   if (req.tokens) {
-    const binding = countTokenBinding(node);
+    const binding = evidence.binding;
     for (const kind of ['fills', 'strokes']) {
       const want = req.tokens[kind];
       if (want == null) continue;
@@ -301,7 +349,7 @@ export function checkRule(rule, extraction) {
   }
 
   if (req.states) {
-    const actual = collectTransitions(node);
+    const actual = evidence.transitions;
     const key = (t) => `${t.from}|${t.on}|${t.to}`;
     const have = new Set(actual.map(key));
     for (const want of req.states) {
