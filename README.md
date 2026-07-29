@@ -224,6 +224,37 @@ Huge files stay usable: when the structure trees alone would blow an AI context 
 
 ---
 
+## Validate a design system without AI in the loop
+
+A DESIGN.md is prose. An AI has to interpret it, so the only way to answer "is this still correct?" is a human looking at it. That is fine for building and useless for verifying.
+
+So there is a second, deterministic half. No model takes part in it at all.
+
+```bash
+figma-cli snapshot     # → design.json, a canonical contract of the file (commit it)
+figma-cli rules gen    # → rules/*.yaml, one contract per component
+figma-cli check        # verify the open file against both, exit 1 on any violation
+```
+
+`design.json` is canonical: node ids, publish keys and timestamps are stripped, unordered sets sorted, floats rounded. The same system re-extracted, or exported and re-imported, compares byte-identical, so a difference always means a real change. The YAML contracts are generated **by code reading the Figma Plugin API**, not written by a model, and you review them once as a git diff.
+
+What `check` enforces:
+
+- **Drift** , anything that changed since the contract, reported with the exact path (`pages/Page 1/frames/Button/kids/size=sm/h: 32 → 56`)
+- **Variant matrix** , every combination present, no unexpected axis values
+- **Token binding** , every fill and stroke bound to a variable, so hardcoded hex gets caught. Measured across **all** variants, not a sample
+- **Geometry** , heights within a stated tolerance, so a size regression is caught by number instead of by eye
+- **State machine** , prototype transitions still wired ("on hover go to state=hover")
+- **Roundtrip** (`--roundtrip`) , proof that the token layer survives export and import, which is the failure that used to silently re-import everything white
+
+It exits non-zero and speaks `--json`, so it runs in CI. Red means *changed*, not *wrong*: if the change was intended, re-run `snapshot` and review the diff, exactly like a snapshot test.
+
+Verified against GitHub's Primer (1015 nodes, 1381 variables, a 144-variant Button): repeated runs compare equal, all 576 fills and 144 strokes across every variant check out, and a one-character typo in a single variant name is caught in under a second.
+
+What stays human is whether the contract describes the right design. You decide that once. After that it is arithmetic.
+
+---
+
 ## Works offline / with local AI
 
 Prefer to keep everything on your machine? figma-cli also works with **local LLMs** (via LM Studio or Ollama) , fully offline, no cloud, no key. Ask Claude to "set up the local LLM agent" and it'll walk you through it.
@@ -232,7 +263,7 @@ Prefer to keep everything on your machine? figma-cli also works with **local LLM
 
 ## Everything it can do
 
-**40+ ready components · 35+ capabilities · 9 areas.** You trigger any of these just by asking.
+**40+ ready components · 40+ capabilities · 10 areas.** You trigger any of these just by asking.
 
 **🧩 Components (40+ components + 3 tools)**
 - 40+ shadcn/ui components (buttons, cards, inputs, dialogs, tabs, calendar, sidebar, …) with real Lucide icons
@@ -266,6 +297,13 @@ Prefer to keep everything on your machine? figma-cli also works with **local LLM
 - Apply Figma's **first-party animation styles** and set **timeline** duration
 - Author complex, multi-layer animations from a single JSON spec; inspect any layer's motion by numbers
 - *Beta caveat:* Figma's Motion Beta may pair the animated frame (a second, identically-stacked copy in the Layers panel). It's a Figma-side behavior, cosmetically invisible on canvas, and must not be deleted (the pair is linked). Apply motion once and don't re-run on the same frame.
+
+**✅ Deterministic validation (5)** *(no model involved, CI-ready)*
+- **Snapshot** the whole system to a canonical `design.json` and catch any later drift, with the exact path that changed
+- **YAML contracts per component** , generated from the file itself, enforcing the variant matrix, axis values and geometry tolerances
+- **Token-binding checks** across every variant, so a hardcoded hex can't sneak back in
+- **State-machine checks** , prototype transitions ("on hover go to state=hover") verified, not assumed
+- **Roundtrip proof** that the token layer survives export and import, the failure that otherwise re-imports everything white
 
 **♿ Accessibility (4)**
 - Contrast checking (WCAG)
