@@ -230,8 +230,51 @@ export function walkerCode(pageId, { maxDepth = 8, textLimit = 80 } = {}) {
       }
       return out.length ? out : undefined;
     };
+    // id → name for the whole page, built once. Prototype reactions point at
+    // DESTINATION IDS, which are volatile (they change on every re-import), so
+    // they are resolved to names here — inside the eval, where the lookup is
+    // free — rather than leaking ids into the extraction.
+    const nameById = new Map();
+    const indexNames = (n) => { nameById.set(n.id, n.name); if ('children' in n) n.children.forEach(indexNames); };
+    // Bound variables are captured as raw ids and resolved to token NAMES
+    // Node-side (see resolveBoundVars), because the id→name map for variables
+    // already exists there and re-reading it per node would be O(n) async calls.
+    const boundVars = (n) => {
+      let bv;
+      try { bv = n.boundVariables; } catch (e) { return undefined; }
+      if (!bv) return undefined;
+      const out = {};
+      for (const k of Object.keys(bv)) {
+        const v = bv[k];
+        if (Array.isArray(v)) { const ids = v.map(a => a && a.id).filter(Boolean); if (ids.length) out[k] = ids; }
+        else if (v && v.id) out[k] = v.id;
+      }
+      return Object.keys(out).length ? out : undefined;
+    };
+    // A component's interactive behaviour: "on X go to Y". This is the state
+    // machine a design system actually promises, and it is fully mechanical to
+    // verify — no screenshot needed.
+    const reactions = (n) => {
+      let rs;
+      try { rs = n.reactions; } catch (e) { return undefined; }
+      if (!Array.isArray(rs) || !rs.length) return undefined;
+      const out = [];
+      for (const r of rs) {
+        const trigger = r.trigger && r.trigger.type;
+        for (const a of (r.actions || (r.action ? [r.action] : []))) {
+          if (!a) continue;
+          const entry = { on: trigger || 'UNKNOWN', do: a.type };
+          if (a.destinationId != null) entry.to = nameById.get(a.destinationId) || '(outside page)';
+          if (a.navigation) entry.nav = a.navigation;
+          out.push(entry);
+        }
+      }
+      return out.length ? out : undefined;
+    };
     const walk = (n, depth) => {
       const o = { t: n.type, n: n.name };
+      const bv = boundVars(n); if (bv) o.bv = bv;
+      const rx = reactions(n); if (rx) o.rx = rx;
       if ('width' in n) { o.w = Math.round(n.width); o.h = Math.round(n.height); }
       if ('layoutMode' in n && n.layoutMode !== 'NONE') {
         o.lm = n.layoutMode;
@@ -289,11 +332,48 @@ export function walkerCode(pageId, { maxDepth = 8, textLimit = 80 } = {}) {
     const page = await figma.getNodeByIdAsync(${JSON.stringify(String(pageId))});
     if (!page) return JSON.stringify({ error: 'page not found' });
     if (typeof page.loadAsync === 'function') await page.loadAsync();
+    indexNames(page);
     let visited = 0;
     const count = (n) => { visited++; if ('children' in n) n.children.forEach(count); };
     count(page);
     return JSON.stringify({ id: page.id, name: page.name, nodeCount: visited, frames: page.children.map(c => walk(c, 0)) });
   })()`;
+}
+
+/**
+ * Marker for a bound variable whose target was not part of this export (it
+ * lives in a library that was not captured). The raw id is deliberately NOT
+ * kept: ids are volatile, so keeping one would make the snapshot report drift
+ * on every re-import. "Bound to something we cannot name" is the honest,
+ * deterministic answer — and `--resolve-remote` is the fix.
+ */
+export const UNRESOLVED_VAR = '?';
+
+/**
+ * Rewrite every node's `bv` (bound-variable ids from the walker) to qualified
+ * token names — `collection:name`, qualified because variable names are only
+ * unique per collection. Mutates nothing: returns new page objects. Pure.
+ */
+export function resolveBoundVars(pages = [], collections = []) {
+  const byId = new Map();
+  for (const col of collections) {
+    for (const v of col.variables || []) byId.set(v.id, `${col.name}:${v.name}`);
+  }
+  const nameFor = (id) => byId.get(id) || UNRESOLVED_VAR;
+  const fixNode = (n) => {
+    if (!n || typeof n !== 'object') return n;
+    const out = { ...n };
+    if (n.bv) {
+      const bv = {};
+      for (const [k, v] of Object.entries(n.bv)) {
+        bv[k] = Array.isArray(v) ? v.map(nameFor) : nameFor(v);
+      }
+      out.bv = bv;
+    }
+    if (Array.isArray(n.kids)) out.kids = n.kids.map(fixNode);
+    return out;
+  };
+  return pages.map(p => ({ ...p, frames: (p.frames || []).map(fixNode) }));
 }
 
 // ============ Aggregator (pure, Node-side) ============

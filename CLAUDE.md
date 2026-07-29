@@ -26,6 +26,10 @@ CLI that controls Figma Desktop directly. No API key needed.
 | "match this mesh / blossom / aurora background" | `figma-cli gradient extract <image> --mode mesh --apply-to <frameId>` |
 | "create a wallpaper / mesh gradient from these colors" | `figma-cli gradient mesh "#a,#b,#c" --size 1920x1080` |
 | "export the design system as markdown" / "create a DESIGN.md" | `figma-cli extract` |
+| "make the design system testable" / "lock this in" / "contract" | `figma-cli snapshot` (writes design.json, commit it) |
+| "did anything change / drift?" / "verify the file" / "check in CI" | `figma-cli check` |
+| "write rules for our components" / "validate the components" | `figma-cli rules gen` then `figma-cli check` |
+| "prove the tokens survive a roundtrip" / "why did tokens import white" | `figma-cli check --roundtrip` |
 | "export only the tokens" | `figma-cli extract --sections tokens` |
 | "extract/document the X page" | `figma-cli extract --pages "X"` |
 | "extract what I selected" | `figma-cli extract --selection` |
@@ -270,6 +274,45 @@ figma-cli var delete-all -c "primitives"  # Only specific collection
 - After extraction, summarize what was captured (pages, token counts, skipped
   pages). Don't dump the file contents into chat.
 - Re-import with `figma-cli import <file>`.
+
+## Deterministic validation (snapshot / rules / check)
+
+DESIGN.md is prose: an AI has to interpret it, and only a human can say whether
+the result is right. `snapshot` / `rules` / `check` are the deterministic half —
+they compare NUMBERS and exit non-zero. No model is involved in the verdict, so
+they run in CI and cannot be argued with.
+
+```bash
+figma-cli snapshot              # → design.json, the canonical contract (COMMIT IT)
+figma-cli rules gen             # → rules/*.yaml, one contract per component set
+figma-cli check                 # verify the open file against both, exit 1 on failure
+figma-cli check --roundtrip     # + prove tokens survive extract → DESIGN.md → import
+figma-cli check --json          # machine-readable, for CI
+figma-cli check --only rules    # run a single part (snapshot | rules | roundtrip)
+```
+
+- **design.json** is canonical: node ids, publish keys and dates are stripped,
+  unordered sets sorted, floats rounded, so the SAME system re-extracted or
+  re-imported compares byte-identical. Child ORDER is kept (it is design intent).
+  Verified on Primer: two runs equal, one added frame → exactly 2 diffs.
+- **Drift vs intent:** red means "changed", not "wrong". If the change was
+  intended, re-run `snapshot` / `rules gen --force` and review the git diff.
+  This is a snapshot test, with the same workflow.
+- **rules/*.yaml** enforce what a component PROMISES: complete variant matrix
+  (`exhaustive`), axis values, `tokens.fills: bound` (no hardcoded hex),
+  geometry within a tolerance, and prototype transitions (`states`) — the actual
+  state machine. Generated from the live file, reviewed once, enforced forever.
+- **Axes come from Figma's `variantGroupProperties`**, never from the sampled
+  variant — the extraction samples ONE child of a set, so deriving axes from it
+  would describe a 1×1 matrix and silently enforce nothing.
+- **`--resolve-remote` matters here:** a token bound into an uncaptured library
+  cannot be named, so it does NOT count as bound. Pass the flag for both
+  `rules gen` and `check` when the system aliases into a shared library.
+- **Scope must match:** `check` warns when its `--pages`/`--selection` scope
+  differs from the one the contract was taken with (otherwise every other page
+  reads as deleted).
+- Bumping the snapshot format invalidates old files on purpose — `check` says
+  "regenerate" rather than reporting bogus drift.
 
 ## Recreating components from a DESIGN.md (HARD RULE)
 

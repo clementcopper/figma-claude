@@ -5,36 +5,16 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname, resolve } from 'path';
 import { program, checkConnection, fastEval } from '../lib/cli-core.js';
 import {
-  listPagesCode, walkerCode, variableCollectionsCode, variableChunkCode,
-  remoteAliasTargetsCode, danglingAliasNames,
+  danglingAliasNames,
   generateDesignMd, generatePageStructureMd, estimateStructureTokens, ALL_SECTIONS,
 } from '../design-extract.js';
+import { runExtraction, ExtractionError } from '../lib/extract-run.js';
 
-const DEPTH_FLOOR = 3;
-// Variable values are fetched in bounded chunks so huge libraries (thousands
-// of variables) never land in one oversized eval. On payload/timeout the
-// chunk halves down to this floor before the rest of a collection is skipped.
-const VAR_CHUNK = 200;
-const VAR_CHUNK_FLOOR = 25;
 // Structure trees above this estimated token count get auto-split into
 // DESIGN-structure/ so the main DESIGN.md stays loadable in one AI context.
 const AUTO_SPLIT_TOKENS = 50_000;
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'page';
-
-/**
- * fastEval returns a string when the eval code uses JSON.stringify() (both
- * daemon and direct-connection paths pass the string value through), and an
- * object/primitive when the code returns a raw value (daemon deserialises the
- * HTTP body with response.json() which parses the outer envelope, leaving the
- * inner result as-is). Since all walkers in design-extract.js return
- * JSON.stringify(...), results will almost always be strings — but guard
- * against the object case so the command is robust to daemon changes.
- */
-function parseEvalResult(res) {
-  if (typeof res === 'string') return JSON.parse(res);
-  return res;
-}
 
 program
   .command('extract [output]')
@@ -62,148 +42,18 @@ program
 
     const spinner = ora('Reading file info...').start();
     try {
-      let pages;
-      if (options.selection) {
-        // Wrap the selection in a synthetic single "page".
-        const sel = parseEvalResult(await fastEval(`(async () => {
-          const sel = figma.currentPage.selection;
-          return JSON.stringify({ ids: sel.map(n => n.id), pageId: figma.currentPage.id, pageName: figma.currentPage.name });
-        })()`));
-        if (!sel.ids.length) {
-          spinner.fail('Nothing selected in Figma.');
-          process.exit(1);
-        }
-        pages = [{ id: sel.pageId, name: sel.pageName, selectionIds: sel.ids }];
-      } else {
-        pages = parseEvalResult(await fastEval(listPagesCode()));
-        if (options.pages) {
-          const filters = options.pages.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-          pages = pages.filter(p => filters.some(f => p.name.toLowerCase().includes(f)));
-          if (!pages.length) {
-            spinner.fail(`No pages match "${options.pages}".`);
-            process.exit(1);
-          }
-        }
-      }
-
-      const fileName = parseEvalResult(await fastEval(
-        `(async () => JSON.stringify(figma.root.name))()`
-      ));
-
-      // Authoritative token layer: the file's real variable collections.
-      // Two-phase + chunked so it scales to large systems: list collections
-      // (tiny), then fetch each collection's values in bounded, retryable
-      // chunks. Best-effort — older Figma builds / files without variables
-      // yield []. droppedVars counts any chunk skipped after exhausting retries
-      // so the summary can tell "no variables" apart from "some unreadable".
-      let variables = [];
-      let droppedVars = 0;
-      let remoteStats = null;
-      const wantsVariables = !sections || sections.includes('variables');
-
-      // Fetch one collection's values in bounded, retryable chunks. Shared by
-      // the local pass and the --resolve-remote pass so a library with
-      // thousands of primitives is chunked exactly like a local collection.
-      const fetchValues = async (label, ids, modes) => {
-        const collected = [];
-        let chunk = VAR_CHUNK;
-        for (let i = 0; i < ids.length;) {
-          spinner.text = `Variables: ${label} (${i}/${ids.length})…`;
-          const slice = ids.slice(i, i + chunk);
-          try {
-            const got = parseEvalResult(await fastEval(variableChunkCode(slice, modes))) || [];
-            collected.push(...got);
-            i += chunk;
-          } catch (e) {
-            if (/payload|too large|timeout/i.test(e.message) && chunk > VAR_CHUNK_FLOOR) {
-              chunk = Math.floor(chunk / 2);
-              continue;
-            }
-            droppedVars += slice.length;
-            i += chunk; // skip this slice, keep going with the rest
-          }
-        }
-        return collected;
-      };
-
-      if (wantsVariables) {
-        spinner.text = 'Reading variable collections…';
-        let cols = [];
-        try {
-          cols = parseEvalResult(await fastEval(variableCollectionsCode())) || [];
-        } catch (e) {
-          cols = [];
-        }
-        for (const col of cols) {
-          const collected = await fetchValues(col.name, col.variableIds || [], col.modes);
-          variables.push({ id: col.id, name: col.name, modes: col.modes, variables: collected });
-        }
-
-        // Library primitives this file aliases into. Without them the semantic
-        // layer re-imports with empty values (everything renders white), since
-        // `import` can only wire an alias whose target exists in the export.
-        if (options.resolveRemote) {
-          spinner.text = 'Resolving library variables…';
-          let remote = { collections: [], truncated: false };
-          try {
-            remote = parseEvalResult(await fastEval(remoteAliasTargetsCode())) || remote;
-          } catch (e) {
-            remote = { collections: [], truncated: false, error: e.message };
-          }
-          const localNames = new Set(variables.map(c => c.name));
-          let remoteVarCount = 0;
-          for (const col of remote.collections || []) {
-            // A library collection may share its name with a local one; keep
-            // them apart so import doesn't merge two different sources.
-            const name = localNames.has(col.name) ? `${col.name} (library)` : col.name;
-            const collected = await fetchValues(name, col.ids || [], col.modes);
-            if (!collected.length) continue;
-            remoteVarCount += collected.length;
-            variables.push({ id: col.id, name, modes: col.modes, variables: collected, remote: true });
-          }
-          remoteStats = {
-            collections: (remote.collections || []).length,
-            variables: remoteVarCount,
-            truncated: !!remote.truncated,
-            error: remote.error,
-          };
-        }
-      }
-
-      const results = [];
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        spinner.text = `Page ${i + 1}/${pages.length}: ${page.name}…`;
-        let depth = 8;
-        let result = null;
-        while (depth >= DEPTH_FLOOR) {
-          try {
-            const code = page.selectionIds
-              ? walkerCode(page.id, { maxDepth: depth }).replace(
-                  'page.children.map',
-                  `page.children.filter(c => ${JSON.stringify(page.selectionIds)}.includes(c.id)).map`)
-              : walkerCode(page.id, { maxDepth: depth });
-            result = parseEvalResult(await fastEval(code));
-            if (depth < 8) result.reducedDepth = depth;
-            break;
-          } catch (e) {
-            // Payload-size / timeout errors → retry shallower. Anything else → skip page.
-            if (/payload|too large|timeout/i.test(e.message) && depth > DEPTH_FLOOR) { depth -= 2; continue; }
-            result = { id: page.id, name: page.name, nodeCount: 0, frames: [], error: e.message };
-            break;
-          }
-        }
-        if (!result) result = { id: page.id, name: page.name, nodeCount: 0, frames: [], error: `exceeded payload limit even at depth ${DEPTH_FLOOR}` };
-        results.push(result);
-      }
+      const { extraction, droppedVars, remoteStats } = await runExtraction({
+        evalFn: fastEval,
+        sections,
+        pages: options.pages,
+        selection: options.selection,
+        resolveRemote: options.resolveRemote,
+        onProgress: (t) => { spinner.text = t; },
+      });
+      const { variables } = extraction;
+      const results = extraction.pages;
 
       spinner.text = 'Generating DESIGN.md…';
-      const extraction = {
-        fileName,
-        date: new Date().toISOString().slice(0, 10),
-        pages: results,
-        variables,
-      };
 
       // Auto-split: when the structure trees alone would blow any AI context
       // window, move them to DESIGN-structure/ and keep the main file lean.
@@ -273,7 +123,9 @@ program
       // that keep the event loop alive — exit explicitly once the work is done.
       process.exit(0);
     } catch (e) {
-      spinner.fail(`Extraction failed: ${e.message}`);
+      // Preconditions the user can fix ("Nothing selected", "No pages match")
+      // read better without the generic prefix.
+      spinner.fail(e instanceof ExtractionError ? e.message : `Extraction failed: ${e.message}`);
       process.exit(1);
     }
   });
