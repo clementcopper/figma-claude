@@ -11,7 +11,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, relative } from 'path';
 import { program, checkConnection, fastEval } from '../lib/cli-core.js';
 import { runExtraction, ExtractionError } from '../lib/extract-run.js';
 import {
@@ -23,6 +23,16 @@ import { loadRules, DEFAULT_RULES_DIR } from './rules.js';
 import { verifyRoundtrip, formatRoundtripLoss } from '../lib/roundtrip.js';
 
 const DEFAULT_FILE = 'design.json';
+
+/**
+ * Show a path relative to the working directory when it lives inside it.
+ * Printing the absolute path of a file that sits right here is pure noise, and
+ * it is the noisiest line in the whole output.
+ */
+const show = (p) => {
+  const rel = relative(process.cwd(), p);
+  return rel && !rel.startsWith('..') ? rel : p;
+};
 
 const scopeOf = (options) => ({
   pages: options.pages || null,
@@ -65,12 +75,22 @@ function completenessWarnings(snapshot, droppedVars) {
   return out;
 }
 
+/**
+ * Human label for an extraction scope. It MUST mention every field that
+ * `sameScope` compares — otherwise a mismatch warning can read "taken with
+ * whole file, this run used whole file", which tells the user nothing about
+ * what actually differs (in that case: --resolve-remote).
+ */
 const scopeLabel = (s) => {
   if (!s) return 'whole file';
-  if (s.selection) return 'selection';
-  if (s.pages) return `pages matching ${s.pages.join(', ')}`;
-  return 'whole file';
+  const base = s.selection ? 'selection'
+    : s.pages ? `pages matching ${s.pages.join(', ')}`
+    : 'whole file';
+  return s.resolveRemote ? `${base} + library primitives` : base;
 };
+
+// Exported for tests: the label must stay in sync with what sameScope compares.
+export const scopeLabelForTest = scopeLabel;
 
 const addScopeFlags = (cmd) => cmd
   .option('--pages <list>', 'only pages whose name matches one of these (comma list, case-insensitive substring)')
@@ -96,7 +116,7 @@ addScopeFlags(program
 
       writeFileSync(outPath, stableStringify(snapshot));
       const varCount = snapshot.variables.reduce((a, c) => a + c.variables.length, 0);
-      spinner.succeed(`Snapshot written → ${outPath}`);
+      spinner.succeed(`Snapshot written → ${show(outPath)}`);
       console.log(chalk.gray(`  ${pageCount} page(s), ${varCount} variable(s) across ${snapshot.variables.length} collection(s) · scope: ${scopeLabel(snapshot.meta.scope)}`));
 
       if (previous) {
@@ -163,7 +183,7 @@ addScopeFlags(program
       try {
         committed = JSON.parse(readFileSync(inPath, 'utf8'));
       } catch (e) {
-        console.error(chalk.red(`✗ ${inPath} is not readable JSON:`), e.message);
+        console.error(chalk.red(`✗ ${show(inPath)} is not readable JSON:`), e.message);
         process.exit(1);
       }
       if (committed.version !== SNAPSHOT_VERSION) {
@@ -227,10 +247,10 @@ addScopeFlags(program
       // ---- report: snapshot
       if (snapResult) {
         if (snapResult.equal) {
-          console.log(chalk.green('  ✓ snapshot: ') + chalk.gray(`matches ${inPath} · ${snapshot.pages.length} page(s), ${snapshot.variables.reduce((a, c) => a + c.variables.length, 0)} variable(s), scope ${scopeLabel(snapshot.meta.scope)}`));
+          console.log(chalk.green('  ✓ snapshot: ') + chalk.gray(`matches ${show(inPath)} · ${snapshot.pages.length} page(s), ${snapshot.variables.reduce((a, c) => a + c.variables.length, 0)} variable(s), scope ${scopeLabel(snapshot.meta.scope)}`));
         } else {
           const by = summarizeDiff(snapResult.diffs);
-          console.log(chalk.red(`  ✗ snapshot: ${snapResult.diffs.length}${snapResult.truncated ? '+' : ''} difference(s) — `) + chalk.gray(Object.entries(by).map(([k, v]) => `${v} in ${k}`).join(', ')));
+          console.log(chalk.red(`  ✗ snapshot: ${snapResult.diffs.length}${snapResult.truncated ? '+' : ''} difference(s) vs ${show(inPath)} — `) + chalk.gray(Object.entries(by).map(([k, v]) => `${v} in ${k}`).join(', ')));
           for (const d of snapResult.diffs) {
             const line = formatDiff(d);
             console.log('      ' + (d.kind === 'added' ? chalk.green(line) : d.kind === 'removed' ? chalk.red(line) : chalk.yellow(line)));
@@ -282,7 +302,7 @@ addScopeFlags(program
 
       if (!out.ok) {
         if (snapResult && !snapResult.equal) console.log(chalk.gray('\n  If the change was intended: figma-cli snapshot   (then review the git diff)'));
-        if (ruleResult && !ruleResult.pass) console.log(chalk.gray('  If a contract itself is wrong: edit the YAML in ' + rulesDir + '/, or regenerate with `figma-cli rules gen --force`'));
+        if (ruleResult && !ruleResult.pass) console.log(chalk.gray('  If a contract itself is wrong: edit the YAML in ' + show(rulesDir) + '/, or regenerate with `figma-cli rules gen --force`'));
         process.exit(1);
       }
       process.exit(0);

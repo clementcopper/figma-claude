@@ -9,7 +9,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { buildSnapshot, stableStringify, diffSnapshots, SNAPSHOT_VERSION } from '../src/lib/design-snapshot.js';
+import { buildSnapshot, stableStringify, diffSnapshots, SNAPSHOT_VERSION, sameScope } from '../src/lib/design-snapshot.js';
+import { scopeLabelForTest } from '../src/commands/snapshot.js';
 
 const CLI = resolve(import.meta.dirname, '../src/index.js');
 
@@ -114,5 +115,18 @@ describe('command registration', () => {
     for (const flag of ['--pages', '--limit', '--json']) {
       assert.ok(chk.includes(flag), `check must expose ${flag}`);
     }
+  });
+});
+
+describe('scope labelling', () => {
+  // Regression guard: the mismatch warning once read "taken with whole file,
+  // this run used whole file" because --resolve-remote is compared by
+  // sameScope but was missing from the label, leaving the user with a warning
+  // that named no difference at all.
+  test('every field sameScope compares is visible in the label', () => {
+    const a = { pages: null, sections: null, selection: false, resolveRemote: false };
+    const b = { ...a, resolveRemote: true };
+    assert.equal(sameScope(a, b), false, 'these scopes differ');
+    assert.notEqual(scopeLabelForTest(a), scopeLabelForTest(b), 'so their labels must differ too');
   });
 });

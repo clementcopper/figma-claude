@@ -8,12 +8,18 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
-import { join, resolve } from 'path';
+import { join, resolve, relative } from 'path';
 import { program, checkConnection, fastEval } from '../lib/cli-core.js';
 import { runExtraction, ExtractionError } from '../lib/extract-run.js';
 import { findComponentSets, generateRule, ruleToYaml, ruleFromYaml, auditFor } from '../lib/design-rules.js';
 
 export const DEFAULT_RULES_DIR = 'rules';
+
+// Paths inside the working directory read better relative — see snapshot.js.
+const show = (p) => {
+  const rel = relative(process.cwd(), p);
+  return rel && !rel.startsWith('..') ? rel : p;
+};
 
 const fileSlug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'component';
 
@@ -90,7 +96,7 @@ rulesCmd
         written.push({ name, component: s.node.n });
       }
 
-      spinner.succeed(`${written.length} contract(s) → ${outDir}/`);
+      spinner.succeed(`${written.length} contract(s) → ${show(outDir)}/`);
       for (const w of written) console.log(chalk.gray(`  ${w.name}  (${w.component})`));
       if (skipped.length) {
         console.log(chalk.yellow(`  ${skipped.length} kept as-is (already exist): ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}`));
@@ -114,7 +120,7 @@ rulesCmd
     const inDir = resolve(dir || DEFAULT_RULES_DIR);
     const { rules, errors } = loadRules(inDir);
     if (!rules.length && !errors.length) {
-      console.log(chalk.yellow(`No contracts in ${inDir}/.`), chalk.gray('Create them with `figma-cli rules gen`.'));
+      console.log(chalk.yellow(`No contracts in ${show(inDir)}/.`), chalk.gray('Create them with `figma-cli rules gen`.'));
       return;
     }
     for (const r of rules) {
@@ -131,5 +137,5 @@ rulesCmd
       if (bits.length) console.log(chalk.gray(`  enforces: ${bits.join(', ')}`));
     }
     for (const e of errors) console.log(chalk.red(`✗ ${e.file}: ${e.message}`));
-    console.log(chalk.gray(`\n${rules.length} contract(s) in ${inDir}/`));
+    console.log(chalk.gray(`\n${rules.length} contract(s) in ${show(inDir)}/`));
   });
