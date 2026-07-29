@@ -367,12 +367,50 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
 // session. Here we transparently respawn it and wait briefly for health, so the
 // fast path self-heals. Only auto-restarts when the user has connected before
 // (PID file present) — never spawns a daemon on a fresh, never-connected setup.
+/**
+ * Title of the file the running daemon is bound to (null when unknown).
+ * Cheap: one /health call, same endpoint the health check already uses.
+ */
+function daemonBoundFile() {
+  try {
+    const token = getDaemonToken();
+    const tokenHeader = token ? ` -H "X-Daemon-Token: ${token}"` : '';
+    const body = execSync(`curl -s${tokenHeader} http://localhost:${DAEMON_PORT}/health`, {
+      encoding: 'utf8', stdio: 'pipe', timeout: 1000,
+    });
+    return JSON.parse(body).file || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * FIGMA_FILE pins every command to one open file. The daemon binds its CDP
+ * connection ONCE at startup, so a pin set later would be ignored — commands
+ * would keep hitting the file that happened to be first. Restart the daemon
+ * when the pin and the bound file disagree.
+ */
+function daemonPinMismatch() {
+  const want = (process.env.FIGMA_FILE || '').trim();
+  if (!want) return false;
+  const bound = daemonBoundFile();
+  // Unknown binding (daemon just started, plugin mode) → don't churn.
+  if (!bound) return false;
+  return !bound.toLowerCase().includes(want.toLowerCase());
+}
+
 async function ensureDaemonRunning(maxWaitMs = 5000) {
-  if (isDaemonRunning()) return true;
-  // Guard: only resurrect a daemon the user actually set up — either a PID file
-  // is present (idle-shutdown leaves it) or Figma is patched for Yolo Mode (so
-  // the daemon is the intended fast path even after an explicit stop).
-  if (!existsSync(DAEMON_PID_FILE) && !isFigmaPatched()) return false;
+  const mismatched = isDaemonRunning() && daemonPinMismatch();
+  if (isDaemonRunning() && !mismatched) return true;
+  if (mismatched) {
+    // Rebind: the daemon holds ONE CDP connection, fixed at startup.
+    stopDaemon();
+  } else if (!existsSync(DAEMON_PID_FILE) && !isFigmaPatched()) {
+    // Guard: only resurrect a daemon the user actually set up — either a PID file
+    // is present (idle-shutdown leaves it) or Figma is patched for Yolo Mode (so
+    // the daemon is the intended fast path even after an explicit stop).
+    return false;
+  }
   try {
     startDaemon();
   } catch {
@@ -550,7 +588,7 @@ async function getFigmaClient() {
     // 15s on every command. The explicit `connect` command keeps the 15s default
     // because Figma may still be booting then.
     try {
-      await _figmaClient.connect(null, { timeoutMs: 4000 });
+      await _figmaClient.connect(process.env.FIGMA_FILE || null, { timeoutMs: 4000 });
     } catch (e) {
       _figmaClient = null;
       throw e;
@@ -624,7 +662,7 @@ function figmaEvalSync(code) {
     (async () => {
       try {
         const client = new FigmaClient();
-        await client.connect();
+        await client.connect(process.env.FIGMA_FILE || null);
         const result = await client.eval(${JSON.stringify(code)});
         writeFileSync(${JSON.stringify(resultFile)}, JSON.stringify({ success: true, result }));
         client.close();

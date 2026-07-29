@@ -9,6 +9,7 @@ import {
   fastEval,
   fastRender
 } from '../lib/cli-core.js';
+import { planVariants } from '../lib/variant-plan.js';
 
 // ============ SIZES ============
 
@@ -204,88 +205,120 @@ const variantsCmd = program
 
 variantsCmd
   .command('from <ids>')
-  .description('Combine frames/components (comma-separated IDs) into a Variant Set')
-  .requiredOption('-p, --property <name>', 'Variant property name (e.g., Size, State, Color)')
-  .requiredOption('-v, --values <values>', 'Comma-separated variant values matching the IDs (e.g., Small,Medium,Large)')
+  .description('Combine frames/components into a Variant Set. <ids> is a comma list, "selection", or "auto" (all page-level nodes already named prop=value).')
+  .option('-p, --property <name>', 'Variant property name (e.g., Size, State, Color)')
+  .option('-v, --values <values>', 'Comma-separated variant values matching the IDs (e.g., Small,Medium,Large)')
+  .option('-m, --multi', 'Multi-axis: keep each node\'s existing "prop=value, prop2=value2" name and derive ALL properties from it')
   .option('-n, --name <name>', 'Name for the resulting Component Set (defaults to first node\'s base name)')
   .action(async (ids, options) => {
     await checkConnection();
 
-    const idArr = ids.split(',').map(s => s.trim()).filter(Boolean);
-    const valueArr = options.values.split(',').map(s => s.trim()).filter(Boolean);
+    const source = ids.trim().toLowerCase();
+    const idArr = (source === 'selection' || source === 'auto')
+      ? []
+      : ids.split(',').map(s => s.trim()).filter(Boolean);
+    const valueArr = options.values
+      ? options.values.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
 
-    if (idArr.length < 2) {
-      console.error(chalk.red('✗'), 'Need at least 2 IDs to create a Variant Set.');
-      process.exit(1);
-    }
-    if (idArr.length !== valueArr.length) {
-      console.error(chalk.red('✗'), `ID count (${idArr.length}) must equal --values count (${valueArr.length}).`);
-      console.error(chalk.gray(`  ids:    ${idArr.join(', ')}`));
-      console.error(chalk.gray(`  values: ${valueArr.join(', ')}`));
-      process.exit(1);
-    }
-
-    const property = options.property;
-    const setNameArg = options.name || '';
     const spinner = ora('Building Variant Set...').start();
 
-    const code = `(async () => {
+    // Step 1 — resolve the node list (id/name/type only, tiny payload).
+    // "auto" is what makes a 144-variant build practical: after
+    // `render-batch --as-component` the names already carry the axes, so the
+    // user never has to paste 144 ids into a shell command.
+    const collectCode = `(async () => {
+      const source = ${JSON.stringify(source)};
       const ids = ${JSON.stringify(idArr)};
-      const values = ${JSON.stringify(valueArr)};
-      const property = ${JSON.stringify(property)};
-      const setNameArg = ${JSON.stringify(setNameArg)};
+      const brief = (n) => ({ id: n.id, name: n.name, type: n.type });
+      if (source === 'selection') {
+        return { nodes: figma.currentPage.selection.map(brief) };
+      }
+      if (source === 'auto') {
+        const isAxisName = (s) => /^[^,=]+=[^,=]+(\\s*,\\s*[^,=]+=[^,]+)*$/.test(String(s || '').trim());
+        const nodes = figma.currentPage.children
+          .filter(n => (n.type === 'COMPONENT' || n.type === 'FRAME') && isAxisName(n.name))
+          .map(brief);
+        return { nodes };
+      }
+      const out = [];
+      for (const id of ids) {
+        const n = await figma.getNodeByIdAsync(id);
+        if (!n) return { error: 'Node not found: ' + id };
+        out.push(brief(n));
+      }
+      return { nodes: out };
+    })()`;
+
+    let nodes;
+    try {
+      const collected = await fastEval(collectCode);
+      if (collected && collected.error) { spinner.fail(collected.error); process.exit(1); }
+      nodes = (collected && collected.nodes) || [];
+    } catch (e) {
+      spinner.fail('Failed to read nodes: ' + (e.message || String(e)));
+      process.exit(1);
+    }
+
+    if (!nodes.length) {
+      spinner.fail(source === 'auto'
+        ? 'No page-level nodes named "prop=value" found. Render them with names like "size=small, state=rest" first.'
+        : source === 'selection' ? 'Nothing selected in Figma.' : 'No nodes resolved.');
+      process.exit(1);
+    }
+
+    // Step 2 — plan the names purely (unit-tested in tests/variant-plan.test.js).
+    const plan = planVariants(nodes, {
+      property: options.property,
+      values: valueArr,
+      multi: !!options.multi,
+      setName: options.name,
+    });
+    if (plan.error) {
+      spinner.fail(plan.error);
+      process.exit(1);
+    }
+
+    // Step 3 — promote, rename, combine.
+    const code = `(async () => {
+      const assignments = ${JSON.stringify(plan.assignments)};
+      const setName = ${JSON.stringify(plan.setName)};
 
       const components = [];
       const promoted = [];
-      let baseName = setNameArg;
 
-      for (let i = 0; i < ids.length; i++) {
-        const node = await figma.getNodeByIdAsync(ids[i]);
-        if (!node) {
-          return { error: 'Node not found: ' + ids[i] };
-        }
+      for (const a of assignments) {
+        const node = await figma.getNodeByIdAsync(a.id);
+        if (!node) return { error: 'Node not found: ' + a.id };
         let comp;
         if (node.type === 'COMPONENT') {
           if (node.parent && node.parent.type === 'COMPONENT_SET') {
-            return { error: 'Node ' + ids[i] + ' is already a variant inside a Component Set. Pass the source frames or standalone components.' };
+            return { error: 'Node ' + a.id + ' is already a variant inside a Component Set. Pass the source frames or standalone components.' };
           }
           comp = node;
         } else if (node.type === 'FRAME' || node.type === 'GROUP') {
           comp = figma.createComponentFromNode(node);
-          promoted.push(ids[i]);
+          promoted.push(a.id);
         } else if (node.type === 'INSTANCE') {
-          return { error: 'Node ' + ids[i] + ' is an INSTANCE. Pass the source frame or main component instead.' };
+          return { error: 'Node ' + a.id + ' is an INSTANCE. Pass the source frame or main component instead.' };
         } else {
-          return { error: 'Unsupported type for ' + ids[i] + ': ' + node.type + '. Must be FRAME, GROUP, or COMPONENT.' };
+          return { error: 'Unsupported type for ' + a.id + ': ' + node.type + '. Must be FRAME, GROUP, or COMPONENT.' };
         }
-        if (!baseName) {
-          // Derive base name from first node: strip "/Variant", ", Prop=Val", or trailing size words.
-          let n = (comp.name || 'Component');
-          n = n.replace(/\\s*,\\s*[^,=]+=[^,]+(?:,\\s*[^,=]+=[^,]+)*\\s*$/, '');
-          n = n.replace(/\\s*\\/.*$/, '');
-          n = n.trim() || 'Component';
-          baseName = n;
-        }
-        components.push({ comp, value: values[i] });
+        components.push({ comp, name: a.name });
       }
 
-      // Rename so Figma's combineAsVariants creates exactly one variant
-      // property. "BaseName, Size=Small" would parse as TWO properties
-      // (the bare prefix becomes an unnamed "Property 1"), so we use
-      // pure "Property=Value" naming and let the Component Set carry the
-      // BaseName separately.
-      for (const { comp, value } of components) {
-        comp.name = property + '=' + value;
-      }
+      // Figma derives the variant properties from the component NAMES, so the
+      // plan's names are applied verbatim: pure "Property=Value" (single axis)
+      // or the node's own multi-axis name. A base-name prefix would make Figma
+      // invent an extra unnamed property, which is why the set carries the name.
+      for (const { comp, name } of components) comp.name = name;
 
       // combineAsVariants requires all components to belong to the same parent.
       // We hoist them to currentPage to guarantee this regardless of where the
       // source frames lived (e.g. nested inside a layout frame).
       const page = figma.currentPage;
       for (const { comp } of components) {
-        if (comp.parent !== page) {
-          page.appendChild(comp);
-        }
+        if (comp.parent !== page) page.appendChild(comp);
       }
 
       let set;
@@ -294,7 +327,7 @@ variantsCmd
       } catch (err) {
         return { error: 'combineAsVariants failed: ' + (err && err.message ? err.message : String(err)) };
       }
-      set.name = baseName;
+      set.name = setName;
 
       figma.currentPage.selection = [set];
       figma.viewport.scrollAndZoomIntoView([set]);
@@ -302,11 +335,8 @@ variantsCmd
       return {
         id: set.id,
         name: set.name,
-        property,
-        values,
         promotedCount: promoted.length,
-        count: components.length,
-        variantIds: components.map(c => c.comp.id)
+        count: components.length
       };
     })()`;
 
@@ -316,12 +346,13 @@ variantsCmd
         spinner.fail(r.error);
         process.exit(1);
       }
-      spinner.succeed(`Created Variant Set "${r.name}"`);
+      spinner.succeed(`Created Variant Set "${r.name}" (${r.count} variants)`);
       if (r.promotedCount > 0) {
         console.log(chalk.gray(`  Promoted ${r.promotedCount} frame(s) to components`));
       }
-      console.log(chalk.gray(`  Property: ${chalk.white(r.property)}`));
-      r.values.forEach(v => console.log(chalk.gray(`    ${r.property}=${v}`)));
+      for (const [prop, values] of Object.entries(plan.axes)) {
+        console.log(chalk.gray(`  ${chalk.white(prop)}: ${values.join(', ')}`));
+      }
       console.log(chalk.cyan(`  ${r.id}`));
     } catch (e) {
       spinner.fail('Failed: ' + (e.message || String(e)));
@@ -605,6 +636,7 @@ shadcn
   .description('Add shadcn/ui component(s) to Figma canvas. Use --count to add multiple copies of the same component.')
   .option('--all', 'Add all components')
   .option('-c, --count <n>', 'Add this many copies of each named component (e.g. --count 3 for 3 cards)', '1')
+  .option('--no-component', 'Leave the rendered nodes as frames instead of converting them to real Figma components')
   .action(async (names, options) => {
     checkConnection();
     const count = Math.max(1, parseInt(options.count) || 1);
@@ -661,12 +693,19 @@ shadcn
     const spinner = ora(`Creating ${items.length} shadcn/ui component(s)${label}...`).start();
     let created = 0;
     let failed = 0;
+    // Track the real node IDs of everything we render. Without this the command
+    // printed only "Created N component(s)" and callers (a user, or an LLM
+    // driving the CLI) had NO ids to reference for follow-ups like `set scale`
+    // or `node to-component` — they'd guess ids that don't exist and every
+    // follow-up failed with "No node found".
+    const madeNodes = [];
 
     for (const item of items) {
       try {
         const result = await fastRender(item.jsx);
         if (result && result.id) {
           created++;
+          madeNodes.push({ id: result.id, name: item.name });
           spinner.text = `Created ${created}/${items.length}: ${item.name}`;
         } else {
           failed++;
@@ -677,10 +716,41 @@ shadcn
       }
     }
 
+    // The command promises "component(s)" — so make them REAL Figma components,
+    // not bare frames (matches the always-make-components rule). --no-component
+    // opts out. createComponentFromNode returns a NEW node, so we capture the
+    // component's id (the frame id becomes invalid) and report THAT.
+    let finalNodes = madeNodes;
+    if (options.component !== false && madeNodes.length > 0) {
+      spinner.text = 'Converting to components...';
+      try {
+        const conv = await fastEval(`(async () => {
+          const ids = ${JSON.stringify(madeNodes.map(m => m.id))};
+          const out = [];
+          for (const id of ids) {
+            const n = await figma.getNodeByIdAsync(id);
+            if (n && (n.type === 'FRAME' || n.type === 'GROUP')) {
+              const c = figma.createComponentFromNode(n);
+              out.push({ id: c.id, name: c.name });
+            } else if (n) {
+              out.push({ id: n.id, name: n.name });
+            }
+          }
+          return out;
+        })()`);
+        if (Array.isArray(conv) && conv.length) finalNodes = conv;
+      } catch (e) {
+        spinner.warn('Rendered as frames, but component conversion failed: ' + e.message);
+      }
+    }
+
     if (failed === 0) {
-      spinner.succeed(`Created ${created} shadcn/ui component(s)`);
+      spinner.succeed(`Created ${created} shadcn/ui ${options.component !== false ? 'component' : 'frame'}(s)`);
     } else {
       spinner.warn(`Created ${created}, failed ${failed}`);
     }
+    // Print the real ids so follow-up commands (scale, to-component, set …) can
+    // target them instead of guessing.
+    finalNodes.forEach(n => console.log(chalk.gray(`  ${n.id}  ${n.name}`)));
   });
 

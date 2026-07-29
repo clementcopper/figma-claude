@@ -16,6 +16,13 @@ import {
 
 // ============ COLLECTIONS ============
 
+// Variables per import eval. Sized like the extract-side chunking: big enough
+// to keep the number of round trips small, small enough that a full system
+// (semantic layer + captured library primitives) never exceeds the payload cap.
+const VAR_IMPORT_CHUNK = 200;
+// Smallest chunk the halving retry will go down to before giving up.
+const VAR_IMPORT_CHUNK_FLOOR = 10;
+
 const collections = program
   .command('collections')
   .alias('col')
@@ -712,7 +719,7 @@ tokens
     }
 
     checkConnection();
-    const { toTokensImportJson, summarizeForLLM, variableImportCode } = await import('../design-md.js');
+    const { toTokensImportJson, summarizeForLLM, variableImportCode, chunkVariableTokens } = await import('../design-md.js');
 
     // Authoritative path: the file carries real variable collections (from
     // `figma-cli extract`). Recreate them faithfully — names, modes, alias
@@ -726,14 +733,40 @@ tokens
       }
       const spinner = ora(`Recreating ${totalVars} variable(s) across ${collNames.length} collection(s)…`).start();
       try {
-        const result = await daemonExec('eval', { code: variableImportCode(realVars) });
-        const r = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return null; } })() : result;
-        if (r) {
-          spinner.succeed(`Created ${r.createdCount} variable(s), wired ${r.aliasCount} alias(es) across ${r.collections} collection(s)`);
-          if (r.unresolved) console.log(chalk.yellow(`  ⚠ ${r.unresolved} alias value(s) unresolved (target outside this file / type mismatch)`));
-        } else {
-          spinner.succeed('Variables imported');
-        }
+        // Chunked: one eval per ~200 variables. A single eval carrying a whole
+        // system (semantic layer + captured library primitives) blows the
+        // daemon's payload limit and fails as a bare "fetch failed".
+        // Order matters — every variable must exist before aliases are wired,
+        // so ALL create-chunks run before ANY alias-chunk.
+        const chunks = chunkVariableTokens(realVars, VAR_IMPORT_CHUNK);
+        const totals = { createdCount: 0, aliasCount: 0, unresolved: 0 };
+        const countVars = (chunk) =>
+          Object.values(chunk).reduce((a, c) => a + Object.keys(c.variables || {}).length, 0);
+
+        // Payload limits depend on how fat each variable is (mode count, alias
+        // qualifiers), so a fixed chunk size cannot fit every system: on failure
+        // the chunk halves until it goes through, down to a floor.
+        const runChunk = async (chunk, passes, label, i) => {
+          spinner.text = `${label} ${i + 1}/${chunks.length}…`;
+          try {
+            const result = await daemonExec('eval', { code: variableImportCode(chunk, { passes }) });
+            const r = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return null; } })() : result;
+            if (r) {
+              totals.createdCount += r.createdCount || 0;
+              totals.aliasCount += r.aliasCount || 0;
+              totals.unresolved += r.unresolved || 0;
+            }
+          } catch (e) {
+            const size = countVars(chunk);
+            if (size <= VAR_IMPORT_CHUNK_FLOOR) throw e;
+            const halves = chunkVariableTokens(chunk, Math.ceil(size / 2));
+            for (const half of halves) await runChunk(half, passes, label, i);
+          }
+        };
+        for (let i = 0; i < chunks.length; i++) await runChunk(chunks[i], ['create'], 'Creating variables', i);
+        for (let i = 0; i < chunks.length; i++) await runChunk(chunks[i], ['alias'], 'Wiring aliases', i);
+        spinner.succeed(`Created ${totals.createdCount} variable(s), wired ${totals.aliasCount} alias(es) across ${collNames.length} collection(s)`);
+        if (totals.unresolved) console.log(chalk.yellow(`  ⚠ ${totals.unresolved} alias value(s) unresolved (target outside this file / type mismatch)`));
       } catch (error) {
         spinner.fail('Failed to import variable collections');
         console.error(error.message);

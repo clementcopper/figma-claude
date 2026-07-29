@@ -47,6 +47,9 @@ CLI that controls Figma Desktop directly. No API key needed.
 | "show all variants" | `figma-cli combos` |
 | "create size variants" | `figma-cli sizes --base small` |
 | "make these frames a variant set" / "combine into variants" | `figma-cli variants from <ids> --property Size --values Small,Medium,Large --name Button` |
+| "combine these into ONE component with several properties" (variant × size × state) | `figma-cli variants from auto --multi --name Button` |
+| "the file uses our shared token library" / "colors came in white after import" | `figma-cli extract --resolve-remote` |
+| "work on the OTHER open file" / commands hit the wrong file | `FIGMA_FILE="File name" figma-cli <command>` |
 | "combine existing components into a variant set" | `figma-cli prop combine <ids> --name Button` |
 | "create a slot" | `figma-cli slot create "Name"` |
 | "list slots" | `figma-cli slot list` |
@@ -249,6 +252,16 @@ figma-cli var delete-all -c "primitives"  # Only specific collection
   palette. `figma-cli import` recreates those collections (modes + aliases) in
   the target file. Captured in chunks so large systems (1000s of vars) don't
   time out. `--sections variables` for variables-only.
+- **`--resolve-remote` (library primitives):** many systems keep their semantic
+  tokens local but alias into an ENABLED LIBRARY for the primitives (Primer →
+  `base/color/*`, in-house systems → a "Foundations" file). extract can only read
+  LOCAL collections, so without this flag those aliases point at nothing and
+  `import` recreates the tokens **with no value — everything renders white**.
+  `--resolve-remote` captures the library's variables as ordinary collections, so
+  the full chain (`button/primary/bgColor/rest → bgColor/success-emphasis →
+  base/color/green/5`) survives the roundtrip, per mode.
+  Extract WARNS when alias targets are missing, so you know when to re-run with it.
+  Use it whenever the file uses an external/shared token library.
 - **Auto-split:** when the structure trees alone exceed ~50k tokens (huge files
   like Primer Web), they move to `DESIGN-structure/` automatically and the main
   file stays AI-context-sized. `--split` forces this, `--no-split` prevents it.
@@ -333,6 +346,18 @@ figma-cli set fill "var:primary"
 **Safe Mode:** `figma-cli connect --safe` - Plugin-based, no Figma modification. Then: Plugins > Development > FigCli.
 
 **Safe Mode:** `render` and `render-batch` work the same as in Yolo Mode, including text. Use `eval` with the native Figma API only when JSX can't express what you need.
+
+### Several files open → pin the target (`FIGMA_FILE`)
+
+The daemon binds to ONE open file, chosen when it starts (the first design tab).
+With several files open, commands silently hit the wrong one. Pin it:
+
+```bash
+FIGMA_FILE="Primer Check" figma-cli extract DESIGN.md   # substring of the file name
+```
+
+The CLI compares the pin against the daemon's bound file and rebinds
+automatically when they differ. Verify anytime with `figma-cli eval 'figma.root.name'`.
 
 ---
 
@@ -591,6 +616,25 @@ figma-cli variants from 1:2,1:3,1:4 \
 # Works for any property axis: state, color, density, intent
 figma-cli variants from 5:10,5:11 --property State --values Default,Hover
 ```
+
+**Multi-axis sets (`--multi`) — the real-design-system case.** One property is
+rarely enough: a Button is `variant × size × state × alignContent`. With
+`--multi` each node KEEPS its own `prop=value, prop2=value2` name and Figma
+derives every axis from it. Render the variants with those names, then combine:
+
+```bash
+# 1. render each variant named with its axes (any number of axes)
+figma-cli render-batch '["<Frame name=\"variant=primary, size=small, state=rest\" …>…</Frame>", …]' --as-component
+
+# 2. combine — "auto" picks up every page-level node named prop=value,
+#    so you never paste 144 ids into a shell command
+figma-cli variants from auto --multi --name Button
+```
+
+`<ids>` accepts a comma list, `selection` (current Figma selection) or `auto`.
+The command validates BEFORE touching the file: all nodes must share the same
+axis names and every combination must be unique — it fails with the exact
+mismatch instead of letting Figma invent bogus "Property 1" axes.
 
 **When NOT to use it:**
 - One frame that should just become a single component → use `node to-component`.

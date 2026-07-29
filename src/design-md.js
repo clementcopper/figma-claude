@@ -353,9 +353,49 @@ export function toTokensImportJson({ tokens }) {
  * Returns a JSON.stringify'd { collections, createdCount, aliasCount, unresolved }.
  * Pure string builder (no Figma access here) so it is unit-testable.
  */
-export function variableImportCode(variables) {
+/**
+ * Split a `variables` block into chunks of at most `size` variables, each chunk
+ * keeping its collections' modes so it can be imported on its own.
+ *
+ * Why: the importer inlines the whole block into ONE eval. A system with a
+ * captured library (semantic + primitives, easily >1000 variables) exceeds the
+ * daemon's payload limit and fails with a bare "fetch failed". Chunking keeps
+ * every call small; the two-pass contract still holds because the caller runs
+ * ALL create-chunks before ANY alias-chunk. Pure.
+ */
+export function chunkVariableTokens(variables = {}, size = 200) {
+  const chunks = [];
+  let current = {};
+  let count = 0;
+  const flush = () => { if (count) { chunks.push(current); current = {}; count = 0; } };
+
+  for (const [collName, coll] of Object.entries(variables)) {
+    const entries = Object.entries(coll.variables || {});
+    if (!entries.length) {
+      // Keep empty collections — the collection itself must still be created.
+      current[collName] = { modes: coll.modes || [], variables: {} };
+      count += 1;
+      if (count >= size) flush();
+      continue;
+    }
+    for (const [vName, vDef] of entries) {
+      if (!current[collName]) current[collName] = { modes: coll.modes || [], variables: {} };
+      current[collName].variables[vName] = vDef;
+      count++;
+      if (count >= size) flush();
+    }
+  }
+  flush();
+  return chunks;
+}
+
+export function variableImportCode(variables, { passes = ['create', 'alias'] } = {}) {
+  const doCreate = passes.includes('create');
+  const doAlias = passes.includes('alias');
   return `(async () => {
   const VARS = ${JSON.stringify(variables)};
+  const DO_CREATE = ${doCreate};
+  const DO_ALIAS = ${doAlias};
   const hexToRgba = (hex) => {
     const m = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})?$/i.exec(String(hex).trim());
     if (!m) return null;
@@ -393,6 +433,7 @@ export function variableImportCode(variables) {
       if (!v) { try { v = figma.variables.createVariable(vName, col, type); register(v); createdCount++; } catch (e) { continue; } }
       vars[vName] = v;
       for (const [mn, val] of Object.entries(vDef.values || {})) {
+        if (!DO_CREATE) break; // alias-only chunk: pass 1 just rebuilds ctx
         const modeId = modeIds[mn];
         if (modeId == null) continue;
         if (val && typeof val === 'object' && 'alias' in val) continue; // pass 2
@@ -407,8 +448,17 @@ export function variableImportCode(variables) {
     ctx[collName] = { modeIds, vars };
   }
 
-  // PASS 2 — alias values, resolved by target name
-  for (const [collName, coll] of Object.entries(VARS)) {
+  // Collection name of any pre-existing variable, so a qualified alias can be
+  // matched against variables this run did not create.
+  const collNameOfVar = new Map();
+  for (const c of existingCols) for (const id of c.variableIds) collNameOfVar.set(id, c.name);
+  for (const [cn, c] of Object.entries(ctx)) for (const v of Object.values(c.vars)) collNameOfVar.set(v.id, cn);
+
+  // PASS 2 — alias values, resolved by target name (collection-qualified when
+  // the export says which collection the target lives in: variable names are
+  // unique per collection only, so a themed library repeats the same primitive
+  // name in its light/dark collections with different values).
+  for (const [collName, coll] of Object.entries(DO_ALIAS ? VARS : {})) {
     const c = ctx[collName];
     if (!c) continue;
     for (const [vName, vDef] of Object.entries(coll.variables || {})) {
@@ -418,7 +468,16 @@ export function variableImportCode(variables) {
         if (!(val && typeof val === 'object' && 'alias' in val)) continue;
         const modeId = c.modeIds[mn];
         if (modeId == null) continue;
-        let target = c.vars[val.alias];
+        let target = null;
+        if (val.collection) {
+          const tc = ctx[val.collection];
+          if (tc) target = tc.vars[val.alias];
+          if (!target) {
+            const cand = byName.get(val.alias) || [];
+            target = cand.find(x => collNameOfVar.get(x.id) === val.collection) || null;
+          }
+        }
+        if (!target) target = c.vars[val.alias];
         if (!target) { const cand = byName.get(val.alias); if (cand && cand.length) target = cand[0]; }
         if (!target) { unresolved++; continue; }
         try { v.setValueForMode(modeId, figma.variables.createVariableAlias(target)); aliasCount++; }

@@ -328,7 +328,9 @@ test('variableChunkCode embeds the id slice + modes and is valid JS', () => {
 test('resolveAliases swaps alias ids for the referenced variable name', () => {
   const resolved = resolveAliases(FIXTURE_VARS);
   const aliasVar = resolved[0].variables.find(v => v.name === 'button-default-fgColor');
-  assert.deepEqual(aliasVar.values.Light, { alias: 'fgColor-default' });
+  // The target collection travels with the name — variable names are unique
+  // per collection only (see resolveAliases).
+  assert.deepEqual(aliasVar.values.Light, { alias: 'fgColor-default', collection: resolved[0].name });
   assert.deepEqual(resolved[0].modes, ['Light', 'Dark']);
 });
 

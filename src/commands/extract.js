@@ -6,6 +6,7 @@ import { join, dirname, resolve } from 'path';
 import { program, checkConnection, fastEval } from '../lib/cli-core.js';
 import {
   listPagesCode, walkerCode, variableCollectionsCode, variableChunkCode,
+  remoteAliasTargetsCode, danglingAliasNames,
   generateDesignMd, generatePageStructureMd, estimateStructureTokens, ALL_SECTIONS,
 } from '../design-extract.js';
 
@@ -43,6 +44,7 @@ program
   .option('--selection', 'only the currently selected nodes (overrides --pages)')
   .option('--split', 'additionally write full per-page trees to DESIGN-structure/')
   .option('--no-split', 'never auto-split, even for huge files (one big DESIGN.md)')
+  .option('--resolve-remote', 'also capture the library primitives this file aliases into, so `import` can rebuild the full alias chain instead of empty values')
   .action(async (output, options) => {
     await checkConnection();
     const outPath = resolve(output || 'DESIGN.md');
@@ -96,7 +98,34 @@ program
       // so the summary can tell "no variables" apart from "some unreadable".
       let variables = [];
       let droppedVars = 0;
+      let remoteStats = null;
       const wantsVariables = !sections || sections.includes('variables');
+
+      // Fetch one collection's values in bounded, retryable chunks. Shared by
+      // the local pass and the --resolve-remote pass so a library with
+      // thousands of primitives is chunked exactly like a local collection.
+      const fetchValues = async (label, ids, modes) => {
+        const collected = [];
+        let chunk = VAR_CHUNK;
+        for (let i = 0; i < ids.length;) {
+          spinner.text = `Variables: ${label} (${i}/${ids.length})…`;
+          const slice = ids.slice(i, i + chunk);
+          try {
+            const got = parseEvalResult(await fastEval(variableChunkCode(slice, modes))) || [];
+            collected.push(...got);
+            i += chunk;
+          } catch (e) {
+            if (/payload|too large|timeout/i.test(e.message) && chunk > VAR_CHUNK_FLOOR) {
+              chunk = Math.floor(chunk / 2);
+              continue;
+            }
+            droppedVars += slice.length;
+            i += chunk; // skip this slice, keep going with the rest
+          }
+        }
+        return collected;
+      };
+
       if (wantsVariables) {
         spinner.text = 'Reading variable collections…';
         let cols = [];
@@ -105,28 +134,39 @@ program
         } catch (e) {
           cols = [];
         }
-        for (let ci = 0; ci < cols.length; ci++) {
-          const col = cols[ci];
-          const ids = col.variableIds || [];
-          const collected = [];
-          let chunk = VAR_CHUNK;
-          for (let i = 0; i < ids.length;) {
-            spinner.text = `Variables: ${col.name} (${i}/${ids.length})…`;
-            const slice = ids.slice(i, i + chunk);
-            try {
-              const got = parseEvalResult(await fastEval(variableChunkCode(slice, col.modes))) || [];
-              collected.push(...got);
-              i += chunk;
-            } catch (e) {
-              if (/payload|too large|timeout/i.test(e.message) && chunk > VAR_CHUNK_FLOOR) {
-                chunk = Math.floor(chunk / 2);
-                continue;
-              }
-              droppedVars += slice.length;
-              i += chunk; // skip this slice, keep going with the rest
-            }
-          }
+        for (const col of cols) {
+          const collected = await fetchValues(col.name, col.variableIds || [], col.modes);
           variables.push({ id: col.id, name: col.name, modes: col.modes, variables: collected });
+        }
+
+        // Library primitives this file aliases into. Without them the semantic
+        // layer re-imports with empty values (everything renders white), since
+        // `import` can only wire an alias whose target exists in the export.
+        if (options.resolveRemote) {
+          spinner.text = 'Resolving library variables…';
+          let remote = { collections: [], truncated: false };
+          try {
+            remote = parseEvalResult(await fastEval(remoteAliasTargetsCode())) || remote;
+          } catch (e) {
+            remote = { collections: [], truncated: false, error: e.message };
+          }
+          const localNames = new Set(variables.map(c => c.name));
+          let remoteVarCount = 0;
+          for (const col of remote.collections || []) {
+            // A library collection may share its name with a local one; keep
+            // them apart so import doesn't merge two different sources.
+            const name = localNames.has(col.name) ? `${col.name} (library)` : col.name;
+            const collected = await fetchValues(name, col.ids || [], col.modes);
+            if (!collected.length) continue;
+            remoteVarCount += collected.length;
+            variables.push({ id: col.id, name, modes: col.modes, variables: collected, remote: true });
+          }
+          remoteStats = {
+            collections: (remote.collections || []).length,
+            variables: remoteVarCount,
+            truncated: !!remote.truncated,
+            error: remote.error,
+          };
         }
       }
 
@@ -206,6 +246,21 @@ program
         const varCount = variables.reduce((a, c) => a + (c.variables?.length || 0), 0);
         console.log(chalk.gray(`  Captured ${varCount} variable(s) across ${variables.length} collection(s) — real token names + modes (see § Variables)`));
         if (droppedVars) console.log(chalk.yellow(`  ⚠ ${droppedVars} variable(s) skipped (chunk too large even at floor) — they're missing from § Variables`));
+        if (remoteStats && remoteStats.variables) {
+          console.log(chalk.gray(`  + ${remoteStats.variables} library primitive(s) from ${remoteStats.collections} enabled library collection(s) — alias chains stay intact on import`));
+          if (remoteStats.truncated) console.log(chalk.yellow('  ⚠ library capture hit its safety cap — some primitives are missing'));
+        }
+        // Any alias whose target is in no captured collection re-imports as an
+        // EMPTY variable (renders white). Cheap to detect here, expensive to
+        // debug later, so always say it.
+        const dangling = danglingAliasNames(variables);
+        if (dangling.length) {
+          console.log(chalk.yellow(`  ⚠ ${dangling.length} alias target(s) live in a library that is not part of this export`));
+          console.log(chalk.yellow(`    e.g. ${dangling.slice(0, 3).join(', ')}`));
+          console.log(options.resolveRemote
+            ? chalk.gray('    (the library is not enabled in this file — enable it in Figma, then re-extract)')
+            : chalk.gray('    Re-run with --resolve-remote to capture them; otherwise those tokens import with no value.'));
+        }
       }
       if (autoSplit) console.log(chalk.gray(`  Structure (~${Math.round(structTokens / 1000)}k tokens) auto-split into DESIGN-structure/ — main file stays AI-context-sized (--no-split to override)`));
       else if (doSplit) console.log(chalk.gray(`  + ${results.length} structure file(s) in DESIGN-structure/`));

@@ -201,7 +201,10 @@ async function getCdpClient() {
   try {
     const ClientClass = await getFigmaClient();
     cdpClient = new ClientClass();
-    await cdpClient.connect();
+    // FIGMA_FILE pins the daemon to a specific open file (substring match on the
+    // tab title). Without it Figma's first design tab wins, which silently sends
+    // commands to the wrong file when several are open.
+    await cdpClient.connect(process.env.FIGMA_FILE || null);
     lastHealthCheck = Date.now();
     lastHealthResult = true;
     console.log('[daemon] Connected to Figma via CDP (Yolo Mode)');
@@ -372,6 +375,10 @@ async function handleRequest(req, res) {
       mode: mode,
       plugin: pluginConnected,
       cdp: cdpHealthy,
+      // Which open file this daemon is bound to. The CLI compares it against
+      // FIGMA_FILE and rebinds when they diverge — otherwise commands silently
+      // hit whichever file happened to be first when the daemon started.
+      file: (cdpClient && cdpClient.pageTitle) || null,
       idleTimeoutMs: IDLE_TIMEOUT_MS
     }));
     return;
