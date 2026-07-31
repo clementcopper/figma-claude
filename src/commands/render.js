@@ -445,22 +445,30 @@ program
       console.log(chalk.yellow('○ Daemon not running (optional, speeds up commands)'));
     }
 
-    // 7. figma-use availability
+    // 7. figma-use availability — only FigJam export still shells out to it.
+    // render/node/analyze all run natively through the daemon now, so its
+    // absence no longer limits the commands people actually hit here.
     try {
       execSync('which figma-use 2>/dev/null || where figma-use 2>nul', { encoding: 'utf8' });
-      console.log(chalk.green('✓ figma-use installed'));
+      console.log(chalk.green('✓ figma-use installed (used by FigJam export)'));
     } catch {
-      console.log(chalk.yellow('○ figma-use not in PATH (some features limited)'));
+      console.log(chalk.yellow('○ figma-use not in PATH (only FigJam export needs it)'));
     }
 
     // 8. Connection test
     console.log(chalk.gray('\n  Testing connection...'));
+    let client = null;
     try {
-      const client = await getFigmaClient();
+      client = await getFigmaClient();
       const result = await client.eval('({ file: figma.root.name, page: figma.currentPage.name })');
       console.log(chalk.green(`✓ Connected to "${result.file}" / "${result.page}"`));
     } catch (e) {
       console.log(chalk.red('✗ Connection failed: ' + e.message));
+    } finally {
+      // This opens its OWN CDP socket rather than going through the daemon.
+      // Leaving it open kept the event loop alive, so `diagnose` printed its
+      // whole report and then hung forever instead of exiting.
+      try { client?.close(); } catch {}
     }
 
     console.log('');

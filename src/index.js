@@ -19,9 +19,13 @@ import { ALL, COMMAND_MODULES } from './lib/command-map.js';
 const load = (names) =>
   Promise.all(names.map((n) => import(`./commands/${n}.js`)));
 
-const invoked = process.argv[2];
-await load(
-  invoked && COMMAND_MODULES[invoked] ? COMMAND_MODULES[invoked] : ALL
-);
+// Scan for the first token that names a command, rather than reading argv[2]
+// only: global options come BEFORE the command (`figma-cli --port 9222 eval …`),
+// and stopping at argv[2] would see `--port` and fall back to loading all 25
+// modules. Taking the FIRST match left-to-right is safe because a command always
+// precedes its own arguments, so a command name appearing later as an argument
+// (`figma-cli find "render"`) can never win over the real command.
+const invoked = process.argv.slice(2).find((arg) => COMMAND_MODULES[arg]);
+await load(invoked ? COMMAND_MODULES[invoked] : ALL);
 
 program.parse();
