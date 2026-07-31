@@ -46,6 +46,21 @@ function printUnresolvedVars(unresolved) {
   console.log(chalk.gray('  These bindings rendered as grey placeholders. Check `figma-cli var list` (optionally with --collection).'));
 }
 
+/**
+ * Report children that FILL an axis their parent HUGs.
+ *
+ * Figma's UI disables "fill container" in that situation; the Plugin API
+ * accepts it and resolves it to nothing, so the element collapses and vanishes
+ * with no error anywhere. Saying it out loud is the difference between a
+ * two-second fix and re-deriving the same auto-layout bug from scratch.
+ */
+function printLayoutWarnings(warnings) {
+  if (!warnings || warnings.length === 0) return;
+  console.log(chalk.yellow(`\n⚠ ${warnings.length} auto-layout problem(s):`));
+  for (const w of warnings) console.log(chalk.yellow('  ' + w));
+  console.log(chalk.gray('  Fix: give the parent a fixed size on that axis, or drop the fill from the child.'));
+}
+
 // Remember what the last render created so `figma-cli undo` can remove
 // exactly those nodes. CLI-side state file: covers every render path
 // (eval-based, daemon render, render-batch) and survives daemon restarts.
@@ -212,6 +227,7 @@ program
       console.log(chalk.green('✓ Rendered: ' + result.id));
       if (result.name) console.log(chalk.gray('  name: ' + result.name));
       printUnresolvedVars(result.unresolved);
+      printLayoutWarnings(result.layoutWarnings);
       recordCreated([result]);
 
       await maybeAsComponent(result.id);
@@ -264,10 +280,12 @@ program
         vertical,
         collection: options.collection || undefined,
       });
-      // Unwrap the wrapped form returned when there are unresolved vars.
+      // Unwrap the wrapped form returned when there are warnings to report.
       let unresolvedVars = null;
+      let layoutWarnings = null;
       if (results && !Array.isArray(results) && Array.isArray(results.frames)) {
         unresolvedVars = results.unresolved;
+        layoutWarnings = results.layoutWarnings;
         results = results.frames;
       }
 
@@ -277,11 +295,8 @@ program
         });
         console.log(chalk.cyan(`\n${results.length} frames created`));
         recordCreated(results);
-        if (unresolvedVars && unresolvedVars.length > 0) {
-          console.log(chalk.yellow(`\n⚠ ${unresolvedVars.length} variable reference(s) could not be resolved:`));
-          console.log(chalk.yellow('  ' + unresolvedVars.join(', ')));
-          console.log(chalk.gray('  These bindings rendered as grey placeholders. Check `figma-cli var list` (optionally with --collection).'));
-        }
+        printUnresolvedVars(unresolvedVars);
+        printLayoutWarnings(layoutWarnings);
 
         if (options.asComponent) {
           const ids = results.map(r => r.id).filter(Boolean);

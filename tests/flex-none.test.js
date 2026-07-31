@@ -22,8 +22,21 @@ describe('flex="none" z-stack', () => {
 
   it('root frame: flex="none" emits NONE and skips sizing modes', async () => {
     const code = await client.parseJSX('<Frame name="Stack" flex="none" w={32} h={32}><Ellipse name="A" w={32} h={32} bg="#eee"/></Frame>');
-    assert.ok(/layoutMode = 'NONE'/.test(code));
-    assert.ok(!/primaryAxisSizingMode/.test(code.slice(code.indexOf("'NONE'"))), 'no sizing-mode after NONE');
+    assert.ok(/frame\.layoutMode = 'NONE'/.test(code));
+    // Scope the assertion to the ROOT FRAME's own statements. Slicing from the
+    // first literal 'NONE' anywhere in the file also caught the runtime prelude,
+    // which legitimately mentions primaryAxisSizingMode while inspecting a
+    // node's PARENT — a false failure about code that isn't the frame's.
+    const start = code.indexOf('const frame = figma.createFrame');
+    assert.ok(start > -1, 'root frame block not found');
+    const frameStmts = code
+      .slice(start)
+      .split('\n')
+      .filter((l) => /^\s*frame\./.test(l))
+      .join('\n');
+    assert.ok(/frame\.layoutMode = 'NONE'/.test(frameStmts));
+    assert.ok(!/SizingMode/.test(frameStmts), 'a NONE frame must not get auto-layout sizing modes');
+    assert.ok(!/AxisAlignItems|itemSpacing|padding/.test(frameStmts), 'nor any other auto-layout prop');
     assertValidJs(code);
   });
 

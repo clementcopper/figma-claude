@@ -20,6 +20,15 @@ diffs the resulting node trees by numbers found **9 of 10 cases differing**.
   set `counterAxisAlignItems = CENTER` and quietly centered titles and cells.
   Alignment now resolves through one shared helper: rows center their cross axis
   (icon+text in a row), everything else reads top-left, at every depth.
+- **A fill child in a hugging parent no longer collapses to 1px.** Figma's UI
+  disables "fill container" when the parent hugs that axis; the Plugin API
+  accepts it and resolves it to nothing. Combined with the 1px seed introduced
+  for dividers, an ordinary `<Frame w="fill" h={20}/>` inside a hug-width parent
+  came out **1px wide and invisible**, with no error anywhere. The 1px seed is
+  now reserved for dividers (what it was built for), and `render` /
+  `render-batch` print an explicit warning naming the child, the parent and the
+  axis. The warning is silent for the legitimate case — a divider filling the
+  height of a hug-height row, where the text siblings set the height.
 - **`minW` / `maxW` / `minH` / `maxH` actually work.** They were in the
   known-prop list but were never emitted — a silent no-op, like `stretch` before
   it. They now apply to root frames, nested frames and text, guarded per

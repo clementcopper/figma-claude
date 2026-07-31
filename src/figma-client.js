@@ -87,6 +87,61 @@ export function resolveAlign(flex, item = {}) {
  * Applied AFTER sizing so the clamp wins over FILL/HUG, guarded per property
  * because Figma throws on unsupported node types instead of ignoring the set.
  */
+/**
+ * Runtime prelude: report a child that FILLs an axis its parent HUGs.
+ *
+ * Figma's UI won't let you do this — "fill container" is disabled when the
+ * parent hugs — but the Plugin API accepts it and resolves it to nothing, so
+ * the element silently collapses and vanishes from the design. It is the most
+ * common auto-layout failure and it leaves no error behind, which is exactly
+ * why it kept getting rediscovered.
+ *
+ * Emitted once per render, used only by children that actually FILL.
+ */
+export const LAYOUT_WARN_PRELUDE = `
+        {
+          // Redefined on EVERY render, deliberately. Figma's globalThis persists
+          // between evals, so an "install once" guard would pin whichever
+          // version happened to run first in that Figma session — a stale
+          // definition surviving a code change is exactly the kind of ghost that
+          // wastes an afternoon.
+          globalThis.__layoutWarnings = [];
+          globalThis.__figHugPending = [];
+          // Only RECORD here. Children are created in order, so later siblings
+          // do not exist yet and judging now would flag the first child of every
+          // row. __figHugFlush() runs once the tree is complete.
+          globalThis.__figHugWarn = (child, axis) => {
+            globalThis.__figHugPending.push({ child, axis });
+          };
+          globalThis.__figHugFlush = () => {
+            for (const { child, axis } of globalThis.__figHugPending || []) {
+              try {
+                const p = child.parent;
+                if (!p || !p.layoutMode || p.layoutMode === 'NONE') continue;
+                // Which sizing mode governs an axis depends on the parent's
+                // direction: for a VERTICAL parent width is the counter axis,
+                // for HORIZONTAL it is the primary axis.
+                const isPrimary = (axis === 'H') === (p.layoutMode === 'HORIZONTAL');
+                const mode = isPrimary ? p.primaryAxisSizingMode : p.counterAxisSizingMode;
+                if (mode !== 'AUTO') continue;
+                // A hugging parent is only a problem when NOTHING establishes
+                // the axis. A divider filling the height of a hug-height row is
+                // correct: the text siblings set the height and the rule matches
+                // it. Warn only when every child defers, so the size is circular
+                // and Figma resolves it to the seed — a collapsed, invisible node.
+                const sizingOf = (n) => (axis === 'H' ? n.layoutSizingHorizontal : n.layoutSizingVertical);
+                const anchored = p.children.some((c) => c !== child && sizingOf(c) !== 'FILL');
+                if (anchored) continue;
+                globalThis.__layoutWarnings.push(
+                  '"' + child.name + '" fills ' + (axis === 'H' ? 'width' : 'height') +
+                  ', but its parent "' + p.name + '" hugs that axis and nothing else sets it'
+                );
+              } catch (e) {}
+            }
+            globalThis.__figHugPending = [];
+          };
+        }`;
+
 export function generateMinMaxCode(varName, item = {}) {
   const num = (v) => {
     if (v === undefined || v === null || v === '') return null;
@@ -630,6 +685,7 @@ export class FigmaClient {
     return `
       (async function() {
         ${fontLoads}
+        ${LAYOUT_WARN_PRELUDE}
         ${varLoadCode}
 
         // Calculate start position
@@ -654,7 +710,12 @@ export class FigmaClient {
         const unresolved = globalThis.__unresolvedVars
           ? [...globalThis.__unresolvedVars].sort() : [];
         globalThis.__unresolvedVars = new Set();
-        return unresolved.length > 0 ? { frames: results, unresolved } : results;
+        if (globalThis.__figHugFlush) globalThis.__figHugFlush();
+        const layoutWarnings = globalThis.__layoutWarnings || [];
+        globalThis.__layoutWarnings = [];
+        return (unresolved.length > 0 || layoutWarnings.length > 0)
+          ? { frames: results, unresolved, layoutWarnings }
+          : results;
       })()
     `;
   }
@@ -1452,8 +1513,18 @@ export class FigmaClient {
           // 100px default) so the parent hugs to its REAL content before FILL is
           // applied. Otherwise a divider's 100px default determines the hug and
           // FILL can't shrink it back (the "zu hoch" footgun).
-          const resizeW = hasWidth ? fWidth : (wantFillH ? 1 : 100);
-          const resizeH = hasHeight ? fHeight : (wantFillV ? 1 : 100);
+          //
+          // That seed is for DIVIDERS specifically — a rule spanning its parent,
+          // whose own size must not influence the hug. Applying it to every FILL
+          // child was too broad: an ordinary `w="fill"` child in a parent that
+          // hugs width has nothing else establishing that axis, so the 1px seed
+          // became the answer and the child collapsed to 1px and disappeared.
+          // Ordinary fill children keep the normal seed; `__figHugWarn` below
+          // reports the hug/fill conflict either way.
+          const isDividerFillH = wantFillH && ((isStretch && crossIsH) || autoFillH);
+          const isDividerFillV = wantFillV && ((isStretch && crossIsV) || autoFillV);
+          const resizeW = hasWidth ? fWidth : (isDividerFillH ? 1 : 100);
+          const resizeH = hasHeight ? fHeight : (isDividerFillV ? 1 : 100);
 
           // flex="none" (aliases: stack/free) → no auto-layout. Children keep
           // their own x/y, so they OVERLAP (z-stack): spinners (ring+arc),
@@ -1486,6 +1557,8 @@ export class FigmaClient {
         ${parentVar}.appendChild(el${idx});
         ${parentIsNone ? '' : `el${idx}.layoutSizingHorizontal = '${hSizing}';
         el${idx}.layoutSizingVertical = '${vSizing}';`}
+        ${!parentIsNone && wantFillH ? `globalThis.__figHugWarn(el${idx}, 'H');` : ''}
+        ${!parentIsNone && wantFillV ? `globalThis.__figHugWarn(el${idx}, 'V');` : ''}
         ${generateMinMaxCode(`el${idx}`, item)}
         ${pctW !== null || pctH !== null ? `try {
           const _pp = el${idx}.parent;
@@ -1926,6 +1999,7 @@ export class FigmaClient {
     return `
       (async function() {
         ${fontLoadCode}
+        ${LAYOUT_WARN_PRELUDE}
         ${varLoadCode}
         ${smartPosCode}
 
@@ -1977,8 +2051,11 @@ export class FigmaClient {
         const __unresolved = globalThis.__unresolvedVars
           ? [...globalThis.__unresolvedVars].sort() : [];
         if (globalThis.__unresolvedVars) globalThis.__unresolvedVars = new Set();
-        return __unresolved.length > 0
-          ? { id: frame.id, name: frame.name, unresolved: __unresolved }
+        if (globalThis.__figHugFlush) globalThis.__figHugFlush();
+        const __layoutWarnings = globalThis.__layoutWarnings || [];
+        globalThis.__layoutWarnings = [];
+        return (__unresolved.length > 0 || __layoutWarnings.length > 0)
+          ? { id: frame.id, name: frame.name, unresolved: __unresolved, layoutWarnings: __layoutWarnings }
           : { id: frame.id, name: frame.name };
         } catch(e) {
           frame.remove();

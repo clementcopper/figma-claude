@@ -497,6 +497,37 @@ fontWeight="bold"     →  weight="bold"
 
 ## Critical Pitfalls
 
+### 0. `w="fill"` needs a parent that isn't hugging that axis
+
+A child can only fill an axis its parent has a size on. If the parent HUGs that
+axis, Figma has nothing to resolve against and the child collapses (Figma's own
+UI disables "fill container" in this situation). `render` warns when it happens:
+
+```
+⚠ 1 auto-layout problem(s):
+  "kid" fills width, but its parent "Card" hugs that axis and nothing else sets it
+```
+
+```jsx
+// BAD: parent hugs width, child has nothing to fill → collapses
+<Frame flex="col" p={8}>
+  <Frame w="fill" h={20} bg="#3b82f6" />
+</Frame>
+
+// GOOD: give the parent a width…
+<Frame flex="col" p={8} w={200}>
+  <Frame w="fill" h={20} bg="#3b82f6" />
+</Frame>
+
+// …or let the child size itself and the parent hug around it
+<Frame flex="col" p={8}>
+  <Frame w={160} h={20} bg="#3b82f6" />
+</Frame>
+```
+
+A divider is the exception and does NOT warn: `<Frame w={1} stretch />` in a
+hug-height row is correct, because the text siblings set the height.
+
 ### 1. Text gets cut off (MOST COMMON BUG)
 
 **Rule:** For text to wrap, BOTH parent AND every Text element need `w="fill"`:
