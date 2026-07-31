@@ -29,7 +29,10 @@
     "url": "https://github.com/silships/figma-cli/issues"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "test:live": "node tests/live/parity-harness.mjs && node examples/autolayout-patterns.mjs",
+    "test:parity": "node tests/live/parity-harness.mjs",
+    "examples": "node examples/autolayout-patterns.mjs"
   },
   "engines": {
     "node": ">=18"

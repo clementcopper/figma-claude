@@ -339,6 +339,19 @@ Everything above is powered by a CLI that the AI calls for you. If you want to u
 - **[REFERENCE.md](REFERENCE.md)** , full command reference (tokens, render/JSX, components, gradients, a11y, export, the offline Figma API spec, and more).
 - Two connection modes: **Yolo** (direct, recommended) and **Safe** (plugin-based, no patching). Claude picks the right one during setup.
 
+**Auto-layout, by example.** `npm run examples` renders a labelled gallery of the
+auto-layout patterns that are easy to get wrong , wrapping card, space-between
+navbar, stretching divider, toggle knobs, bottom-pinned sidebar, wrap grid,
+min/max constraints, fill chain, z-stack , onto a page called "Auto-Layout
+Patterns". It then **measures** what Figma actually produced and fails if any
+number drifts, so it is documentation and a regression test at once.
+
+```bash
+npm test          # unit tests, no Figma needed
+npm run examples  # render + verify the pattern gallery (needs a connected Figma)
+npm run test:live # the above, plus render vs render-batch layout parity
+```
+
 You don't need any of this to use the tool , it's here for tinkerers.
 
 ---
