@@ -25,6 +25,21 @@ diffs the resulting node trees by numbers found **9 of 10 cases differing**.
   it. They now apply to root frames, nested frames and text, guarded per
   property so an unsupported node type can't abort a render.
 
+### Fixed — eval
+
+- **`eval` accepts top-level `await`.** CDP runs eval code as a script, where a
+  bare `await` (and a bare `return`) is a syntax error, so the daemon wraps the
+  code in an async IIFE when needed. It decided that with three regexes that
+  only looked for `return` — so top-level `await` was never detected at all, and
+  `return` was missed unless it sat at the start or right after a `;`. Both
+  `let p = 1\nreturn p` and `if (!p) { return x }` came back as a raw
+  "Illegal return statement" from inside Figma. Hand-writing
+  `(async () => { … })()` was the documented workaround; it is no longer needed.
+  The wrapper now asks the JS engine which form compiles (parse-only, nothing is
+  executed) instead of guessing, and prefers the expression form so a bare
+  `figma.root.name` — or a bare `await figma.getNodeByIdAsync(id)` — still
+  evaluates to the value. Already-wrapped code is left byte-identical.
+
 ### Changed
 
 - **`node` and `analyze` stopped shelling out.** `node tree/bindings/to-component/delete`,
