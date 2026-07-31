@@ -27,6 +27,23 @@ diffs the resulting node trees by numbers found **9 of 10 cases differing**.
 
 ### Changed
 
+- **`node` and `analyze` stopped shelling out.** `node tree/bindings/to-component/delete`,
+  `lint` and `analyze colors/typography/spacing/clusters` each carried TWO
+  implementations: a native one used in Safe Mode, and an `npx figma-use` spawn
+  used in Yolo Mode — so the mode with the faster CDP connection took the slower
+  path, after a `curl` subprocess spawned just to detect the mode. They all run
+  the native one now, in both modes: **714ms → 149ms** for `lint`, **684ms →
+  148ms** for `to-component` (which runs after every component you create).
+- `node tree` prints node ids and caps its output at 400 lines (`--limit`),
+  naming how many nodes it dropped. Trees of real files run to thousands of
+  lines and usually land in an AI's context.
+- `node bindings` reads ALL bindings of a property, not just the first. Figma
+  hands back an array for fills/strokes, and only `[0]` was read, so every
+  binding after the first was invisible. It also uses the async variable lookup
+  (the sync one is deprecated) and resolves each variable id once.
+- `node to-component` / `node delete` now name what they skipped and why, and
+  exit non-zero instead of reporting a silent success for ids that were never
+  there.
 - **One render path.** `render` no longer shells out to the `figma-use` binary
   and no longer has a separate fast path; everything goes through `parseJSX`,
   which gained the `-x` / `-y` / `--parent` placement options that previously
