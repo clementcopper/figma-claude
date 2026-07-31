@@ -4,7 +4,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { ALL, COMMAND_MODULES } from '../src/lib/command-map.js';
+import { REGISTRY } from '../src/plugins.js';
 import { program } from '../src/lib/cli-core.js';
+
+/**
+ * Commands a plugin adds at load time (`voice`, `chat`). They only show up in
+ * the Commander tree when that plugin is installed under ~/.figma-cli/plugins,
+ * so on a clean machine (CI) they are absent — but the map still has to name
+ * their module, otherwise the lazy loader can't find them for the users who DO
+ * have the plugin. Exempt from the staleness check, checked when present.
+ */
+const PLUGIN_COMMANDS = new Set(REGISTRY.flatMap((p) => p.commands || []));
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
 
@@ -58,7 +68,9 @@ describe('lazy command map', () => {
   });
 
   it('has no entries for commands that no longer exist', () => {
-    const stale = Object.keys(COMMAND_MODULES).filter((name) => !actual[name]);
+    const stale = Object.keys(COMMAND_MODULES).filter(
+      (name) => !actual[name] && !PLUGIN_COMMANDS.has(name)
+    );
     assert.deepStrictEqual(stale, []);
   });
 
