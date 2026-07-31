@@ -9,13 +9,11 @@ import { getFigmaVersion, isFigmaRunning, platformName } from '../platform.js';
 import {
   program,
   CONFIG_DIR,
-  DAEMON_PORT,
   checkConnection,
   daemonExec,
   detectWrapperSplit,
   fastEval,
   figmaEvalSync,
-  getDaemonToken,
   getFigmaClient,
   isDaemonRunning,
   unescapeShell
@@ -121,182 +119,6 @@ function getNextFreeY(gap = 100) {
   }
 }
 
-// Helper: Extract properties that figma-use doesn't handle correctly
-// Returns array of fixes to apply after render
-function extractPostProcessFixes(jsx) {
-  const fixes = [];
-
-  // Match ALL Frame elements with wrapGap (counterAxisSpacing) - including nested
-  const wrapGapRegex = /<Frame[^>]*\bwrapGap=\{(\d+)\}[^>]*>/g;
-  let wrapMatch;
-  while ((wrapMatch = wrapGapRegex.exec(jsx)) !== null) {
-    const tag = wrapMatch[0];
-    const nameMatch = tag.match(/\bname=["']([^"']+)["']/);
-    fixes.push({
-      type: 'wrapGap',
-      name: nameMatch ? nameMatch[1] : null,
-      value: parseInt(wrapMatch[1])
-    });
-  }
-
-  // Match absolute positioned children with x/y
-  const absRegex = /<Frame[^>]*\bposition=["']absolute["'][^>]*>/g;
-  let match;
-  while ((match = absRegex.exec(jsx)) !== null) {
-    const tag = match[0];
-    const nameMatch = tag.match(/\bname=["']([^"']+)["']/);
-    const xMatch = tag.match(/\bx=\{(\d+)\}/);
-    const yMatch = tag.match(/\by=\{(\d+)\}/);
-
-    if (nameMatch && (xMatch || yMatch)) {
-      fixes.push({
-        type: 'absolutePosition',
-        name: nameMatch[1],
-        x: xMatch ? parseInt(xMatch[1]) : null,
-        y: yMatch ? parseInt(yMatch[1]) : null
-      });
-    }
-  }
-
-  return fixes;
-}
-
-// Helper: Apply post-process fixes to rendered node
-async function applyPostProcessFixes(nodeId, fixes) {
-  const code = `(async function() {
-    const root = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-    if (!root) return { error: 'Node not found' };
-
-    const results = [];
-
-    // Helper to find node by name recursively
-    const findByName = (node, name) => {
-      if (node.name === name) return node;
-      if (node.children) {
-        for (const child of node.children) {
-          const found = findByName(child, name);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    // Helper to find all nodes with layoutWrap
-    const findAllWrap = (node, results = []) => {
-      if (node.layoutWrap === 'WRAP') results.push(node);
-      if (node.children) {
-        for (const child of node.children) {
-          findAllWrap(child, results);
-        }
-      }
-      return results;
-    };
-
-    ${fixes.map((fix, i) => {
-      if (fix.type === 'wrapGap') {
-        if (fix.name) {
-          // Named element - find by name
-          return `
-            // Fix wrapGap for "${fix.name}"
-            const wrapNode${i} = findByName(root, ${JSON.stringify(fix.name)});
-            if (wrapNode${i} && wrapNode${i}.layoutWrap === 'WRAP') {
-              wrapNode${i}.counterAxisSpacing = ${fix.value};
-              results.push({ type: 'wrapGap', name: ${JSON.stringify(fix.name)}, value: ${fix.value}, applied: true });
-            }
-          `;
-        } else {
-          // No name - apply to first wrap element (root or first found)
-          return `
-            // Fix wrapGap on first wrap element
-            const wrapNodes${i} = findAllWrap(root);
-            if (wrapNodes${i}.length > 0) {
-              wrapNodes${i}[0].counterAxisSpacing = ${fix.value};
-              results.push({ type: 'wrapGap', value: ${fix.value}, applied: true });
-            }
-          `;
-        }
-      } else if (fix.type === 'absolutePosition') {
-        return `
-          // Fix absolute position for "${fix.name}"
-          const absNode${i} = findByName(root, ${JSON.stringify(fix.name)});
-          if (absNode${i} && absNode${i}.layoutPositioning === 'ABSOLUTE') {
-            ${fix.x !== null ? `absNode${i}.x = ${fix.x};` : ''}
-            ${fix.y !== null ? `absNode${i}.y = ${fix.y};` : ''}
-            results.push({ type: 'absolutePosition', name: ${JSON.stringify(fix.name)}, x: ${fix.x}, y: ${fix.y}, applied: true });
-          }
-        `;
-      }
-      return '';
-    }).join('\n')}
-
-    return { fixes: results };
-  })()`;
-
-  try {
-    if (isDaemonRunning()) {
-      await daemonExec('eval', { code });
-    } else {
-      figmaEvalSync(code);
-    }
-  } catch (e) {
-    // Silent fail - fixes are best-effort
-  }
-}
-
-// Fast JSX parser for simple frames (daemon-based, 4x faster)
-function parseSimpleJsx(jsx) {
-  // Only handles single Frame element, no nesting
-  const frameMatch = jsx.match(/^<Frame\s+([^>]+)\s*\/?>(?:<\/Frame>)?$/);
-  if (!frameMatch) return null;
-
-  const propsStr = frameMatch[1];
-  const props = {};
-
-  // Parse props: name="X" or name={X} or name='X'
-  const propRegex = /(\w+)=(?:\{([^}]+)\}|"([^"]+)"|'([^']+)')/g;
-  let match;
-  while ((match = propRegex.exec(propsStr)) !== null) {
-    const key = match[1];
-    const value = match[2] || match[3] || match[4];
-    props[key] = value;
-  }
-
-  return props;
-}
-
-function generateFigmaCode(props, x, y) {
-  const name = props.name || 'Frame';
-  const w = parseInt(props.w || props.width || 100);
-  const h = parseInt(props.h || props.height || 100);
-  const bg = props.bg || props.fill;
-  const rounded = parseInt(props.rounded || props.cornerRadius || 0);
-  const opacity = props.opacity ? parseFloat(props.opacity) : null;
-
-  let code = `(function() {
-    const f = figma.createFrame();
-    f.name = ${JSON.stringify(name)};
-    f.resize(${w}, ${h});
-    f.x = ${x};
-    f.y = ${y};`;
-
-  if (rounded > 0) code += `\n    f.cornerRadius = ${rounded};`;
-  if (opacity !== null) code += `\n    f.opacity = ${opacity};`;
-
-  if (bg) {
-    // Parse hex color
-    const hex = bg.replace('#', '');
-    const r = parseInt(hex.substr(0, 2), 16) / 255;
-    const g = parseInt(hex.substr(2, 2), 16) / 255;
-    const b = parseInt(hex.substr(4, 2), 16) / 255;
-    code += `\n    f.fills = [{type:'SOLID', color:{r:${r.toFixed(3)},g:${g.toFixed(3)},b:${b.toFixed(3)}}}];`;
-  }
-
-  code += `\n    return { id: f.id, name: f.name };
-  })()`;
-
-  return code;
-}
-
 program
   .command('render <jsx>')
   .description('Render JSX to Figma (use --as-component to also convert result to a Figma component)')
@@ -363,102 +185,34 @@ program
         posX = getNextFreeX();
       }
 
-      // Check if JSX uses features that require our own renderer:
-      // - var:name syntax for variable binding
-      // - <Slot> elements for component slots
-      // - <Icon> elements
-      // - Ellipse/Circle arc/innerRadius (rings, spinners, donut/pie) — the
-      //   external figma-use renderer silently drops these, so route to ours
-      // - gradient/effects/blur (needs full parser, fast-path doesn't handle them)
-      if (jsx.includes('var:') || jsx.includes('<Slot') || jsx.includes('<Icon') ||
-          /\barc=|\barcStart=|\binnerRadius=/.test(jsx) ||
-          /-gradient\s*\(/i.test(jsx) || jsx.includes('shadow=') || jsx.includes('innerShadow=') ||
-          jsx.includes('blur=') || jsx.includes('bgBlur=') || jsx.includes('image=') ||
-          jsx.includes('noise=') || jsx.includes('texture=') || jsx.includes('progressiveBlur=') ||
-          jsx.includes('glass=') ||
-          jsx.includes('font=') || jsx.includes('italic=') || jsx.includes('justify="between"') ||
-          /weight="(thin|hairline|extralight|ultralight|light|extrabold|ultrabold|black|heavy)"/.test(jsx)) {
-        const { FigmaClient } = await import('../figma-client.js');
-        const client = new FigmaClient();
-        if (options.collection) client.setCollection(options.collection);
-        const code = await client.parseJSX(jsx);
-        const result = await daemonExec('eval', { code });
-        if (result && result.id) {
-          console.log(chalk.green('✓ Rendered: ' + result.id));
-          if (result.name) console.log(chalk.gray('  name: ' + result.name));
-          printUnresolvedVars(result.unresolved);
-          recordCreated([result]);
-          await maybeAsComponent(result.id);
-          if (options.verify) await verifyRendered(result.id);
-          return;
-        }
-      }
-
-      // Try fast path for simple frames
-      if (options.fast || (!jsx.includes('><') && !jsx.includes('</Frame><'))) {
-        const simpleProps = parseSimpleJsx(jsx.trim());
-        if (simpleProps && isDaemonRunning()) {
-          const code = generateFigmaCode(simpleProps, posX || 0, posY);
-          const result = await daemonExec('eval', { code });
-          if (result && result.id) {
-            console.log(chalk.green('✓ Rendered: ' + result.id));
-            if (result.name) console.log(chalk.gray('  name: ' + result.name));
-            recordCreated([result]);
-            await maybeAsComponent(result.id);
-            if (options.verify) await verifyRendered(result.id);
-            return;
-          }
-        }
-      }
-
-      // Extract props that figma-use doesn't handle correctly
-      const postProcessFixes = extractPostProcessFixes(jsx);
-
-      // Check if we're in Safe Mode (plugin only, no CDP)
-      let useDaemonRender = false;
-      try {
-        const healthToken = getDaemonToken();
-        const healthHeader = healthToken ? ` -H "X-Daemon-Token: ${healthToken}"` : '';
-        const healthRes = execSync(`curl -s${healthHeader} http://127.0.0.1:${DAEMON_PORT}/health`, { encoding: 'utf8', timeout: 2000 });
-        const health = JSON.parse(healthRes);
-        useDaemonRender = health.plugin && !health.cdp; // Safe Mode
-      } catch {}
-
-      let result;
-      if (useDaemonRender) {
-        // Safe Mode: use daemon render (works via plugin)
-        result = await daemonExec('render', { jsx });
-        // Position the frame after creation
-        if (result && result.id && (posX !== undefined || posY !== undefined)) {
-          await fastEval(`(async () => {
-            const n = await figma.getNodeByIdAsync("${result.id}");
-            if (n) { ${posX !== undefined ? `n.x = ${posX};` : ''} n.y = ${posY}; }
-          })()`);
-        }
-      } else {
-        // Yolo Mode: use figma-use (full JSX support, faster)
-        let cmd = 'figma-use render --stdin --json';
-        if (options.parent) cmd += ` --parent "${options.parent}"`;
-        if (posX !== undefined) cmd += ` --x ${posX}`;
-        cmd += ` --y ${posY}`;
-
-        const output = execSync(cmd, {
-          input: jsx,
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-          timeout: 60000
-        });
-        result = JSON.parse(output.trim());
+      // ONE render path.
+      //
+      // `render` used to pick between three implementations — this parser, a
+      // "fast path" for simple frames, and the external `figma-use` binary —
+      // while `render-batch` always used this parser. The same JSX therefore
+      // produced different auto-layout depending on which branch it fell into
+      // (different flex default, different alignment defaults, no min/max), and
+      // the external branch cost a process spawn per render.
+      //
+      // Everything now goes through parseJSX: one behaviour to reason about,
+      // one place to fix, and no subprocess. See tests/live/parity-harness.mjs.
+      const { FigmaClient } = await import('../figma-client.js');
+      const client = new FigmaClient();
+      if (options.collection) client.setCollection(options.collection);
+      const code = await client.parseJSX(jsx, {
+        x: posX,
+        y: options.y !== undefined ? posY : undefined,
+        parent: options.parent,
+      });
+      const result = await daemonExec('eval', { code });
+      if (!result || !result.id) {
+        throw new Error('Render returned no node id');
       }
 
       console.log(chalk.green('✓ Rendered: ' + result.id));
       if (result.name) console.log(chalk.gray('  name: ' + result.name));
+      printUnresolvedVars(result.unresolved);
       recordCreated([result]);
-
-      // Post-process to fix properties figma-use doesn't set correctly
-      if (postProcessFixes.length > 0) {
-        await applyPostProcessFixes(result.id, postProcessFixes);
-      }
 
       await maybeAsComponent(result.id);
       if (options.verify) await verifyRendered(result.id);

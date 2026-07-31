@@ -39,6 +39,72 @@ const SEMANTIC_VAR_DEFAULTS = {
   ring: { r: 0.094, g: 0.094, b: 0.106 },
 };
 
+/**
+ * Default layout direction for a Frame that doesn't say `flex`.
+ *
+ * The root path defaulted to 'col' and the nested path to 'row', so the SAME
+ * `<Frame>` stacked its children vertically at the top level and laid them out
+ * horizontally one level down. Direction silently depending on nesting depth is
+ * the worst of the auto-layout footguns; both paths now read this constant.
+ * 'col' is the safe default: children stack instead of colliding sideways.
+ */
+export const DEFAULT_FLEX = 'col';
+
+const ALIGN_MAP = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' };
+const JUSTIFY_MAP = { start: 'MIN', center: 'CENTER', end: 'MAX', between: 'SPACE_BETWEEN' };
+
+/**
+ * Resolve auto-layout alignment for ONE frame, at ANY nesting depth.
+ *
+ * Depth must never change layout. The root and nested code paths used to
+ * default differently (root: MIN/MIN, nested: CENTER/CENTER via a flat
+ * `|| 'CENTER'`), so the same JSX laid out differently depending on how deep
+ * it sat — the single biggest source of "auto-layout is behaving weirdly".
+ *
+ * The one deliberate asymmetry is kept, and now applies everywhere:
+ * a ROW centers its cross axis, because vertically centering icon+text in a
+ * row is almost always what's wanted. Columns read top-left, like Figma.
+ *
+ * A frame with NO `flex` renders as VERTICAL (see layoutMode), so it must be
+ * treated as a column here too — treating it as a row is what made plain
+ * wrapper frames silently center their children.
+ */
+export function resolveAlign(flex, item = {}) {
+  const isRow = flex === 'row' || flex === 'horizontal';
+  const align = item.items || item.align || (isRow ? 'center' : 'start');
+  const justify = item.justify || 'start';
+  return {
+    alignVal: ALIGN_MAP[align] || (isRow ? 'CENTER' : 'MIN'),
+    justifyVal: JUSTIFY_MAP[justify] || ALIGN_MAP[justify] || 'MIN',
+  };
+}
+
+/**
+ * `minW`/`maxW`/`minH`/`maxH` were accepted as known props but never applied —
+ * a silent no-op, the same class of footgun `stretch` used to be. Figma exposes
+ * them as real constraints on auto-layout nodes, so emit them.
+ *
+ * Applied AFTER sizing so the clamp wins over FILL/HUG, guarded per property
+ * because Figma throws on unsupported node types instead of ignoring the set.
+ */
+export function generateMinMaxCode(varName, item = {}) {
+  const num = (v) => {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(String(v).replace(/px$/, ''));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const pairs = [
+    ['minWidth', num(item.minW !== undefined ? item.minW : item.minWidth)],
+    ['maxWidth', num(item.maxW !== undefined ? item.maxW : item.maxWidth)],
+    ['minHeight', num(item.minH !== undefined ? item.minH : item.minHeight)],
+    ['maxHeight', num(item.maxH !== undefined ? item.maxH : item.maxHeight)],
+  ].filter(([, v]) => v !== null);
+  if (!pairs.length) return '';
+  return pairs
+    .map(([prop, v]) => `try { ${varName}.${prop} = ${v}; } catch (e) {}`)
+    .join('\n        ');
+}
+
 export class FigmaClient {
   constructor() {
     this.ws = null;
@@ -501,13 +567,11 @@ export class FigmaClient {
       const bg = props.bg || props.fill || null;
       const stroke = props.stroke || null;
       const rounded = props.rounded || props.radius || 0;
-      const flex = props.flex || 'col';
+      const flex = props.flex || DEFAULT_FLEX;
       const itemGap = props.gap || 0;
       const p = props.p || props.padding || 0;
       const px = props.px || p;
       const py = props.py || p;
-      const align = props.items || props.align || 'MIN';
-      const justify = props.justify || 'MIN';
       const wrap = props.wrap === true || props.wrap === 'true';
       const wrapGap = Number(props.wrapGap || props.rowGap || props.counterAxisSpacing || 0);
       const hug = props.hug || '';
@@ -522,10 +586,7 @@ export class FigmaClient {
       const hugHeight = hug === 'both' || hug === 'h' || hug === 'height';
       const clip = props.clip === 'true' || props.clip === true;
 
-      const alignMap = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' };
-      const justifyMap = { start: 'MIN', center: 'CENTER', end: 'MAX', between: 'SPACE_BETWEEN' };
-      const alignVal = alignMap[align] || 'MIN';
-      const justifyVal = justifyMap[justify] || alignMap[justify] || 'MIN';
+      const { alignVal, justifyVal } = resolveAlign(flex, props);
 
       const fillCode = this.generateFillCode(bg, `f${frameIdx}`);
       const strokeCode = stroke ? this.generateStrokeCode(stroke, `f${frameIdx}`, props.strokeWidth || 1, props.strokeAlign || null) : { code: '' };
@@ -555,6 +616,7 @@ export class FigmaClient {
         f${frameIdx}.primaryAxisSizingMode = '${flex === 'col' ? (hugHeight || !hasExplicitHeight ? 'AUTO' : 'FIXED') : (hugWidth || !hasExplicitWidth ? 'AUTO' : 'FIXED')}';
         f${frameIdx}.counterAxisSizingMode = '${flex === 'col' ? (hugWidth || !hasExplicitWidth ? 'AUTO' : 'FIXED') : (hugHeight || !hasExplicitHeight ? 'AUTO' : 'FIXED')}';
         ${wrap && flex === 'row' && wrapGap > 0 ? `f${frameIdx}.counterAxisSpacing = ${wrapGap};` : ''}`}
+        ${generateMinMaxCode(`f${frameIdx}`, props)}
         f${frameIdx}.clipsContent = ${clip};
         ${opacity !== null ? `f${frameIdx}.opacity = ${opacity};` : ''}
         ${visible === false ? `f${frameIdx}.visible = false;` : ''}
@@ -600,7 +662,15 @@ export class FigmaClient {
   /**
    * Parse JSX-like syntax to Figma Plugin API code
    */
-  async parseJSX(jsx) {
+  /**
+   * @param {string} jsx
+   * @param {{x?:number,y?:number,parent?:string}} [opts] CLI-level placement.
+   *   These used to be reachable only through the external `figma-use` binary,
+   *   which is why plain `render` had to delegate to it (and inherited a second,
+   *   divergent auto-layout implementation). Supporting them here is what lets
+   *   every render go through ONE code path.
+   */
+  async parseJSX(jsx, opts = {}) {
     // Find opening Frame tag
     const openMatch = jsx.match(/<Frame\s+([^>]*)>/);
     if (!openMatch) {
@@ -631,7 +701,7 @@ export class FigmaClient {
     const iconSvgMap = await this.prefetchIconSvgs(childElements);
 
     // Generate code
-    return this.generateCode(props, childElements, iconSvgMap);
+    return this.generateCode(props, childElements, iconSvgMap, opts);
   }
 
   /**
@@ -1258,6 +1328,7 @@ export class FigmaClient {
         if (${parentVar}.layoutMode === 'VERTICAL' && (${parentVar}.counterAxisSizingMode === 'FIXED' || ${parentVar}.primaryAxisSizingMode === 'FIXED')) {
           try { el${idx}.layoutSizingHorizontal = 'FILL'; el${idx}.textAutoResize = 'HEIGHT'; } catch(e) {}
         }` : ''}
+        ${generateMinMaxCode(`el${idx}`, item)}
         ${tTruncate || tMaxLines !== null ? `try { el${idx}.textTruncation = 'ENDING'; } catch(e) {}` : ''}
         ${tMaxLines !== null ? `try { el${idx}.maxLines = ${tMaxLines}; } catch(e) {}` : ''}`;
         } else if (item._type === 'frame') {
@@ -1268,7 +1339,7 @@ export class FigmaClient {
           const fStrokeWidth = item.strokeWidth || 1;
           const fStrokeAlign = item.strokeAlign || null;
           const fRounded = item.rounded || item.radius || 0;
-          const fFlex = item.flex || 'row';
+          const fFlex = item.flex || DEFAULT_FLEX;
           const fGap = item.gap || 0;
           // Default padding is 0 (only set padding when explicitly specified)
           const fP = item.p !== undefined ? item.p : (item.padding !== undefined ? item.padding : null);
@@ -1285,12 +1356,8 @@ export class FigmaClient {
           // centering icon+text in a row/cell is almost always what's wanted.
           // Explicit justify=/items= always win. This fixes the recurring
           // "title/cell content is centered / avatars are staggered" papercut.
-          const isColFrame = fFlex === 'col' || fFlex === 'column';
-          // Read `items` too (not just `align`) — the root paths accept both,
-          // nested previously ignored `items` (it only worked by coincidence
-          // when the default matched).
-          const fAlign = item.items || item.align || (isColFrame ? 'start' : 'center');
-          const fJustify = item.justify || 'start';
+          // Resolved by the shared helper so a frame lays out identically
+          // whether it is the root or nested ten levels deep.
           // Clip defaults to false for nested frames (overflow="hidden" also sets clip)
           const fClip = item.clip === 'true' || item.clip === true || item.overflow === 'hidden';
 
@@ -1348,11 +1415,7 @@ export class FigmaClient {
           const fWidth = numericW !== undefined ? numericW : 100;
           const fHeight = numericH !== undefined ? numericH : 40;
 
-          // Map align/justify to Figma values
-          const alignMap = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' };
-          const justifyMap = { start: 'MIN', center: 'CENTER', end: 'MAX', between: 'SPACE_BETWEEN' };
-          const fAlignVal = alignMap[fAlign] || 'CENTER';
-          const fJustifyVal = justifyMap[fJustify] || alignMap[fJustify] || 'CENTER';
+          const { alignVal: fAlignVal, justifyVal: fJustifyVal } = resolveAlign(fFlex, item);
 
           const nestedChildren = item._children ? this.generateChildrenCode(item._children, `el${idx}`, fFlex, ctx) : '';
           const frameFillCode = fBg ? this.generateFillCode(fBg, `el${idx}`) : { code: `el${idx}.fills = [];`, usesVars: false };
@@ -1423,6 +1486,7 @@ export class FigmaClient {
         ${parentVar}.appendChild(el${idx});
         ${parentIsNone ? '' : `el${idx}.layoutSizingHorizontal = '${hSizing}';
         el${idx}.layoutSizingVertical = '${vSizing}';`}
+        ${generateMinMaxCode(`el${idx}`, item)}
         ${pctW !== null || pctH !== null ? `try {
           const _pp = el${idx}.parent;
           if (_pp && 'width' in _pp) {
@@ -1682,7 +1746,7 @@ export class FigmaClient {
       }).join('\n');
   }
 
-  generateCode(props, children, iconSvgMap = {}) {
+  generateCode(props, children, iconSvgMap = {}, opts = {}) {
     const name = props.name || 'Frame';
     const rawWidth = props.w || props.width;
     const rawHeight = props.h || props.height;
@@ -1707,16 +1771,18 @@ export class FigmaClient {
     const strokeWidth = props.strokeWidth || 1;
     const strokeAlignProp = props.strokeAlign || null;
     const rounded = props.rounded || props.radius || 0;
-    const flex = props.flex || 'col';
+    const flex = props.flex || DEFAULT_FLEX;
     const gap = props.gap || 0;
     const p = props.p || props.padding || 0;
     const px = props.px || p;
     const py = props.py || p;
-    const align = props.items || props.align || 'MIN';
-    const justify = props.justify || 'MIN';
-    const useSmartPos = props.x === undefined;
-    const explicitX = props.x || 0;
-    const y = props.y || 0;
+    // CLI-supplied -x/-y win over JSX props; `--no-smart-position` reaches us
+    // as an explicit x so the frame lands exactly where the caller asked.
+    const cliX = opts.x !== undefined && opts.x !== null ? Number(opts.x) : undefined;
+    const cliY = opts.y !== undefined && opts.y !== null ? Number(opts.y) : undefined;
+    const useSmartPos = cliX === undefined && props.x === undefined;
+    const explicitX = cliX !== undefined ? cliX : (props.x || 0);
+    const y = cliY !== undefined ? cliY : (props.y || 0);
     // New: clip defaults to false (don't clip auto-layout overflow). overflow="hidden" also sets clip.
     const clip = props.clip === 'true' || props.clip === true || props.overflow === 'hidden';
     // Generic node-level visuals — apply on the root frame too (single-render path)
@@ -1748,11 +1814,7 @@ export class FigmaClient {
 
     const childCode = this.generateChildrenCode(children, 'frame', flex, { counter: { value: 0 }, prefix: '', iconSvgMap });
 
-    // Map align/justify to Figma values for root frame
-    const alignMap = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' };
-    const justifyMap = { start: 'MIN', center: 'CENTER', end: 'MAX', between: 'SPACE_BETWEEN' };
-    const alignVal = alignMap[align] || 'MIN';
-    const justifyVal = justifyMap[justify] || alignMap[justify] || 'MIN';
+    const { alignVal, justifyVal } = resolveAlign(flex, props);
 
     // Smart positioning code
     const smartPosCode = useSmartPos ? `
@@ -1894,12 +1956,21 @@ export class FigmaClient {
         ${fillWidth ? `frame.layoutSizingHorizontal = 'FILL';` : ''}
         ${fillHeight ? `frame.layoutSizingVertical = 'FILL';` : ''}
         ${wrap && flex === 'row' && wrapGap > 0 ? `frame.counterAxisSpacing = ${wrapGap};` : ''}`}
+        ${generateMinMaxCode('frame', props)}
         frame.clipsContent = ${clip};
         ${opacity !== null ? `frame.opacity = ${opacity};` : ''}
         ${visible === false ? `frame.visible = false;` : ''}
         ${locked === true ? `frame.locked = true;` : ''}
 
         ${childCode}
+
+        ${opts.parent ? `
+        // --parent: re-home the finished frame. Done AFTER the children exist
+        // so an auto-layout parent measures real content, not the seed size.
+        const __p = await figma.getNodeByIdAsync(${JSON.stringify(String(opts.parent))});
+        if (!__p) throw new Error('Parent not found: ' + ${JSON.stringify(String(opts.parent))});
+        if (!('appendChild' in __p)) throw new Error('Parent cannot contain children: ' + __p.type);
+        __p.appendChild(frame);` : ''}
 
         // Surface unresolved var: references like the batch path does, so a
         // themed render that fell back to grey is visible to the caller.

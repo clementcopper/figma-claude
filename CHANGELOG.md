@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Fixed — auto-layout
+
+The recurring "auto-layout is behaving weirdly" reports had one root cause:
+identical JSX was laid out by **different code** depending on where it sat and
+which command created it. `render` chose between three implementations (the JSX
+parser, a "fast path", and the external `figma-use` binary), `render-batch`
+always used the parser, and the parser's root and nested branches disagreed with
+each other. A live harness that renders the same JSX through both commands and
+diffs the resulting node trees by numbers found **9 of 10 cases differing**.
+
+- **A Frame without `flex` is now a column at every depth.** It used to be a
+  column at the root and a **row** when nested — the layout direction silently
+  flipped with nesting depth.
+- **Nested frames no longer center their children by accident.** A frame without
+  an explicit `flex` was treated as a row for alignment, so plain wrapper frames
+  set `counterAxisAlignItems = CENTER` and quietly centered titles and cells.
+  Alignment now resolves through one shared helper: rows center their cross axis
+  (icon+text in a row), everything else reads top-left, at every depth.
+- **`minW` / `maxW` / `minH` / `maxH` actually work.** They were in the
+  known-prop list but were never emitted — a silent no-op, like `stretch` before
+  it. They now apply to root frames, nested frames and text, guarded per
+  property so an unsupported node type can't abort a render.
+
+### Changed
+
+- **One render path.** `render` no longer shells out to the `figma-use` binary
+  and no longer has a separate fast path; everything goes through `parseJSX`,
+  which gained the `-x` / `-y` / `--parent` placement options that previously
+  only the external renderer supported. One behaviour to reason about, one place
+  to fix, and no process spawn per render: **~2.5× faster** (527ms → 206ms per
+  frame, measured over the harness's 10 cases).
+
 ### New
 
 - **Variable-collection roundtrip.** `figma-cli extract` now captures the file's real variable collections , every variable with its true name, all its modes (light/dark, high-contrast, colour-blind, whatever the system defines) and its alias chains , into a `## Variables` section plus the machine-readable JSON token block. This is the authoritative token layer, not the palette sampled from fills. `figma-cli import` recreates those collections faithfully (modes and aliases included) in any other file, closing the variables roundtrip. Captured in bounded chunks so large systems (thousands of variables) don't time out, and aliases to library/remote variables resolve to their real names.

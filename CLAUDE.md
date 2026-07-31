@@ -414,7 +414,11 @@ automatically when they differ. Verify anytime with `figma-cli eval 'figma.root.
 
 ```jsx
 // Layout
-flex="row"              // or "col"
+flex="row"              // or "col" — DEFAULT is "col", at every nesting depth.
+                        //   A Frame lays out identically whether it is the root
+                        //   or nested ten levels deep. Cross-axis alignment:
+                        //   rows center (icon+text), cols read top-left.
+                        //   Explicit justify=/items= always win.
 flex="none"             // no auto-layout: children OVERLAP at their x/y (z-stack)
                         //   for spinners (ring+arc), badges on avatars, layered art
 gap={16}                // spacing
@@ -429,7 +433,7 @@ items="center"          // cross axis: start, center, end
 // Size
 w={320} h={200}         // fixed
 w="fill" h="fill"       // fill parent
-minW={100} maxW={500} minH={50} maxH={300}
+minW={100} maxW={500} minH={50} maxH={300}   // real constraints, clamp FILL/HUG
 
 // Appearance
 bg="#fff"               // fill color
