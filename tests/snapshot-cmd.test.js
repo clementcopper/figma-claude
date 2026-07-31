@@ -8,11 +8,13 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildSnapshot, stableStringify, diffSnapshots, SNAPSHOT_VERSION, sameScope } from '../src/lib/design-snapshot.js';
 import { scopeLabelForTest } from '../src/commands/snapshot.js';
 
-const CLI = resolve(import.meta.dirname, '../src/index.js');
+// import.meta.dirname only exists from Node 20.11 on; package.json says >=18.
+const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '../src/index.js');
 
 /** Run the CLI, returning { status, out }. Never throws on a non-zero exit. */
 function runCli(args, cwd) {
