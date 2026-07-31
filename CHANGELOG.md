@@ -51,6 +51,17 @@ diffs the resulting node trees by numbers found **9 of 10 cases differing**.
 
 ### Changed
 
+- **The CLI loads only the command you invoked.** All 25 command modules were
+  imported on every run, and startup dominated: `eval` took ~149ms end to end,
+  of which ~108ms was process start plus module load and only ~40ms the actual
+  Figma roundtrip. Startup is now **108ms → 70ms**, so `eval` runs in ~102ms —
+  about a third off every command. Anything unrecognised (`--help`, an unknown
+  command, no arguments) still loads everything, so help output and "did you
+  mean" suggestions stay complete. A few commands forward into another module's
+  command (`import` hands DESIGN.md work to `tokens import-design-md`); those
+  dependencies are declared, and a test regenerates the map from the real
+  Commander tree and fails on a missing command, a wrong module or an undeclared
+  forward.
 - **`node` and `analyze` stopped shelling out.** `node tree/bindings/to-component/delete`,
   `lint` and `analyze colors/typography/spacing/clusters` each carried TWO
   implementations: a native one used in Safe Mode, and an `npx figma-use` spawn
