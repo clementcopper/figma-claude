@@ -390,7 +390,9 @@ figma-cli set fill "var:primary"
 
 ## Connection Modes
 
-**Yolo Mode (Recommended):** `figma-cli connect` - Patches Figma once, fully automatic.
+**Yolo Mode (Recommended):** `figma-cli connect` - Patches Figma Desktop once, fully automatic.
+
+**Browser Mode (no app modification):** `figma-cli connect --browser` - Drives Figma running in a **normal Chromium browser** via CDP; the local Figma app is **never patched or modified**. It launches a Chrome/Edge/Brave/Chromium window with remote debugging enabled (dedicated persistent profile, so your Figma login and everyday browser profile are untouched), waits for you to open a design file there, then runs the same fast CDP path as Yolo. Use this when patching the desktop app is undesirable (compliance, no "App Management" permission, locked-down machine). Note: expects Figma Desktop not to be occupying the debug port (9222) at the same time.
 
 **Safe Mode:** `figma-cli connect --safe` - Plugin-based, no Figma modification. Then: Plugins > Development > FigCli.
 
@@ -732,8 +734,9 @@ mismatch instead of letting Figma invent bogus "Property 1" axes.
 ## Onboarding
 
 1. Run `npm install` silently
-2. Ask connection mode (Yolo or Safe)
-3. Run `figma-cli connect` (or `--safe`)
+2. Ask connection mode (Yolo, Browser, or Safe). Pick **Browser** if the user
+   doesn't want the local Figma app modified/patched.
+3. Run `figma-cli connect` (or `--browser`, or `--safe`)
 4. When connected, say: "Connected! What would you like to create?"
 
 If permission error (macOS 13+): System Settings > Privacy & Security > App Management > enable your terminal (Full Disk Access alone does not allow patching Figma). Or use Safe Mode: `figma-cli connect --safe`

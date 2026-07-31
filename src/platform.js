@@ -73,6 +73,101 @@ export function startFigmaApp(figmaPath, port) {
   }
 }
 
+// --- Browser Mode (drive Figma via CDP in a normal browser) ---
+//
+// Browser Mode is the "never touch the local app" alternative to the Yolo
+// patch. Instead of modifying Figma Desktop's app.asar to re-enable the
+// remote-debugging port, we launch a Chromium-based browser the user already
+// has, with remote debugging turned on. The existing CDP client (figma-client.js)
+// then discovers the figma.com design tab and drives it exactly as it would the
+// desktop app — same Runtime.evaluate path, no binary modification.
+//
+// We use a dedicated persistent profile dir so (a) the user's Figma login
+// survives across sessions and (b) their everyday browser profile is left
+// untouched (Chrome refuses --remote-debugging-port on an already-running
+// default profile, so a separate profile is required anyway).
+
+const MAC_BROWSERS = [
+  { name: 'Google Chrome', path: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' },
+  { name: 'Microsoft Edge', path: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge' },
+  { name: 'Brave', path: '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser' },
+  { name: 'Chromium', path: '/Applications/Chromium.app/Contents/MacOS/Chromium' }
+];
+
+function detectBrowserMac() {
+  for (const b of MAC_BROWSERS) if (existsSync(b.path)) return b;
+  return null;
+}
+
+function detectBrowserWindows() {
+  const pf = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+  const pfx86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+  const lad = process.env.LOCALAPPDATA || '';
+  const candidates = [
+    ['Google Chrome', join(pf, 'Google', 'Chrome', 'Application', 'chrome.exe')],
+    ['Google Chrome', join(pfx86, 'Google', 'Chrome', 'Application', 'chrome.exe')],
+    ['Google Chrome', lad && join(lad, 'Google', 'Chrome', 'Application', 'chrome.exe')],
+    ['Microsoft Edge', join(pfx86, 'Microsoft', 'Edge', 'Application', 'msedge.exe')],
+    ['Brave', join(pf, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe')]
+  ];
+  for (const [name, p] of candidates) if (p && existsSync(p)) return { name, path: p };
+  return null;
+}
+
+function detectBrowserLinux() {
+  const candidates = [
+    ['Google Chrome', 'google-chrome'],
+    ['Google Chrome', 'google-chrome-stable'],
+    ['Chromium', 'chromium'],
+    ['Chromium', 'chromium-browser'],
+    ['Microsoft Edge', 'microsoft-edge'],
+    ['Brave', 'brave-browser']
+  ];
+  for (const [name, bin] of candidates) {
+    try {
+      const p = execSync(`command -v ${bin} 2>/dev/null || true`, { encoding: 'utf8', stdio: 'pipe' }).trim();
+      if (p) return { name, path: p };
+    } catch {}
+  }
+  return null;
+}
+
+// Detect an installed Chromium-family browser, or null if none is found.
+export function detectBrowser() {
+  if (PLATFORM === 'darwin') return detectBrowserMac();
+  if (PLATFORM === 'win32') return detectBrowserWindows();
+  return detectBrowserLinux();
+}
+
+// The remote-debugging flags shared by the launcher and the printed command.
+// Kept as an ordered array so the exact invocation is deterministic + testable.
+// --remote-allow-origins=* is required for CDP WebSocket connects on Chrome 111+.
+export function browserDebugArgs(port = 9222, profileDir, url = 'https://www.figma.com') {
+  return [
+    `--remote-debugging-port=${port}`,
+    '--remote-allow-origins=*',
+    `--user-data-dir=${profileDir}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    url
+  ];
+}
+
+// Launch the browser with remote debugging enabled (detached).
+export function startBrowserApp(browserPath, port, profileDir, url = 'https://www.figma.com') {
+  const args = browserDebugArgs(port, profileDir, url);
+  spawn(browserPath, args, { detached: true, stdio: 'ignore' }).unref();
+}
+
+// A copy-pasteable launch command for the setup instructions. Quotes any
+// argument containing whitespace so it survives a shell paste.
+export function getBrowserCommand(port = 9222, profileDir, url = 'https://www.figma.com') {
+  const browser = detectBrowser();
+  const bin = browser ? browser.path : (PLATFORM === 'win32' ? 'chrome.exe' : 'google-chrome');
+  const quote = (s) => (/\s/.test(s) ? `"${s}"` : s);
+  return [bin, ...browserDebugArgs(port, profileDir, url)].map(quote).join(' ');
+}
+
 // --- Kill Figma ---
 export function killFigmaApp() {
   try {
