@@ -400,6 +400,14 @@ Figma plugins are slow to build and tied to one UI. AI assistants are great at *
 
 ---
 
+## Security
+
+What each connection mode touches (Yolo patches one string in Figma's `app.asar`, Browser and Safe Mode leave the app alone), what the local daemon does, and where credentials live: [SECURITY.md](SECURITY.md). That is also the page to hand to whoever approves tools at your company.
+
+Found a vulnerability? Report it privately via [GitHub private vulnerability reporting](https://github.com/silships/figma-cli/security/advisories/new) or sil@intodesignsystems.com, not in a public issue.
+
+---
+
 ## Who built this
 
 **Sil Bormüller**, founder of [Into Design Systems](https://www.intodesignsystems.com/), the conference and training platform for design system practitioners.
