@@ -1,13 +1,14 @@
 # figma-cli
 
 <p align="center">
-  <a href="https://intodesignsystems.com"><img src="https://img.shields.io/badge/Into_Design_Systems-intodesignsystems.com-ff6b35" alt="Into Design Systems"></a>
+  <a href="https://www.intodesignsystems.com/"><img src="https://img.shields.io/badge/Into_Design_Systems-intodesignsystems.com-ff6b35" alt="Into Design Systems"></a>
   <img src="https://img.shields.io/badge/Figma-Desktop-purple" alt="Figma Desktop">
   <img src="https://img.shields.io/badge/No_API_Key-Required-green" alt="No API Key">
   <img src="https://img.shields.io/badge/No_MCP-Required-green" alt="No MCP Required">
   <img src="https://img.shields.io/badge/No_Rate_Limits-✓-green" alt="No Rate Limits">
   <img src="https://img.shields.io/badge/Works_in-Claude_Code-D97757?logo=claude&logoColor=white" alt="Works in Claude Code">
   <a href="#using-cursor"><img src="https://img.shields.io/badge/Works_in-Cursor-000000?logo=cursor&logoColor=white" alt="Works in Cursor"></a>
+  <a href="https://www.linkedin.com/in/silbormueller"><img src="https://img.shields.io/badge/Built_by-Sil_Bormüller-0A66C2?logo=linkedin&logoColor=white" alt="Built by Sil Bormüller"></a>
 </p>
 
 <p align="center">
@@ -399,6 +400,18 @@ Figma plugins are slow to build and tied to one UI. AI assistants are great at *
 
 ---
 
+## Who built this
+
+**Sil Bormüller**, founder of [Into Design Systems](https://www.intodesignsystems.com/), the conference and training platform for design system practitioners.
+
+- LinkedIn: [linkedin.com/in/silbormueller](https://www.linkedin.com/in/silbormueller)
+- Personal site: [silbormueller.com](https://www.silbormueller.com/)
+- Into Design Systems: [intodesignsystems.com](https://www.intodesignsystems.com/)
+- Newsletter with tutorials: [intodesignsystems.substack.com](https://intodesignsystems.substack.com/)
+- GitHub: [@silships](https://github.com/silships)
+
+---
+
 ## License
 
-MIT. Built by [Sil Bormüller](https://intodesignsystems.com).
+MIT. Built by [Sil Bormüller](https://www.linkedin.com/in/silbormueller).
