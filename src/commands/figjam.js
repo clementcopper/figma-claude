@@ -101,7 +101,7 @@ program
         console.log(chalk.red('✗ Export failed: ' + e.message));
       }
     } else {
-      let cmd = 'npx figma-use export jsx';
+      let cmd = 'npx --yes figma-use export jsx';
       if (nodeId) cmd += ` "${nodeId}"`;
       if (options.pretty) cmd += ' --pretty';
       if (options.output) {
@@ -168,7 +168,7 @@ program
         console.log(chalk.red('✗ Export failed: ' + e.message));
       }
     } else {
-      let cmd = 'npx figma-use export storybook';
+      let cmd = 'npx --yes figma-use export storybook';
       if (nodeId) cmd += ` "${nodeId}"`;
       if (options.output) {
         cmd += ` > "${options.output}"`;

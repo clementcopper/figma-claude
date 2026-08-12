@@ -1,6 +1,6 @@
 {
   "name": "figma-ds-cli",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "CLI for managing Figma design systems. Create variables, components, and more. No API key required.",
   "author": "Sil Bormüller",
   "license": "MIT",
@@ -40,14 +40,10 @@
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
-    "figma-use": "^0.13.3",
     "jpeg-js": "^0.4.4",
     "ora": "^8.0.0",
     "pngjs": "^7.0.0",
     "ws": "^8.16.0",
     "yaml": "^2.9.0"
-  },
-  "overrides": {
-    "sharp": "^0.35.0"
   }
 }

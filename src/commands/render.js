@@ -447,12 +447,15 @@ program
 
     // 7. figma-use availability — only FigJam export still shells out to it.
     // render/node/analyze all run natively through the daemon now, so its
-    // absence no longer limits the commands people actually hit here.
+    // absence no longer limits the commands people actually hit here. It is
+    // deliberately NOT a dependency: it drags in sharp, whose libvips CVEs
+    // then show up in every user's `npm audit`. `npx --yes` fetches it the
+    // first time a FigJam export actually needs it.
     try {
       execSync('which figma-use 2>/dev/null || where figma-use 2>nul', { encoding: 'utf8' });
       console.log(chalk.green('✓ figma-use installed (used by FigJam export)'));
     } catch {
-      console.log(chalk.yellow('○ figma-use not in PATH (only FigJam export needs it)'));
+      console.log(chalk.yellow('○ figma-use not in PATH (FigJam export fetches it via npx)'));
     }
 
     // 8. Connection test
