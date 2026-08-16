@@ -15,6 +15,13 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - Component property names carry a `#uniqueId` suffix (`ButtonText#0:1`); never match on the bare name.
 - `frame.isSlot = true` via `eval` does nothing — only `slot convert` produces a real slot.
 - Load fonts with `figma.loadFontAsync` before setting `characters`.
+- `componentPropertyDefinitions` throws on a **variant** component — read it from the ComponentSet instead.
+- `instance.setProperties({'Text#…': …})` only changes text whose node carries `componentPropertyReferences.characters`. Where a design system sets its texts as plain overrides, the property exists but does nothing — write `instance.children[…].characters` directly.
+
+## `render` bugs found in 2.1.2 (workarounds)
+
+- **Root `w="fill"` fails**: `render '<Frame w="fill" …>'` dies with `ReferenceError: frame is not defined`, with and without `--parent`. Render the root at a fixed `w={…}` and set `layoutSizingHorizontal = 'FILL'` afterwards.
+- **`<Rectangle>` as a child fails** with the same `frame is not defined`, hex or `var:` fill alike. Use `<Frame w="fill" h={1} bg="…" />` for dividers.
 
 ## Process
 
