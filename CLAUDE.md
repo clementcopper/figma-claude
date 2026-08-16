@@ -2,7 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Building something in Figma? Read `docs/FIGMA-USAGE.md` first** — the Quick Reference table, the JSX rules, tokens, slots, motion and the pitfalls that make renders come out wrong all live there. This file is about working on the CLI itself.
+**Building something in Figma? Pull the topic you need, don't read the whole guide:**
+
+```bash
+node src/index.js docs                 # list the 19 topics with their token cost
+node src/index.js docs jsx-syntax      # ~930 tok instead of the guide's ~10,200
+node src/index.js docs critical-pitfalls
+```
+
+`docs/FIGMA-USAGE.md` holds all of it — Quick Reference, JSX rules, tokens, slots, motion, pitfalls — but reading it whole costs ~10k tokens before any work starts. `docs <topic>` prints one section. This file is about working on the CLI itself.
 
 ## Development Commands
 
@@ -122,7 +130,7 @@ Expect conflicts only in `CLAUDE.md` (ours) and possibly `package.json` (`bin`/`
 
 | Doc | Contents |
 |---|---|
-| `docs/FIGMA-USAGE.md` | usage guide: Quick Reference, JSX syntax, key rules, critical pitfalls |
+| `docs/FIGMA-USAGE.md` | usage guide: Quick Reference, JSX syntax, key rules, critical pitfalls. Read it section-wise with `docs <topic>` |
 | `REFERENCE.md` | full command reference |
 | `CHANGELOG.md` | why behavior changed — the auto-layout section explains most legacy weirdness |
 | `.claude/MEMORY.md`, `.claude/bugs-and-fixes.md`, `.claude/figma-plugin-api.md` | parser internals, past bugs with root causes, Plugin API notes |
