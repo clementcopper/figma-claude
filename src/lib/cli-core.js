@@ -355,7 +355,7 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
     return result.result;
   } catch (e) {
     if (e.name === 'TimeoutError' || e.message.includes('timeout')) {
-      throw new Error(`Execution timeout (${timeoutMs/1000}s). Try reconnecting: node src/index.js connect`);
+      throw new Error(`Execution timeout (${timeoutMs/1000}s). Try: node src/index.js daemon restart`);
     }
     throw e;
   }
