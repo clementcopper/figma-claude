@@ -18,16 +18,18 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - `componentPropertyDefinitions` throws on a **variant** component — read it from the ComponentSet instead.
 - `instance.setProperties({'Text#…': …})` only changes text whose node carries `componentPropertyReferences.characters`. Where a design system sets its texts as plain overrides, the property exists but does nothing — write `instance.children[…].characters` directly.
 
-## `render` bugs found in 2.1.2 (workarounds)
+## `render` bugs found in 2.1.2 — reported as [issue #42](https://github.com/silships/figma-cli/issues/42)
 
-- **Root `w="fill"` fails**: `render '<Frame w="fill" …>'` dies with `ReferenceError: frame is not defined`, with and without `--parent`. Render the root at a fixed `w={…}` and set `layoutSizingHorizontal = 'FILL'` afterwards.
-- **`<Rectangle>` as a child fails** with the same `frame is not defined`, hex or `var:` fill alike. Use `<Frame w="fill" h={1} bg="…" />` for dividers.
+- **`ReferenceError: frame is not defined` means "something failed", nothing more.** The generated `catch` block reads a `frame` that `const`-declared inside the `try`, so *every* error in that path is replaced by this one. Don't debug the message — it is never the real cause. Same reason `frame.remove()` never runs, so **a failed render leaves an orphan frame on the canvas**: check `figma.currentPage.children` after one.
+- **`w="fill"` / `h="fill"` is what actually breaks**, in three places: on the root frame (no auto-layout parent to fill), on the root frame with `--parent` (FILL is set before `appendChild`, so it can never work), and on `<Rectangle>` / `<Ellipse>` (the keyword isn't supported — it reaches `resize()` as the string `"fill"`). Workaround: fixed `w={…}`, then set `layoutSizingHorizontal = 'FILL'` afterwards.
+- **`<Rectangle>` as a child is fine** — hex fill, `var:` fill, no fill, all render. An earlier note here blamed the element; the measured trigger is `w="fill"` on it, nothing else.
 
 ## Process
 
 - **Numbers beat screenshots for layout bugs.** The upstream parity harness (`tests/live/parity-harness.mjs`) found that 9 of 10 cases rendered differently between `render` and `render-batch` — invisible in a screenshot, obvious in a node-tree diff. Any "auto-layout behaves weirdly" report is a measurement task, not an eyeballing task.
 - **A silent no-op is worse than an error.** `minW`/`maxW`/`minH`/`maxH` were documented and accepted but never emitted; the same for `stretch`. Nothing failed, the output was just wrong. When adding a JSX prop, add the assertion that it reaches the node.
-- **Pure decision + unit test, I/O in the command module.** That convention is why 525 tests run without a Figma instance. New logic that branches on state belongs in `src/lib/`.
+- **Pure decision + unit test, I/O in the command module.** That convention is why 535 tests run without a Figma instance. New logic that branches on state belongs in `src/lib/`.
+- **Reproduce before recording a bug.** The `render` note above originally blamed `<Rectangle>`. A five-minute matrix — Rectangle with hex / `var:` / no fill / `w="fill"`, then the same on Frame and Text — cleared the element, pinned `w="fill"` as the trigger, and led to the real cause one layer down (the `catch` block). A symptom written down as a cause misleads every later session.
 
 ## Fork Decisions (clementcopper)
 
