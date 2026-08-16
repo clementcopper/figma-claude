@@ -128,11 +128,11 @@ All components use `var:` syntax to bind directly to shadcn variables. When you 
 
 ## Why This CLI?
 
-This project includes a `CLAUDE.md` file that Claude reads automatically when started with `figma-claude`. It contains all available commands, JSX syntax, design patterns, and best practices.
+This project includes a `CLAUDE.md` file that Claude reads automatically when started with `figma-claude`. It points at `docs/FIGMA-USAGE.md`, which holds all available commands, JSX syntax, design patterns, and best practices.
 
-**Want to teach Claude new tricks?** Just update `CLAUDE.md`. No code changes needed.
+**Want to teach Claude new tricks?** Just update `docs/FIGMA-USAGE.md`. No code changes needed.
 
-**Example:** You type "Create Tailwind colors" → Claude already knows to run `node src/index.js tokens tailwind` because it's documented in `CLAUDE.md`.
+**Example:** You type "Create Tailwind colors" → Claude already knows to run `node src/index.js tokens tailwind` because it's documented in `docs/FIGMA-USAGE.md`.
 
 ---
 
@@ -225,7 +225,7 @@ Once connected, just talk to Claude:
 
 > "Export variables as CSS"
 
-The included `CLAUDE.md` teaches Claude all commands automatically. No manual required.
+The included `CLAUDE.md` and `docs/FIGMA-USAGE.md` teach Claude all commands automatically. No manual required.
 
 **Safe Mode users:** Start the FigCli plugin each time you open Figma.
 

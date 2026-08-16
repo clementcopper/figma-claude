@@ -44,8 +44,8 @@
 - 11 icons used in shadcn components: check, chevron-left/right/down/up, x, plus, bold, ellipsis, info, alert-circle
 
 ## Two Code Paths
-1. **render-batch** (~line 374): No var: support, uses `primaryAxisSizingMode`/`counterAxisSizingMode`
-2. **single render with var:** (~line 783): Full var: support, uses `layoutSizingHorizontal`/`layoutSizingVertical` for children
+1. **render-batch** (`parseJSXBatch`, figma-client.js:291): No var: support, uses `primaryAxisSizingMode`/`counterAxisSizingMode`
+2. **single render with var:** (`parseJSX`:540 -> `generateCode`:834): Full var: support, uses `layoutSizingHorizontal`/`layoutSizingVertical` for children
 
 ## Key Gotchas (from API docs)
 - `layoutWrap = 'WRAP'` only works on HORIZONTAL, throws on VERTICAL
