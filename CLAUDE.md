@@ -16,7 +16,7 @@ node src/index.js docs critical-pitfalls
 
 ```bash
 npm install                             # first run; deps changed in 2.x (jpeg-js, pngjs, yaml)
-npm test                                # full suite — 525 tests, no Figma needed
+npm test                                # full suite — 535 tests, no Figma needed
 node --test tests/connect-plan.test.js  # single test file
 npm run test:parity                     # LIVE: renders through both paths, diffs node trees
 npm run examples                        # LIVE: auto-layout gallery that verifies itself
@@ -65,7 +65,7 @@ CLI (src/index.js → src/commands/*.js)
 
 ### The testing convention worth copying
 
-Logic that decides something goes into `src/lib/` as a pure function with a unit test; the command module keeps only the I/O. `browserDebugArgs` (`src/platform.js` + `tests/browser-mode.test.js`) and `resolveConnectAction` (`src/lib/connect-plan.js` + `tests/connect-plan.test.js`) are the pattern. That is why 525 tests run without a Figma instance.
+Logic that decides something goes into `src/lib/` as a pure function with a unit test; the command module keeps only the I/O. `browserDebugArgs` (`src/platform.js` + `tests/browser-mode.test.js`) and `resolveConnectAction` (`src/lib/connect-plan.js` + `tests/connect-plan.test.js`) are the pattern. That is why 535 tests run without a Figma instance.
 
 ### Connection modes
 
