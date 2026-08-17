@@ -2004,8 +2004,13 @@ export class FigmaClient {
         ${smartPosCode}
 
         let __currentNode = 'root';
+        // Declared OUTSIDE the try on purpose: the catch below cleans the frame
+        // up, and a const inside the try is not in scope there. That shadowing
+        // turned every render failure into "ReferenceError: frame is not
+        // defined" and left the half-built frame on the canvas.
+        let frame;
         try {
-        const frame = figma.createFrame();
+        frame = figma.createFrame();
         __currentNode = ${JSON.stringify(name)};
         frame.name = ${JSON.stringify(name)};
         frame.resize(${width}, ${height});
@@ -2058,7 +2063,9 @@ export class FigmaClient {
           ? { id: frame.id, name: frame.name, unresolved: __unresolved, layoutWarnings: __layoutWarnings }
           : { id: frame.id, name: frame.name };
         } catch(e) {
-          frame.remove();
+          // Guarded: createFrame() itself can throw, and a remove() that fails
+          // must not replace the real error.
+          if (frame) { try { frame.remove(); } catch (e2) {} }
           throw new Error('[Node: ' + __currentNode + '] ' + e.message);
         }
       })()
