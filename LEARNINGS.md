@@ -18,11 +18,11 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - `componentPropertyDefinitions` throws on a **variant** component — read it from the ComponentSet instead.
 - `instance.setProperties({'Text#…': …})` only changes text whose node carries `componentPropertyReferences.characters`. Where a design system sets its texts as plain overrides, the property exists but does nothing — write `instance.children[…].characters` directly.
 
-## `render` bugs found in 2.1.2 — reported as [issue #42](https://github.com/silships/figma-cli/issues/42)
+## `render` bugs from 2.1.2 — fixed here, [issue #42](https://github.com/silships/figma-cli/issues/42) / [upstream PR #43](https://github.com/silships/figma-cli/pull/43)
 
-- **`ReferenceError: frame is not defined` means "something failed", nothing more.** The generated `catch` block reads a `frame` that `const`-declared inside the `try`, so *every* error in that path is replaced by this one. Don't debug the message — it is never the real cause. Same reason `frame.remove()` never runs, so **a failed render leaves an orphan frame on the canvas**: check `figma.currentPage.children` after one.
-- **`w="fill"` / `h="fill"` is what actually breaks**, in three places: on the root frame (no auto-layout parent to fill), on the root frame with `--parent` (FILL is set before `appendChild`, so it can never work), and on `<Rectangle>` / `<Ellipse>` (the keyword isn't supported — it reaches `resize()` as the string `"fill"`). Workaround: fixed `w={…}`, then set `layoutSizingHorizontal = 'FILL'` afterwards.
-- **`<Rectangle>` as a child is fine** — hex fill, `var:` fill, no fill, all render. An earlier note here blamed the element; the measured trigger is `w="fill"` on it, nothing else.
+- **A `catch` that cleans up must see the variable it cleans.** `const frame` lived inside the `try`, `frame.remove()` in the `catch`: *every* render error became `ReferenceError: frame is not defined`, the `[Node: …]` wrapper one line below was unreachable, and cleanup never ran — so failed renders left orphan frames on the canvas. Fixed by hoisting `let frame` and guarding the removal. Cost: the error message lied about the cause for as long as the bug existed.
+- **`w="fill"` / `h="fill"` broke in three places**, all masked by the above: root frame without `--parent` (nothing to fill — now a warning), root frame with `--parent` (FILL was set before `appendChild`, so it could never work — now after), and `<Rectangle>` / `<Ellipse>` / `<Image>` (the keyword reached `resize()` as the string `"fill"` — now handled like a Frame child). Logic lives in `src/lib/fill-sizing.js`.
+- **Order matters in the generated template.** `appendChild` runs last on purpose (so an auto-layout parent measures real content), which makes every parent-dependent property — `layoutSizing*` above all — invalid anywhere earlier in the template.
 
 ## Process
 
