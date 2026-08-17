@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Building something in Figma? Pull the topic you need, don't read the whole guide:**
 
 ```bash
-node src/index.js docs                 # list the 19 topics with their token cost
+node src/index.js docs                 # list the 20 topics with their token cost
 node src/index.js docs jsx-syntax      # ~930 tok instead of the guide's ~10,200
 node src/index.js docs critical-pitfalls
 ```
@@ -16,7 +16,7 @@ node src/index.js docs critical-pitfalls
 
 ```bash
 npm install                             # first run; deps changed in 2.x (jpeg-js, pngjs, yaml)
-npm test                                # full suite — 535 tests, no Figma needed
+npm test                                # full suite — 585 tests, no Figma needed
 node --test tests/connect-plan.test.js  # single test file
 npm run test:parity                     # LIVE: renders through both paths, diffs node trees
 npm run examples                        # LIVE: auto-layout gallery that verifies itself
@@ -44,7 +44,7 @@ CLI (src/index.js → src/commands/*.js)
 
 ### Entry point and lazy loading
 
-`src/index.js` is 31 lines. It scans argv for the first token that names a command, looks it up in `src/lib/command-map.js`, and imports only that command module — startup drops from ~110ms to ~67ms. Anything unrecognised (`--help`, unknown command, no args) falls back to loading all 25 modules so help and suggestions stay complete.
+`src/index.js` is 31 lines. It scans argv for the first token that names a command, looks it up in `src/lib/command-map.js`, and imports only that command module — startup drops from ~110ms to ~67ms. Anything unrecognised (`--help`, unknown command, no args) falls back to loading all 27 modules so help and suggestions stay complete.
 
 **Adding or renaming a command means updating `src/lib/command-map.js`.** `tests/lazy-command-map.test.js` regenerates the map from the real Commander tree and fails if an entry is missing or a cross-module forward is undeclared, so this cannot silently drift.
 
@@ -53,7 +53,7 @@ CLI (src/index.js → src/commands/*.js)
 | Path | Role |
 |---|---|
 | `src/lib/cli-core.js` | shared core: the Commander `program`, daemon plumbing, eval helpers, config. Every command module imports from here |
-| `src/commands/*.js` (25) | one module per command group; each registers its commands as an import side effect |
+| `src/commands/*.js` (27) | one module per command group; each registers its commands as an import side effect |
 | `src/lib/*.js` | pure, testable logic pulled out of the commands (`design-spec`, `variant-plan`, `eval-wrap`, `connect-plan`, `roundtrip`, …) |
 | `src/figma-client.js` | CDP client + JSX parser + Plugin API code generator |
 | `src/daemon.js` | persistent server, mode switching, request auth |
@@ -65,7 +65,7 @@ CLI (src/index.js → src/commands/*.js)
 
 ### The testing convention worth copying
 
-Logic that decides something goes into `src/lib/` as a pure function with a unit test; the command module keeps only the I/O. `browserDebugArgs` (`src/platform.js` + `tests/browser-mode.test.js`) and `resolveConnectAction` (`src/lib/connect-plan.js` + `tests/connect-plan.test.js`) are the pattern. That is why 535 tests run without a Figma instance.
+Logic that decides something goes into `src/lib/` as a pure function with a unit test; the command module keeps only the I/O. `browserDebugArgs` (`src/platform.js` + `tests/browser-mode.test.js`) and `resolveConnectAction` (`src/lib/connect-plan.js` + `tests/connect-plan.test.js`) are the pattern. That is why 585 tests run without a Figma instance.
 
 ### Connection modes
 

@@ -24,6 +24,12 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **`w="fill"` / `h="fill"` broke in three places**, all masked by the above: root frame without `--parent` (nothing to fill — now a warning), root frame with `--parent` (FILL was set before `appendChild`, so it could never work — now after), and `<Rectangle>` / `<Ellipse>` / `<Image>` (the keyword reached `resize()` as the string `"fill"` — now handled like a Frame child). Logic lives in `src/lib/fill-sizing.js`.
 - **Order matters in the generated template.** `appendChild` runs last on purpose (so an auto-layout parent measures real content), which makes every parent-dependent property — `layoutSizing*` above all — invalid anywhere earlier in the template.
 
+## Text Styles (added 2026-08-17, [upstream PR #44](https://github.com/silships/figma-cli/pull/44))
+
+- **Writing `fontSize` / `fontName` / `lineHeight` / `letterSpacing` onto a text node CLEARS its `textStyleId`.** Measured live: `before=set → afterFontSizeWrite=CLEARED`. There is no "override the style" like in the Figma UI — a plugin-side override detaches. `textAlignHorizontal` is the exception and stays bound. That killed the planned CSS-style precedence; conflicting props are now reported, not applied.
+- **Remote (library) styles have no name lookup.** `getLocalTextStylesAsync()` returns local ones only; `importStyleByKeyAsync` needs a key nobody has. The only way to reach a library style by name is to harvest the `textStyleId`s already used in the document (`findAllWithCriteria({types:['TEXT']})` + `getStyleByIdAsync`).
+- **Runtime rules stay testable via `.toString()`.** `src/lib/text-styles.js` is imported in Node for its unit tests and embedded into the generated code as source, so there is one copy of the matching rules instead of a testable one and a template-string one. Cost: no imports, no closures, plain function declarations in that file.
+
 ## Process
 
 - **Numbers beat screenshots for layout bugs.** The upstream parity harness (`tests/live/parity-harness.mjs`) found that 9 of 10 cases rendered differently between `render` and `render-batch` — invisible in a screenshot, obvious in a node-tree diff. Any "auto-layout behaves weirdly" report is a measurement task, not an eyeballing task.
