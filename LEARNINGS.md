@@ -30,6 +30,13 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **Remote (library) styles have no name lookup.** `getLocalTextStylesAsync()` returns local ones only; `importStyleByKeyAsync` needs a key nobody has. The only way to reach a library style by name is to harvest the `textStyleId`s already used in the document (`findAllWithCriteria({types:['TEXT']})` + `getStyleByIdAsync`).
 - **Runtime rules stay testable via `.toString()`.** `src/lib/text-styles.js` is imported in Node for its unit tests and embedded into the generated code as source, so there is one copy of the matching rules instead of a testable one and a template-string one. Cost: no imports, no closures, plain function declarations in that file.
 
+## Claude Panel (`app/`, Electron)
+
+- **`ELECTRON_RUN_AS_NODE=1` wird vererbt.** Jedes Terminal, das eine Electron-App gestartet hat (VS Code, Claude Code), gibt die Variable weiter — die Electron-Binary läuft dann als reines Node, und `require('electron')` scheitert mit „Cannot find module 'electron'". Sieht aus wie eine kaputte Installation, ist eine Umgebungsvariable. Deshalb wird sie in `run-electron.mjs` **und** in der PTY-Umgebung gelöscht.
+- **Preload muss CommonJS sein.** In einem Paket mit `"type": "module"` lädt Electron `preload.js` nicht (`ERR_REQUIRE_ESM`) — Endung `.cjs`. Der Fehler steht nur in der Renderer-Konsole, das Fenster bleibt sonst wortlos leer; `webContents.on('console-message')` ins Log zu hängen war der Schritt, der es sichtbar machte.
+- **Named Imports aus `electron` überleben das CJS-Bundling nicht.** esbuild wickelt `import { app } from 'electron'` in `__toESM(require(...))`, und `app` ist danach `undefined`. Default-Import plus Destrukturierung funktioniert.
+- **Claudes Statuszeile kommt nicht aus dem Terminalstrom.** Modell, Effort, Kontext und Rate-Limits übergibt Claude Code seinem `statusLine`-Kommando als JSON auf stdin. Der Panel-Weg braucht dafür **keinen** Eingriff in `~/.claude/settings.json`: `claude --settings '{"statusLine":…}'` gilt nur für diesen Prozess, und der eigene Befehl des Nutzers wird per `CLAUDE_PANEL_DELEGATE` weiter aufgerufen.
+
 ## Process
 
 - **Numbers beat screenshots for layout bugs.** The upstream parity harness (`tests/live/parity-harness.mjs`) found that 9 of 10 cases rendered differently between `render` and `render-batch` — invisible in a screenshot, obvious in a node-tree diff. Any "auto-layout behaves weirdly" report is a measurement task, not an eyeballing task.

@@ -100,8 +100,11 @@ It **hot-reloads `figma-client.js`** by copying it to a temp module when its mti
 | `fig-start` — connect + pick among the open Figma files | `bin/fig-start` |
 | `fig-status` — Figma / CDP / daemon / active file at a glance | `bin/fig-status` |
 | Non-destructive `connect` — never quits a Figma that is already debuggable | `src/lib/connect-plan.js`, used in `src/commands/setup.js` |
+| Claude Panel — Claude Code in a floating window next to Figma | `app/` (Electron; own `package.json`, own `npm test`) |
 
 The `connect` fix is written to be upstreamable (pure function + unit test, no fork specifics). If it lands upstream, drop it here on the next pull.
+
+**`app/` is deliberately self-contained:** its dependencies are not installed by the root `npm install`, and the existing `files: ["src","bin","plugin"]` keeps it out of the npm package. Nothing in `src/`, `tests/` or `package.json` refers to it, so an upstream merge cannot collide with it. It is a port of `clementcopper/claude-terminal-panel` — see `app/PORTED-FROM.md` before changing anything under `app/media/`.
 
 `docs/FIGMA-USAGE.md` is upstream's `CLAUDE.md`, moved unchanged so this file can stay short. **Keep its content byte-identical to upstream** — Git's rename detection then applies upstream's edits to it automatically instead of conflicting. Fork notes belong in this file, not in there.
 
