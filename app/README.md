@@ -11,8 +11,11 @@ npm run rebuild     # node-pty against Electron's ABI, once per Electron version
 npm start
 ```
 
-The window floats above other windows, remembers its position, and is toggled with
-**⌘⌥C**. Closing it ends the session; the tab's process belongs to the window.
+An ordinary window: move and resize it as usual, it remembers where it was, and **⌘⌥C**
+shows or hides it. Closing it ends the session — the tab's process belongs to the window.
+
+The top bar carries the four actions the VS Code extension put in the view title — new tab,
+resume session, continue last session, restart — and on the left the working directory.
 
 ## Configuration
 
@@ -30,8 +33,10 @@ The window floats above other windows, remembers its position, and is toggled wi
 }
 ```
 
-`cwd` is worth setting: Claude Code stores its session history per directory, so a fixed
-working directory is what makes `--resume` find yesterday's conversation.
+`cwd` is what the folder button in the top bar writes. Claude Code stores its session history
+per directory, so this is the setting that decides which conversations `--resume` offers. With
+no `cwd` set, the panel asks once before it starts the first tab; changing it later restarts the
+active tab in the new directory.
 
 ## Status line
 

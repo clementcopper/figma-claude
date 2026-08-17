@@ -30,7 +30,8 @@ only the parts that depended on VS Code are replaced.
 | `src/host/config.ts` | was `configManager.ts`: same keys and defaults, read from `~/.figma-ds-cli/panel.json` instead of VS Code settings |
 | `src/main.ts` | was `ClaudeTerminalViewProvider.ts` + `extension.ts`: same logic, Electron window instead of a webview view |
 | `preload.cjs` | new — hands the UI the `acquireVsCodeApi()` shape it expects |
-| `media/theme.css` | new — defines the `--vscode-*` variables VS Code used to inject |
+| `media/theme.css` | new — the `--vscode-*` variables VS Code injected, plus the layout the copied CSS cannot know about (it assumes a sidebar, not a window with a top bar) |
+| `media/toolbar.js` | new — the four view/title buttons (New Tab, Resume, Continue, Restart) plus the working-directory chip; VS Code contributed those through `package.json`, not through the webview |
 | `index.html` | new — the same DOM the provider generated |
 
 ## Not ported (yet)
