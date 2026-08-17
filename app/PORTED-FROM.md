@@ -1,0 +1,50 @@
+# Ported from claude-terminal-panel
+
+Source: [`clementcopper/claude-terminal-panel`](https://github.com/clementcopper/claude-terminal-panel), MIT
+Commit: `b89760a514de29888a8b8b9bf39d060a2047e435` (2026-08-15)
+
+Same author, same licence (`LICENSE-claude-terminal-panel`). This is the VS Code panel running
+next to Figma instead of inside an editor, so the UI is not reimplemented — it is copied, and
+only the parts that depended on VS Code are replaced.
+
+## Copied byte-identical
+
+| File | Note |
+|---|---|
+| `media/main.ts` | the whole UI: tabs, toolbar, status line, prompt indicator, link provider |
+| `media/styles.css` | |
+| `media/types.ts` | |
+| `src/host/types.ts` | |
+| `src/host/messageHandlers.ts` | the UI↔host protocol |
+| `src/host/terminalStateManager.ts` | |
+| `src/host/promptDetector.ts` | |
+| `src/host/commandHelpParser.ts`, `src/host/helpExecutor.ts` | not wired up yet |
+| `resources/panel-statusline.js` | the status line producer Claude Code runs |
+
+## Changed, and why
+
+| File | Change |
+|---|---|
+| `src/host/statusLineWatcher.ts` | snapshot directory renamed to `figma-claude-panel` so the two panels cannot read each other's tabs |
+| `src/host/ptyManager.ts` | no `vscode.workspace.workspaceFolders`, no QuickPick for the folder, app directory instead of `extensionUri`, and `ELECTRON_RUN_AS_NODE` deleted from the PTY environment |
+| `src/host/config.ts` | was `configManager.ts`: same keys and defaults, read from `~/.figma-ds-cli/panel.json` instead of VS Code settings |
+| `src/main.ts` | was `ClaudeTerminalViewProvider.ts` + `extension.ts`: same logic, Electron window instead of a webview view |
+| `preload.cjs` | new — hands the UI the `acquireVsCodeApi()` shape it expects |
+| `media/theme.css` | new — defines the `--vscode-*` variables VS Code used to inject |
+| `index.html` | new — the same DOM the provider generated |
+
+## Not ported (yet)
+
+`commandInputPicker.ts`, `pathAutocompleteProvider.ts` (VS Code QuickPick), `editorContextTracker.ts`
+(replaced by Figma context, still to come).
+
+## Re-porting later
+
+Improvements to the extension come over as a diff:
+
+```bash
+git clone https://github.com/clementcopper/claude-terminal-panel /tmp/ctp
+diff -u /tmp/ctp/media/main.ts app/media/main.ts
+```
+
+Byte-identical files should stay that way — anything that has to change belongs in the table above.

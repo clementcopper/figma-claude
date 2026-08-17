@@ -1,0 +1,77 @@
+/*
+ * The ported UI reads every colour through `--vscode-*` custom properties, with fallbacks.
+ * VS Code injected them; here they are defined once, in Figma's dark palette. Nothing in
+ * `styles.css` or `main.ts` is touched, which is what keeps re-porting a diff.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Base surfaces — Figma dark: #2c2c2c chrome, #1e1e1e canvas */
+  --vscode-editor-background: #1e1e1e;
+  --vscode-terminal-background: #1e1e1e;
+  --vscode-foreground: #e6e6e6;
+  --vscode-descriptionForeground: #9b9b9b;
+  --vscode-icon-foreground: #cfcfcf;
+  --vscode-widget-border: #383838;
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.5);
+  --vscode-focusBorder: #0d99ff;
+
+  /* Type */
+  --vscode-font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --vscode-font-size: 12px;
+  --vscode-editor-font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+
+  /* Tabs */
+  --vscode-tab-activeBackground: #2c2c2c;
+  --vscode-tab-activeForeground: #ffffff;
+  --vscode-tab-inactiveBackground: #1e1e1e;
+  --vscode-tab-inactiveForeground: #9b9b9b;
+  --vscode-tab-hoverBackground: #383838;
+  --vscode-tab-border: #383838;
+  --vscode-toolbar-hoverBackground: #383838;
+
+  /* Badges, progress, scrollbar */
+  --vscode-badge-background: #0d99ff;
+  --vscode-badge-foreground: #ffffff;
+  --vscode-progressBar-background: #0d99ff;
+  --vscode-scrollbarSlider-background: rgba(255, 255, 255, 0.14);
+  --vscode-scrollbarSlider-hoverBackground: rgba(255, 255, 255, 0.24);
+
+  /* Hover widgets (command hints, tooltips) */
+  --vscode-editorHoverWidget-background: #2c2c2c;
+  --vscode-editorHoverWidget-border: #444444;
+  --vscode-editorHoverWidget-foreground: #e6e6e6;
+
+  /* Status colours */
+  --vscode-editorError-foreground: #f24822;
+  --vscode-editorWarning-foreground: #ffcd29;
+  --vscode-notificationsErrorIcon-foreground: #f24822;
+  --vscode-textLink-activeForeground: #0d99ff;
+
+  /* Terminal palette — same values VS Code's dark+ ships, so ANSI output looks familiar */
+  --vscode-terminal-foreground: #d4d4d4;
+  --vscode-terminal-selectionBackground: #264f78;
+  --vscode-terminalCursor-foreground: #d4d4d4;
+  --vscode-terminalCursor-background: #1e1e1e;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  overflow: hidden;
+}
+
+/* The frameless window needs its own drag region; the tab bar doubles as the title bar. */
+#tab-bar {
+  -webkit-app-region: drag;
+}
+
+#tab-bar button,
+#tab-bar .tab {
+  -webkit-app-region: no-drag;
+}

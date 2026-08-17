@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self';"
+    />
+    <title>Claude Panel</title>
+    <link href="media/xterm.css" rel="stylesheet" />
+    <link href="media/theme.css" rel="stylesheet" />
+    <link href="media/styles.css" rel="stylesheet" />
+  </head>
+  <body>
+    <!-- Same DOM the VS Code webview builds; the ported main.js expects exactly these ids. -->
+    <div id="terminal-column">
+      <div id="terminals-container"></div>
+      <div id="status-line" hidden></div>
+    </div>
+    <div id="tab-bar"></div>
+    <script src="media/main.js"></script>
+  </body>
+</html>
