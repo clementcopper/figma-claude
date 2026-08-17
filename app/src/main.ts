@@ -2,6 +2,7 @@
 // `__esModule`, so esbuild's named-import interop hands back an empty namespace.
 import electron from 'electron';
 import * as path from 'path';
+import { writeFileSync } from 'fs';
 import { PtyManager, type PtyEventCallbacks } from './host/ptyManager';
 import { ConfigManager } from './host/config';
 import { TerminalStateManager } from './host/terminalStateManager';
@@ -13,7 +14,7 @@ import type { ExtensionMessage, TerminalInstance, WebviewMessage } from './host/
 import { loadBounds, saveBounds, clampBounds } from './lib/window-bounds';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
-const { app, BrowserWindow, ipcMain, globalShortcut, screen } = electron;
+const { app, BrowserWindow, dialog, ipcMain, globalShortcut, screen } = electron;
 
 // dist/main.cjs → the app directory. CommonJS output, so `__dirname` is the honest way.
 declare const __dirname: string;
@@ -77,6 +78,15 @@ class PanelHost implements MessageHandlerContext {
     this.lastRows = rows;
     // No editor here — the row stays empty until the Figma context lands (M4).
     this.postMessage({ type: 'editorContext', data: null });
+
+    // Ask for the working directory once, before the first tab exists. Claude Code keeps its
+    // session history per directory, so starting in the wrong one means `--resume` offers the
+    // wrong conversations — and the tab would have to be thrown away anyway.
+    if (!this.configManager.getConfig().cwd) {
+      void this.promptForWorkingDirectory({ startTerminal: true });
+      return;
+    }
+
     this.createTerminal();
   }
 
@@ -116,13 +126,83 @@ class PanelHost implements MessageHandlerContext {
     // Opening files belongs to an editor. Left inert rather than guessing an app.
   }
 
+  // --- Working directory ---
+
+  /** Directory new tabs start in: the active tab's, else the configured one, else home. */
+  currentCwd(): string {
+    const activeId = this.stateManager.getActiveId();
+    const fromTab = activeId ? this.stateManager.get(activeId)?.cwd : undefined;
+    return fromTab ?? this.configManager.getConfig().cwd ?? '';
+  }
+
+  broadcastCwd(): void {
+    this.postMessage({ type: 'panelCwd', cwd: this.currentCwd() } as unknown as ExtensionMessage);
+  }
+
+  /**
+   * Opens the directory picker. Cancelling is a real answer: on startup it means "just start
+   * somewhere" (home), later it means "leave the tab where it is".
+   */
+  async promptForWorkingDirectory(options: { startTerminal: boolean }): Promise<void> {
+    const current = this.currentCwd();
+    const result = await dialog.showOpenDialog({
+      title: 'Working directory for Claude',
+      message: 'Claude Code keeps its session history per directory.',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: current || undefined,
+      buttonLabel: 'Use this folder'
+    });
+
+    const chosen = result.canceled ? undefined : result.filePaths[0];
+
+    if (chosen) {
+      this.configManager.update({ cwd: chosen });
+    }
+
+    if (options.startTerminal) {
+      this.createTerminal(chosen);
+      return;
+    }
+
+    if (chosen) {
+      this.moveActiveTerminal(chosen);
+    }
+  }
+
+  /** Restarts the active tab in another directory — the process cannot be moved, only replaced. */
+  private moveActiveTerminal(cwd: string): void {
+    const activeId = this.stateManager.getActiveId();
+    if (!activeId) {
+      this.createTerminal(cwd);
+      return;
+    }
+
+    const instance = this.stateManager.get(activeId);
+    if (instance) {
+      instance.cwd = cwd;
+    }
+
+    this.isRestarting = true;
+    this.postMessage({ type: 'clear', id: activeId });
+    this.ptyManager.kill(activeId);
+    setTimeout(() => {
+      this.isRestarting = false;
+    }, 100);
+
+    this.ptyManager.spawn(activeId, this.configManager.getConfig(), this.lastCols, this.lastRows, cwd);
+    this.sendTabsUpdate();
+    this.broadcastCwd();
+  }
+
   // --- Terminals ---
 
-  createTerminal(): string {
+  createTerminal(explicitCwd?: string): string {
     const id = this.stateManager.generateId();
     const name = this.stateManager.generateName();
     const config = this.configManager.getConfig();
-    const { path: cwd, folderIndex } = this.ptyManager.selectWorkingDirectory(config.cwd);
+    const { path: cwd, folderIndex } = this.ptyManager.selectWorkingDirectory(
+      explicitCwd ?? config.cwd
+    );
 
     const instance: TerminalInstance = {
       id,
@@ -142,6 +222,7 @@ class PanelHost implements MessageHandlerContext {
 
     this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
     this.postMessage({ type: 'switchTab', id });
+    this.broadcastCwd();
 
     return id;
   }
@@ -180,6 +261,7 @@ class PanelHost implements MessageHandlerContext {
     this.stateManager.setActive(terminalId);
     this.postMessage({ type: 'switchTab', id: terminalId });
     this.sendTabsUpdate();
+    this.broadcastCwd();
   }
 
   switchToNextTerminal(): void {
@@ -312,7 +394,14 @@ class PanelHost implements MessageHandlerContext {
   }
 
   private postMessage(message: ExtensionMessage): void {
-    this.window?.webContents.send('panel:message', message);
+    // A PTY keeps producing output for a moment after the window is gone; sending into a
+    // disposed frame throws ("Render frame was disposed before WebFrameMain could be
+    // accessed") once per chunk, which buries whatever really went wrong.
+    const window = this.window;
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
+      return;
+    }
+    window.webContents.send('panel:message', message);
   }
 
   private sendTabsUpdate(): void {
@@ -322,7 +411,36 @@ class PanelHost implements MessageHandlerContext {
 
 // --- Electron shell ---
 
+/** Actions of the top bar — the four the extension contributed to the view title, plus cwd. */
+interface ToolbarMessage {
+  type: 'toolbar';
+  action: 'newTab' | 'resume' | 'continue' | 'restart' | 'pickCwd' | 'requestCwd';
+}
+
 const host = new PanelHost();
+
+function handleToolbarAction(action: ToolbarMessage['action']): void {
+  switch (action) {
+    case 'newTab':
+      host.createTerminal();
+      break;
+    case 'resume':
+      host.resumeActiveTerminal();
+      break;
+    case 'continue':
+      host.continueActiveTerminal();
+      break;
+    case 'restart':
+      host.restart();
+      break;
+    case 'pickCwd':
+      void host.promptForWorkingDirectory({ startTerminal: false });
+      break;
+    case 'requestCwd':
+      host.broadcastCwd();
+      break;
+  }
+}
 
 function createWindow(): BrowserWindowType {
   const bounds = clampBounds(loadBounds(), screen.getAllDisplays().map((d) => d.workArea));
@@ -333,8 +451,7 @@ function createWindow(): BrowserWindowType {
     minHeight: 240,
     title: 'Claude Panel',
     titleBarStyle: 'hidden',
-    trafficLightPosition: { x: 10, y: 10 },
-    alwaysOnTop: true,
+    trafficLightPosition: { x: 10, y: 11 },
     backgroundColor: '#1e1e1e',
     webPreferences: {
       preload: path.join(APP_ROOT, 'preload.cjs'),
@@ -343,9 +460,6 @@ function createWindow(): BrowserWindowType {
       sandbox: false
     }
   });
-
-  // Floats over Figma without stealing its full-screen space.
-  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   const persist = () => {
     if (!window.isDestroyed() && !window.isMinimized()) {
@@ -365,7 +479,19 @@ function createWindow(): BrowserWindowType {
 
   window.once('ready-to-show', () => {
     window.show();
-    console.log('[panel] window', JSON.stringify(window.getBounds()), 'visible=', window.isVisible());
+
+    // Development aid: PANEL_CAPTURE=<file> writes a PNG of the window once it has drawn.
+    // Checking the UI otherwise means being at the machine, which makes remote iteration
+    // guesswork.
+    const capturePath = process.env.PANEL_CAPTURE;
+    if (capturePath) {
+      setTimeout(() => {
+        void window.webContents.capturePage().then((image) => {
+          writeFileSync(capturePath, image.toPNG());
+          console.log('[panel] captured', capturePath);
+        });
+      }, 2500);
+    }
   });
 
   void window.loadFile(path.join(APP_ROOT, 'index.html'));
@@ -376,7 +502,13 @@ app.whenReady().then(() => {
   const window = createWindow();
   host.attach(window);
 
-  ipcMain.on('panel:message', (_event, message: WebviewMessage) => {
+  ipcMain.on('panel:message', (_event, message: WebviewMessage | ToolbarMessage) => {
+    // The top bar is ours, not the extension's: its actions are intercepted before the
+    // ported dispatcher sees them, which only knows the webview protocol.
+    if (message.type === 'toolbar') {
+      handleToolbarAction(message.action);
+      return;
+    }
     dispatchMessage(message, host);
   });
 

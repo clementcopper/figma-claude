@@ -9,16 +9,23 @@
     />
     <title>Claude Panel</title>
     <link href="media/xterm.css" rel="stylesheet" />
-    <link href="media/theme.css" rel="stylesheet" />
     <link href="media/styles.css" rel="stylesheet" />
+    <!-- After styles.css on purpose: it supplies the `--vscode-*` variables that file reads,
+         and the few layout overrides the window needs (the copied CSS assumes a sidebar). -->
+    <link href="media/theme.css" rel="stylesheet" />
   </head>
   <body>
-    <!-- Same DOM the VS Code webview builds; the ported main.js expects exactly these ids. -->
-    <div id="terminal-column">
-      <div id="terminals-container"></div>
-      <div id="status-line" hidden></div>
+    <!-- The top bar VS Code contributed to the view title; see media/toolbar.js. -->
+    <div id="toolbar"></div>
+    <!-- Below it, the DOM the ported UI expects, unchanged: terminal column plus tab strip. -->
+    <div id="panel-body">
+      <div id="terminal-column">
+        <div id="terminals-container"></div>
+        <div id="status-line" hidden></div>
+      </div>
+      <div id="tab-bar"></div>
     </div>
-    <div id="tab-bar"></div>
     <script src="media/main.js"></script>
+    <script src="media/toolbar.js"></script>
   </body>
 </html>

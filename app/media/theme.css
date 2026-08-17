@@ -66,12 +66,94 @@ body {
   overflow: hidden;
 }
 
-/* The frameless window needs its own drag region; the tab bar doubles as the title bar. */
-#tab-bar {
+/*
+ * Layout. The copied CSS assumes a sidebar: `body` is a flex ROW holding the terminal column
+ * and the vertical tab strip. A window has a top bar above both, so the row moves into
+ * `#panel-body` and `body` becomes the column. Overriding here keeps styles.css untouched.
+ */
+body {
+  flex-direction: column;
+}
+
+#panel-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- Top bar --- */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 38px;
+  flex-shrink: 0;
+  padding: 0 6px;
+  background: var(--vscode-tab-inactiveBackground);
+  border-bottom: 1px solid var(--vscode-tab-border);
+  /* Frameless window: this bar is what the user grabs to move it. */
   -webkit-app-region: drag;
 }
 
-#tab-bar button,
-#tab-bar .tab {
+#toolbar button {
   -webkit-app-region: no-drag;
+}
+
+/* macOS puts the traffic lights over the top-left corner; nothing else reserves the space. */
+.toolbar-trafficlights {
+  width: 62px;
+  flex-shrink: 0;
+}
+
+.toolbar-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.toolbar-button,
+.toolbar-cwd {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-icon-foreground);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.toolbar-button:hover,
+.toolbar-cwd:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-tab-activeForeground);
+}
+
+.toolbar-button:active,
+.toolbar-cwd:active {
+  background: var(--vscode-tab-hoverBackground);
+}
+
+.toolbar-button:focus-visible,
+.toolbar-cwd:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.toolbar-cwd {
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* The bar is narrow by nature: the directory name gives way before the buttons do. */
+.toolbar-cwd-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
 }

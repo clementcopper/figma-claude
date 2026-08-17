@@ -231,6 +231,23 @@ export class PtyManager {
     // Remove CI flag so Claude doesn't think it's in CI
     delete env.CI;
 
+    // Session-scoped variables of a Claude Code process that happens to be an ancestor of the
+    // panel. Inheriting them makes the new session think it is a child of that one — the
+    // visible symptom is "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION".
+    // Configuration variables (CLAUDE_CODE_USE_BEDROCK and friends) are deliberately kept.
+    for (const key of [
+      'CLAUDECODE',
+      'CLAUDE_CODE_SESSION_ID',
+      'CLAUDE_CODE_CHILD_SESSION',
+      'CLAUDE_CODE_ENTRYPOINT',
+      'CLAUDE_CODE_EXECPATH',
+      'CLAUDE_CODE_MESSAGING_SOCKET',
+      'CLAUDE_CODE_MESSAGING_TOKEN',
+      'CLAUDE_PID'
+    ]) {
+      delete env[key];
+    }
+
     return env;
   }
 
