@@ -4,10 +4,21 @@
 follows Apple's macOS grid: the body measures 823 × 823 at (100, 100), so a 100 px margin all
 round, with the soft shadow reaching a little further down and right.
 
-`icon-flat.png` is that export unchanged. `icon.png` is the same picture with the four dots
-recoloured: Figma's own Dock icon does not use the flat brand palette, it gives every shape a
-vertical gradient, and `tint-dots.py` puts the measured ones (`#FD3636 → #EF2E2E` and friends)
-onto the dots. It works out how much of each pixel belongs to a dot, so the anti-aliased rim
+`icon-flat.png` is that export unchanged. `icon.png` is the same picture with the flat shapes
+recoloured, because neither brand uses its flat palette in its own app icon — both give every
+shape a vertical gradient and push it beyond the brand value:
+
+| Fläche | flach im Export | im Icon |
+|---|---|---|
+| Claude-Figur | `#D97757` | `#E28458` → `#D45C30` |
+| rot | `#F24E1E` | `#FD3636` → `#EF2E2E` |
+| violett | `#A259FF` | `#854DFC` → `#7541E5` |
+| grün | `#0ACF83` | `#23C86F` → `#32CF7A` |
+| blau | `#1ABCFE` | `#17BDFF` → `#06B6FD` |
+
+The dot values are measured from Figma's own icon. The figure goes a little past Claude's
+(`#D98063 → #DB6944`) on purpose: Claude's icon sits on white, this one on `#1B1B1B`, where a
+mid-bright terracotta gives way next to the dots. `tint-dots.py` applies them. It works out how much of each pixel belongs to a dot, so the anti-aliased rim
 survives — replacing the colour outright would leave a hard edge.
 
 ```bash

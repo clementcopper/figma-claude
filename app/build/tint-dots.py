@@ -1,6 +1,6 @@
-"""Give the four flat dots the same vertical gradients Figma's own icon uses.
+"""Give the flat shapes the vertical gradients their own brands use in their app icons.
 
-Each dot is one flat brand colour on a dark background. For every pixel the script works out how
+Each shape is one flat brand colour on a dark background. For every pixel the script works out how
 much of the dot is in it — the anti-aliased rim is a blend of dot and background — and puts the
 gradient colour back with exactly that coverage, so the edges stay as smooth as they were.
 """
@@ -71,6 +71,11 @@ GRADIENTS = {
     (0xA2, 0x59, 0xFF): ((0x85, 0x4D, 0xFC), (0x75, 0x41, 0xE5)),  # violett
     (0x0A, 0xCF, 0x83): ((0x23, 0xC8, 0x6F), (0x32, 0xCF, 0x7A)),  # grün
     (0x1A, 0xBC, 0xFE): ((0x17, 0xBD, 0xFF), (0x06, 0xB6, 0xFD)),  # blau
+    # Claude's own icon treats its terracotta the same way — measured from
+    # /Applications/Claude.app: #D98063 at the top falling to #DB6944. This goes a little
+    # further than that, because the grounds differ: Claude's icon sits on white, this one on
+    # #1B1B1B, where a mid-bright, lightly saturated tone loses its footing next to the dots.
+    (0xD9, 0x77, 0x57): ((0xE2, 0x84, 0x58), (0xD4, 0x5C, 0x30)),  # Claude-Figur
 }
 
 def at(x, y):
