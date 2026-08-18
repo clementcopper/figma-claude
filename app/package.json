@@ -11,7 +11,9 @@
     "start": "npm run build && node run-electron.mjs",
     "rebuild": "electron-rebuild -f -w node-pty",
     "typecheck": "tsc --noEmit",
-    "test": "node build.mjs && node --test tests/*.test.js"
+    "test": "node build.mjs && node --test tests/*.test.js",
+    "dist": "npm run build && electron-builder --mac --dir",
+    "dist:dmg": "npm run build && electron-builder --mac"
   },
   "dependencies": {
     "node-pty": "^1.0.0"
@@ -24,7 +26,35 @@
     "@xterm/xterm": "^6.0.0",
     "electron": "^33.0.0",
     "esbuild": "^0.25.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "electron-builder": "^25.1.8"
   },
-  "productName": "FigmaClaude"
+  "productName": "FigmaClaude",
+  "build": {
+    "appId": "de.designdone.figmaclaude",
+    "productName": "FigmaClaude",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "media/**",
+      "resources/**",
+      "index.html",
+      "preload.cjs",
+      "package.json",
+      "!media/*.map",
+      "!dist/*.map"
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dir"
+      ],
+      "identity": null
+    },
+    "npmRebuild": false
+  }
 }

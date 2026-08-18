@@ -59,4 +59,22 @@ export const variantC = rounded(`
   <rect x="556" y="640" width="232" height="40" rx="20" fill="#0ACF83"/>
 `);
 
-export const VARIANTS = { A: variantA, B: variantB, C: variantC };
+/**
+ * B again, for 16 and 32 px. At that size the window's contents turn to mush, so the small
+ * cut keeps only what still reads: the frame, the three lights, one thick prompt.
+ * `.icns` carries a separate image per size, which is what makes this worth drawing.
+ */
+export const variantBsmall = rounded(`
+  <rect x="152" y="200" width="720" height="624" rx="72" fill="#252525" stroke="#4A4A4A" stroke-width="16"/>
+  <rect x="152" y="200" width="720" height="140" rx="72" fill="#333333"/>
+  <rect x="152" y="272" width="720" height="68" fill="#333333"/>
+  <circle cx="232" cy="272" r="30" fill="#F24E1E"/>
+  <circle cx="322" cy="272" r="30" fill="#FFCD29"/>
+  <circle cx="412" cy="272" r="30" fill="#0ACF83"/>
+  <g stroke="#D97757" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M280 470 L400 570 L280 670"/>
+  </g>
+  <rect x="470" y="530" width="300" height="72" rx="36" fill="#9A9A9A"/>
+`);
+
+export const VARIANTS = { A: variantA, B: variantB, C: variantC, Bsmall: variantBsmall };

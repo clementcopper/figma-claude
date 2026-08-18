@@ -8,8 +8,13 @@ same toolbar, same status line — running in Electron rather than VS Code. See 
 cd app
 npm install
 npm run rebuild     # node-pty against Electron's ABI, once per Electron version
-npm start
+npm start           # run from source
+npm run dist        # build release/mac/FigmaClaude.app
 ```
+
+Running from source, the Dock says "Electron" — that name comes from the bundle's Info.plist,
+and only the packaged build has its own. Everything else (menu bar, window, Dock icon) says
+FigmaClaude either way.
 
 An ordinary window: move and resize it as usual, it remembers where it was, and **⌘⌥C**
 shows or hides it. Closing it ends the session — the tab's process belongs to the window.
@@ -72,3 +77,8 @@ output unchanged.
   Code) carries that variable, and it turns Electron into a plain Node process.
 - `node-pty` is native. After an Electron upgrade, run `npm run rebuild`.
 - Unsigned. A packaged build needs right-click → Open on first launch.
+- `open path/to/FigmaClaude.app` from a terminal hands the app that terminal's environment. From
+  one that carries `ELECTRON_RUN_AS_NODE` the app starts as plain Node and exits silently —
+  launch it from Finder or the Dock instead.
+- The icon lives in `build/icon-src/variants.mjs` as SVG; `build/README.md` has the two commands
+  that turn it into `icon.png` and `icon.icns`.

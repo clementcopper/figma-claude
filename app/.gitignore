@@ -1,4 +1,7 @@
 dist/
+release/
 media/main.js
 media/main.js.map
 media/xterm.css
+build/*.svg.png
+build/FigmaClaude.iconset/
