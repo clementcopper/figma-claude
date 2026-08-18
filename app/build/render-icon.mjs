@@ -21,6 +21,38 @@ function hex(value) {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/**
+ * A fill is either a colour or a linear gradient between stops, given in canvas coordinates.
+ * Gradients are resolved per pixel, which is cheap next to the coverage sampling.
+ */
+function fillAt(fill, x, y) {
+  if (typeof fill === 'string') return hex(fill);
+  const { x1, y1, x2, y2, stops } = fill;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy || 1;
+  let t = ((x - x1) * dx + (y - y1) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  let lo = stops[0];
+  let hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (t >= stops[i].at && t <= stops[i + 1].at) {
+      lo = stops[i];
+      hi = stops[i + 1];
+      break;
+    }
+  }
+  const span = hi.at - lo.at || 1;
+  const k = (t - lo.at) / span;
+  const c0 = hex(lo.color);
+  const c1 = hex(hi.color);
+  return [
+    c0[0] + (c1[0] - c0[0]) * k,
+    c0[1] + (c1[1] - c0[1]) * k,
+    c0[2] + (c1[2] - c0[2]) * k
+  ];
+}
+
 // --- coverage functions, each returns 0…1 for a point ---
 
 function insideRoundRect(s, x, y) {
@@ -72,7 +104,6 @@ function render(shapes, size) {
 
   for (const shape of shapes) {
     const test = TESTS[shape.type];
-    const [r, g, b] = hex(shape.fill);
     const [bx0, by0, bx1, by1] = bounds(shape);
     const x0 = Math.max(0, Math.floor(bx0 * scale));
     const y0 = Math.max(0, Math.floor(by0 * scale));
@@ -91,6 +122,7 @@ function render(shapes, size) {
         }
         if (hits === 0) continue;
         const a = hits / (SAMPLES * SAMPLES);
+        const [r, g, b] = fillAt(shape.fill, (x + 0.5) / scale, (y + 0.5) / scale);
         const i = (y * size + x) * 4;
         // Painter's algorithm, source-over on straight alpha.
         const dstA = px[i + 3];

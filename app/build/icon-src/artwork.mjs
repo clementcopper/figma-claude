@@ -1,14 +1,16 @@
 /**
- * The icon, as shape data.
+ * Icon artwork, as shape data.
  *
- * Not SVG any more: macOS' `qlmanage` renders SVG but composites it onto white, which put a
- * white block behind the mark in the Dock, and driving a browser just to rasterise one icon was
- * worse than drawing it. `render-icon.mjs` turns these shapes into a PNG with real alpha.
+ * Not SVG: macOS' `qlmanage` renders SVG but composites onto white, which is where the white
+ * block behind the mark came from. `render-icon.mjs` turns these shapes into a PNG with real
+ * alpha — see `build/README.md`.
  *
- * Geometry follows Apple's macOS icon grid: a 1024 canvas with the icon body 824×824 centred
- * (so a 100 px margin all round) and a corner radius of 185.4 — 0.225 × 824. That margin is
- * what the Dock, Launchpad and the switcher expect; without it an icon looks oversized next to
- * every other app.
+ * Geometry follows Apple's macOS icon grid: 1024 canvas, body 824×824 centred (100 px margin),
+ * corner radius 185.4 = 0.225 × 824. Every app in the Dock keeps that margin; an icon without
+ * it reads as oversized.
+ *
+ * Palette: Claude's terracotta and Figma's five brand colours. Nothing here reproduces Figma's
+ * logo — that is a trademark; only the colours are shared vocabulary.
  */
 export const CANVAS = 1024;
 export const BODY = 824;
@@ -17,48 +19,99 @@ export const RADIUS = BODY * 0.225; // 185.4
 
 const L = MARGIN;
 const T = MARGIN;
-const R = MARGIN + BODY;
-const B = MARGIN + BODY;
 
-const SURFACE = '#242428';
+// Claude
+const TERRACOTTA = '#D97757';
+const TERRACOTTA_DEEP = '#C4623F';
+// Figma
+const FIG_RED = '#F24E1E';
+const FIG_SALMON = '#FF7262';
+const FIG_PURPLE = '#A259FF';
+const FIG_BLUE = '#1ABCFE';
+const FIG_GREEN = '#0ACF83';
+const FIGMA_FIVE = [FIG_RED, FIG_SALMON, FIG_PURPLE, FIG_BLUE, FIG_GREEN];
+// Neutrals
+const INK = '#1E1E22';
+const INK_SOFT = '#2A2A30';
 const CHROME = '#33333A';
-const PROMPT = '#D97757';
-const INPUT = '#8C8C94';
-const TRACK = '#3C3C44';
-const PROGRESS = '#0D99FF';
-const LIGHTS = ['#F24E1E', '#FFCD29', '#0ACF83'];
+const PAPER = '#F7F7F8';
 
-const CHROME_H = 168;
+const body = (fill, extra = {}) => ({
+  type: 'roundRect', x: L, y: T, w: BODY, h: BODY, r: RADIUS, fill, ...extra
+});
 
-/** The mark at full size: window body, title bar, prompt, input rule, progress line. */
-export const icon = [
-  { type: 'roundRect', x: L, y: T, w: BODY, h: BODY, r: RADIUS, fill: SURFACE },
-  // Title bar: same top corners as the body, square at the bottom where it meets the canvas.
-  { type: 'roundRect', x: L, y: T, w: BODY, h: CHROME_H, r: RADIUS, fill: CHROME, flatBottom: true },
-  ...LIGHTS.map((fill, i) => ({
-    type: 'circle', cx: L + 96 + i * 92, cy: T + CHROME_H / 2, r: 26, fill
-  })),
-  // Prompt chevron, drawn as two capsules so the joint stays round at every size.
-  { type: 'capsule', x1: L + 112, y1: T + 300, x2: L + 232, y2: T + 386, w: 52, fill: PROMPT },
-  { type: 'capsule', x1: L + 232, y1: T + 386, x2: L + 112, y2: T + 472, w: 52, fill: PROMPT },
-  { type: 'capsule', x1: L + 300, y1: T + 386, x2: L + 588, y2: T + 386, w: 52, fill: INPUT },
-  { type: 'capsule', x1: L + 112, y1: T + 620, x2: L + 712, y2: T + 620, w: 44, fill: TRACK },
-  { type: 'capsule', x1: L + 112, y1: T + 620, x2: L + 330, y2: T + 620, w: 44, fill: PROGRESS }
+/** Chevron as two capsules, so the joint stays round at every size. */
+const chevron = (x, y, size, weight, fill) => [
+  { type: 'capsule', x1: x, y1: y - size, x2: x + size * 0.78, y2: y, w: weight, fill },
+  { type: 'capsule', x1: x + size * 0.78, y1: y, x2: x, y2: y + size, w: weight, fill }
 ];
 
 /**
- * 16 and 32 px: the input rule and the progress track disappear at that size anyway, and what
- * survives has to be thicker. `.icns` carries one image per size, so this is worth drawing.
+ * A — Prompt on ink, Figma's colours as the underline.
+ * The chevron carries Claude, the five-colour rule carries Figma; the mark is the prompt itself.
  */
-export const iconSmall = [
-  { type: 'roundRect', x: L, y: T, w: BODY, h: BODY, r: RADIUS, fill: SURFACE },
-  { type: 'roundRect', x: L, y: T, w: BODY, h: 196, r: RADIUS, fill: CHROME, flatBottom: true },
-  ...LIGHTS.map((fill, i) => ({
-    type: 'circle', cx: L + 116 + i * 116, cy: T + 98, r: 38, fill
-  })),
-  { type: 'capsule', x1: L + 176, y1: T + 340, x2: L + 356, y2: T + 470, w: 84, fill: PROMPT },
-  { type: 'capsule', x1: L + 356, y1: T + 470, x2: L + 176, y2: T + 600, w: 84, fill: PROMPT },
-  { type: 'capsule', x1: L + 452, y1: T + 470, x2: L + 668, y2: T + 470, w: 84, fill: INPUT }
+export const promptRule = [
+  body({
+    x1: L, y1: T, x2: L, y2: T + BODY,
+    stops: [{ at: 0, color: INK_SOFT }, { at: 1, color: INK }]
+  }),
+  ...chevron(L + 214, T + 330, 132, 74, TERRACOTTA),
+  { type: 'capsule', x1: L + 420, y1: T + 330, x2: L + 636, y2: T + 330, w: 74, fill: '#8C8C94' },
+  ...FIGMA_FIVE.map((fill, i) => ({
+    type: 'capsule',
+    x1: L + 150 + i * 108, y1: T + 588, x2: L + 226 + i * 108, y2: T + 588, w: 56, fill
+  }))
 ];
 
-export const VARIANTS = { icon, iconSmall };
+/**
+ * B — Claude's terracotta as the ground, the prompt cut out of it in paper white, Figma's
+ * colours as a thin strip along the bottom edge. The most colourful of the three.
+ */
+export const terracotta = [
+  body({
+    x1: L, y1: T, x2: L + BODY, y2: T + BODY,
+    stops: [{ at: 0, color: '#E08A6C' }, { at: 1, color: TERRACOTTA_DEEP }]
+  }),
+  ...chevron(L + 236, T + 356, 148, 82, PAPER),
+  { type: 'capsule', x1: L + 452, y1: T + 356, x2: L + 664, y2: T + 356, w: 82, fill: '#F7F7F8' },
+  // The strip sits inside the corner radius, so it is drawn as five capsules rather than a bar.
+  ...FIGMA_FIVE.map((fill, i) => ({
+    type: 'capsule',
+    x1: L + 168 + i * 104, y1: T + 636, x2: L + 232 + i * 104, y2: T + 636, w: 48, fill
+  }))
+];
+
+/**
+ * C — The window: dark body, a title bar in Figma's colours instead of the usual three greys,
+ * Claude's prompt inside. The literal reading of "terminal next to Figma".
+ */
+export const window = [
+  body(INK),
+  { type: 'roundRect', x: L, y: T, w: BODY, h: 176, r: RADIUS, fill: CHROME, flatBottom: true },
+  ...FIGMA_FIVE.slice(0, 3).map((fill, i) => ({
+    type: 'circle', cx: L + 104 + i * 96, cy: T + 88, r: 28, fill
+  })),
+  ...chevron(L + 190, T + 470, 116, 66, TERRACOTTA),
+  { type: 'capsule', x1: L + 384, y1: T + 470, x2: L + 640, y2: T + 470, w: 66, fill: '#8C8C94' },
+  { type: 'capsule', x1: L + 150, y1: T + 660, x2: L + 674, y2: T + 660, w: 44, fill: '#3C3C44' },
+  { type: 'capsule', x1: L + 150, y1: T + 660, x2: L + 360, y2: T + 660, w: 44, fill: FIG_BLUE }
+];
+
+/**
+ * D — Split: Claude's terracotta and Figma's blue meet on the diagonal, the prompt sits on the
+ * seam in white. Most abstract, reads smallest.
+ */
+export const split = [
+  body({
+    x1: L, y1: T + BODY, x2: L + BODY, y2: T,
+    stops: [
+      { at: 0, color: TERRACOTTA },
+      { at: 0.5, color: '#B0587A' },
+      { at: 1, color: FIG_PURPLE }
+    ]
+  }),
+  ...chevron(L + 250, T + 412, 168, 92, PAPER),
+  { type: 'capsule', x1: L + 470, y1: T + 412, x2: L + 604, y2: T + 412, w: 92, fill: PAPER }
+];
+
+export const VARIANTS = { promptRule, terracotta, window, split };
