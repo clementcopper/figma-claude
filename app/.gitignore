@@ -5,3 +5,4 @@ media/main.js.map
 media/xterm.css
 build/*.svg.png
 build/FigmaClaude.iconset/
+build/preview-*.png

@@ -88,8 +88,10 @@ export const terracotta = [
 export const window = [
   body(INK),
   { type: 'roundRect', x: L, y: T, w: BODY, h: 176, r: RADIUS, fill: CHROME, flatBottom: true },
+  // The lights start well clear of the corner: at their height the body's left edge is already
+  // curving inward, so a dot placed by the straight edge looks glued to it.
   ...FIGMA_FIVE.slice(0, 3).map((fill, i) => ({
-    type: 'circle', cx: L + 104 + i * 96, cy: T + 88, r: 28, fill
+    type: 'circle', cx: L + 176 + i * 104, cy: T + 92, r: 28, fill
   })),
   ...chevron(L + 190, T + 470, 116, 66, TERRACOTTA),
   { type: 'capsule', x1: L + 384, y1: T + 470, x2: L + 640, y2: T + 470, w: 66, fill: '#8C8C94' },
@@ -114,4 +116,19 @@ export const split = [
   { type: 'capsule', x1: L + 470, y1: T + 412, x2: L + 604, y2: T + 412, w: 92, fill: PAPER }
 ];
 
-export const VARIANTS = { promptRule, terracotta, window, split };
+/**
+ * C for 16 and 32 px: the input rule and the progress track vanish at that size anyway, and
+ * what is left has to be heavier. `.icns` carries one image per size, which is what makes a
+ * second drawing worth it.
+ */
+export const windowSmall = [
+  body(INK),
+  { type: 'roundRect', x: L, y: T, w: BODY, h: 216, r: RADIUS, fill: CHROME, flatBottom: true },
+  ...FIGMA_FIVE.slice(0, 3).map((fill, i) => ({
+    type: 'circle', cx: L + 196 + i * 124, cy: T + 112, r: 42, fill
+  })),
+  ...chevron(L + 216, T + 520, 150, 88, TERRACOTTA),
+  { type: 'capsule', x1: L + 452, y1: T + 520, x2: L + 660, y2: T + 520, w: 88, fill: '#9A9AA4' }
+];
+
+export const VARIANTS = { promptRule, terracotta, window, windowSmall, split };
