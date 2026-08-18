@@ -501,9 +501,11 @@ Found a vulnerability in the CLI? Report it privately via [GitHub private vulner
 
 ---
 
-## Who built this
+## Who built what
 
-**figma-cli — Sil Bormüller**, founder of [Into Design Systems](https://www.intodesignsystems.com/), the conference and training platform for design system practitioners.
+Three people, three parts. Nothing here is a solo project.
+
+**The CLI — [Sil Bormüller](https://www.linkedin.com/in/silbormueller)**, founder of [Into Design Systems](https://www.intodesignsystems.com/), the conference and training platform for design system practitioners. Everything figma-cli does — the CDP connection, render/JSX, tokens, extract, validation — is his.
 
 - LinkedIn: [linkedin.com/in/silbormueller](https://www.linkedin.com/in/silbormueller)
 - Personal site: [silbormueller.com](https://www.silbormueller.com/)
@@ -511,14 +513,26 @@ Found a vulnerability in the CLI? Report it privately via [GitHub private vulner
 - Newsletter with tutorials: [intodesignsystems.substack.com](https://intodesignsystems.substack.com/)
 - GitHub: [@silships](https://github.com/silships)
 
-**This fork and the FigmaClaude app — [Clement Copper](https://github.com/clementcopper)**, with
-the panel UI ported from [nolikzero/claude-terminal-panel](https://github.com/nolikzero/claude-terminal-panel).
+**The terminal panel — [nolikzero](https://github.com/nolikzero)**, author of
+[claude-terminal-panel](https://github.com/nolikzero/claude-terminal-panel) (MIT, © 2025), the VS
+Code extension whose UI FigmaClaude runs: tabs, toolbar, status line, prompt detection. On the
+Marketplace as [`0ly.claude-terminal-panel`](https://marketplace.visualstudio.com/items?itemName=0ly.claude-terminal-panel).
+
+**This fork and FigmaClaude — [Clement Copper](https://github.com/clementcopper)**. Maintains a
+[fork of claude-terminal-panel](https://github.com/clementcopper/claude-terminal-panel), and built
+FigmaClaude by combining that panel with this CLI: the Electron shell and preload shim, the top
+bar, the working-directory picker, the bridge to the CLI daemon (connection state, reconnect,
+Figma selection as prompt context), the icon and the packaging. Plus the fork's CLI additions
+(`bin/fig-start`, `bin/fig-status`, non-destructive `connect`, `docs <topic>`, text styles, the
+render fixes), which are offered back upstream.
 
 ---
 
 ## License
 
-MIT. figma-cli built by [Sil Bormüller](https://www.linkedin.com/in/silbormueller); this fork
-and the FigmaClaude app by [Clement Copper](https://github.com/clementcopper), with the panel UI
-from [nolikzero/claude-terminal-panel](https://github.com/nolikzero/claude-terminal-panel)
-(MIT, © 2025 nolikzero).
+MIT, all three parts:
+
+- figma-cli — © [Sil Bormüller](https://www.linkedin.com/in/silbormueller)
+- the panel UI in `app/media` and `app/src/host` — © 2025 [nolikzero](https://github.com/nolikzero)
+  ([`app/LICENSE-claude-terminal-panel`](app/LICENSE-claude-terminal-panel))
+- this fork and the rest of FigmaClaude — © [Clement Copper](https://github.com/clementcopper)
