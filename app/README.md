@@ -38,6 +38,25 @@ per directory, so this is the setting that decides which conversations `--resume
 no `cwd` set, the panel asks once before it starts the first tab; changing it later restarts the
 active tab in the new directory.
 
+## Figma
+
+The top bar's two dots are the two halves that fail separately: the CLI daemon, and a live
+connection into Figma behind it. Daemon up with Figma gone is the state that otherwise looks
+like "commands silently do nothing". Next to them stands the open file.
+
+Everything comes from the daemon (`/health` plus one `eval` for the selection, polled every
+2.5 s while the window has focus) — the panel opens no connection of its own, so it can never
+show more than `figma-cli` can.
+
+With something selected in Figma, a row appears above the status line. Clicking it writes the
+selection into the prompt without sending it:
+
+```
+Figma selection: "Hero - Visual" (FRAME 298:4001), "Button" (INSTANCE 675:5292)
+```
+
+Ids, not just names — they are what `figma-cli get`, `set` and `render --parent` take.
+
 ## Status line
 
 Model, effort, context bar and rate limits cannot be read from the terminal stream — the panel

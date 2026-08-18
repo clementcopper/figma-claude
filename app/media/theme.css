@@ -157,3 +157,53 @@ body {
   white-space: nowrap;
   max-width: 22ch;
 }
+
+/* --- Figma connection indicator --- */
+
+.toolbar-figma {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  margin-right: 2px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.toolbar-figma:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-tab-activeForeground);
+}
+
+.toolbar-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vscode-descriptionForeground);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.toolbar-dot.on {
+  background: #4ac26b;
+  opacity: 1;
+}
+
+.toolbar-dot.off {
+  background: var(--vscode-editorError-foreground);
+  opacity: 0.9;
+}
+
+.toolbar-figma-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 18ch;
+}

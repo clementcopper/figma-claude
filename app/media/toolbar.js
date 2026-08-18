@@ -66,6 +66,21 @@
   spacer.className = 'toolbar-spacer';
   toolbar.appendChild(spacer);
 
+  // Figma connection: two dots, because the two halves fail separately — the daemon can be up
+  // with no Figma behind it, which is the state that otherwise looks like "commands do nothing".
+  const figma = document.createElement('button');
+  figma.className = 'toolbar-figma';
+  figma.type = 'button';
+  figma.title = 'Figma connection';
+  figma.innerHTML =
+    '<span class="toolbar-dot" data-role="daemon"></span>' +
+    '<span class="toolbar-dot" data-role="figma"></span>' +
+    '<span class="toolbar-figma-label">—</span>';
+  figma.addEventListener('click', () => {
+    vscode.postMessage({ type: 'toolbar', action: 'insertSelection' });
+  });
+  toolbar.appendChild(figma);
+
   // Same order as the extension's view/title group.
   toolbar.appendChild(button('newTab', 'New Terminal Tab', 'add'));
   toolbar.appendChild(button('resume', 'Resume Session in Current Tab…', 'history'));
@@ -74,8 +89,25 @@
 
   const label = cwdButton.querySelector('.toolbar-cwd-label');
 
+  const daemonDot = figma.querySelector('[data-role="daemon"]');
+  const figmaDot = figma.querySelector('[data-role="figma"]');
+  const figmaLabel = figma.querySelector('.toolbar-figma-label');
+
   window.addEventListener('message', (event) => {
     const message = event.data;
+
+    if (message && message.type === 'panelFigma') {
+      daemonDot.className = 'toolbar-dot ' + (message.daemon === 'ok' ? 'on' : 'off');
+      figmaDot.className = 'toolbar-dot ' + (message.figma === 'ok' ? 'on' : 'off');
+      // The file is what tells two Figma windows apart; the page follows in the tooltip.
+      figmaLabel.textContent = message.file || (message.daemon === 'ok' ? 'no file' : 'offline');
+      const lines = [message.tooltip];
+      if (message.page) lines.push(`Page: ${message.page}`);
+      lines.push('Click to put the current selection into the prompt');
+      figma.title = lines.join('\n');
+      return;
+    }
+
     if (!message || message.type !== 'panelCwd') return;
     const cwd = message.cwd || '';
     // The bar is narrow: the last segment is what tells two projects apart, the full path

@@ -12,6 +12,8 @@ import { StatusLineWatcher } from './host/statusLineWatcher';
 import { WORKSPACE_ACCENT_COLORS } from './host/types';
 import type { ExtensionMessage, TerminalInstance, WebviewMessage } from './host/types';
 import { loadBounds, saveBounds, clampBounds } from './lib/window-bounds';
+import { FigmaContextWatcher, type FigmaSnapshot } from './host/figmaContext';
+import { describeSelection, selectionPromptText } from './lib/figma-status';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
 const { app, BrowserWindow, dialog, ipcMain, globalShortcut, screen } = electron;
@@ -48,6 +50,7 @@ class PanelHost implements MessageHandlerContext {
   private readonly ptyManager: PtyManager;
   private readonly promptDetector: PromptDetector;
   private readonly statusLineWatcher: StatusLineWatcher;
+  private readonly figmaWatcher: FigmaContextWatcher;
 
   constructor() {
     const callbacks: PtyEventCallbacks = {
@@ -65,6 +68,12 @@ class PanelHost implements MessageHandlerContext {
     this.statusLineWatcher = new StatusLineWatcher((terminalId, snapshot) => {
       this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
     });
+
+    // Where the editor context used to go: what VS Code knew about the open file, this knows
+    // about the open Figma file — same row, same click-to-insert behaviour.
+    this.figmaWatcher = new FigmaContextWatcher((snapshot) => {
+      this.sendFigmaContext(snapshot);
+    });
   }
 
   attach(window: BrowserWindowType): void {
@@ -76,8 +85,8 @@ class PanelHost implements MessageHandlerContext {
   handleReady(cols: number, rows: number): void {
     this.lastCols = cols;
     this.lastRows = rows;
-    // No editor here — the row stays empty until the Figma context lands (M4).
-    this.postMessage({ type: 'editorContext', data: null });
+    this.sendFigmaContext(this.figmaWatcher.snapshot);
+    this.figmaWatcher.start();
 
     // Ask for the working directory once, before the first tab exists. Claude Code keeps its
     // session history per directory, so starting in the wrong one means `--resume` offers the
@@ -118,8 +127,17 @@ class PanelHost implements MessageHandlerContext {
     this.switchToTerminal(id);
   }
 
+  /**
+   * Writes the current Figma selection into the active tab's input — without a newline, so
+   * sending it stays the user's decision. Ids, not just names: those are what `figma-cli get`,
+   * `set` and `render --parent` take.
+   */
   handleInsertEditorReference(): void {
-    // Figma context lands here in M4.
+    const text = selectionPromptText(this.figmaWatcher.snapshot.selection);
+    if (!text) {
+      return;
+    }
+    this.insertIntoActiveTerminal(text);
   }
 
   handleOpenFile(_id: string, _filePath: string, _line?: number, _column?: number): void {
@@ -332,8 +350,43 @@ class PanelHost implements MessageHandlerContext {
     this.postMessage({ type: 'focusTerminal' });
   }
 
+  sendFigmaContext(snapshot: FigmaSnapshot): void {
+    const { status, page, selection } = snapshot;
+
+    // The row exists to be clicked, so it only appears when there is something to insert.
+    this.postMessage({
+      type: 'editorContext',
+      data:
+        selection.length > 0
+          ? {
+              fileName: describeSelection(selection, page),
+              relativePath: status.file ? `${status.file} · ${page}` : page
+            }
+          : null
+    });
+
+    this.postMessage({
+      type: 'panelFigma',
+      daemon: status.daemon,
+      figma: status.figma,
+      mode: status.mode,
+      file: status.file,
+      page,
+      tooltip: status.tooltip
+    } as unknown as ExtensionMessage);
+  }
+
+  get figmaSnapshot(): FigmaSnapshot {
+    return this.figmaWatcher.snapshot;
+  }
+
+  refreshFigmaContext(): void {
+    this.figmaWatcher.refresh();
+  }
+
   dispose(): void {
     this.disposed = true;
+    this.figmaWatcher.stop();
     this.ptyManager.killAll();
     this.promptDetector.dispose();
     this.statusLineWatcher.dispose();
@@ -417,7 +470,14 @@ class PanelHost implements MessageHandlerContext {
 /** Actions of the top bar — the four the extension contributed to the view title, plus cwd. */
 interface ToolbarMessage {
   type: 'toolbar';
-  action: 'newTab' | 'resume' | 'continue' | 'restart' | 'pickCwd' | 'requestCwd';
+  action:
+    | 'newTab'
+    | 'resume'
+    | 'continue'
+    | 'restart'
+    | 'pickCwd'
+    | 'requestCwd'
+    | 'insertSelection';
 }
 
 const host = new PanelHost();
@@ -441,6 +501,10 @@ function handleToolbarAction(action: ToolbarMessage['action']): void {
       break;
     case 'requestCwd':
       host.broadcastCwd();
+      host.sendFigmaContext(host.figmaSnapshot);
+      break;
+    case 'insertSelection':
+      host.handleInsertEditorReference();
       break;
   }
 }
@@ -471,6 +535,10 @@ function createWindow(): BrowserWindowType {
   };
   window.on('resized', persist);
   window.on('moved', persist);
+  // Coming back to the panel is exactly when its picture of Figma is most likely stale.
+  window.on('focus', () => {
+    host.refreshFigmaContext();
+  });
 
   // A renderer error would otherwise be invisible: the window just stays empty.
   window.webContents.on('console-message', (_e, level, message, line, source) => {

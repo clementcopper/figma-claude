@@ -35,10 +35,11 @@ only the parts that depended on VS Code are replaced.
 | `index.html` | new — the same DOM the provider generated |
 | `resources/panel-statusline.cjs` | extension: `.js`. This package is `"type": "module"`, so the CommonJS producer had to be renamed or it died with `ReferenceError: require is not defined` — silently, because Claude Code never surfaces what its statusLine command wrote to stderr |
 
+| `src/host/figmaContext.ts` | replaces `editorContextTracker.ts`: same `editorContext` message and the same click-to-insert row, but the context is the Figma file, page and selection, read through the CLI daemon |
+
 ## Not ported (yet)
 
-`commandInputPicker.ts`, `pathAutocompleteProvider.ts` (VS Code QuickPick), `editorContextTracker.ts`
-(replaced by Figma context, still to come).
+`commandInputPicker.ts` and `pathAutocompleteProvider.ts` — both are VS Code QuickPick UI.
 
 ## Re-porting later
 
