@@ -58,11 +58,12 @@ Everything comes from the daemon (`/health` plus one `eval` for the selection, p
 2.5 s while the window has focus) — the panel opens no connection of its own, so it can never
 show more than `figma-cli` can.
 
-The button itself does what the dots call for. Connected, it hands the selection to the prompt.
-Not connected, it reconnects: the daemon rebuilds its CDP connection on its own whenever Figma
-is running with the debug port open, which is all it takes after a Figma restart. If even that
-fails, `figma-cli connect` is written into the prompt unsent — that command patches, starts
-Figma and asks for the macOS permission, and those questions belong in the terminal.
+The button reports rather than acts on content. Connected, a click checks now and answers in
+place of the file name — the selection, or "Nothing selected". Not connected, it reconnects: the
+daemon rebuilds its CDP connection on its own whenever Figma is running with the debug port
+open, which is all it takes after a Figma restart. Only if that fails is `figma-cli connect`
+needed (patching, starting Figma, the macOS permission), and it is written into the prompt
+unsent, because those questions belong in the terminal.
 
 With something selected in Figma, a row appears above the status line. Clicking it writes the
 selection into the prompt without sending it:

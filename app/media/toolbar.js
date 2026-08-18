@@ -94,22 +94,38 @@
   const figmaDot = figma.querySelector('[data-role="figma"]');
   const figmaLabel = figma.querySelector('.toolbar-figma-label');
 
+  // A message from the host takes the label for a moment, then the file name comes back. The
+  // button has no other way to answer — and an answer is the point of pressing it.
+  let toastTimer;
+  let lastLabel = '—';
+
   window.addEventListener('message', (event) => {
     const message = event.data;
+
+    if (message && message.type === 'panelToast') {
+      clearTimeout(toastTimer);
+      figmaLabel.textContent = message.text;
+      figmaLabel.classList.add('toast');
+      figma.title = message.text;
+      toastTimer = setTimeout(() => {
+        figmaLabel.textContent = lastLabel;
+        figmaLabel.classList.remove('toast');
+      }, 2600);
+      return;
+    }
 
     if (message && message.type === 'panelFigma') {
       daemonDot.className = 'toolbar-dot ' + (message.daemon === 'ok' ? 'on' : 'off');
       figmaDot.className = 'toolbar-dot ' + (message.figma === 'ok' ? 'on' : 'off');
       // The file is what tells two Figma windows apart; the page follows in the tooltip.
-      figmaLabel.textContent = message.file || (message.daemon === 'ok' ? 'no file' : 'offline');
+      lastLabel = message.file || (message.daemon === 'ok' ? 'no file' : 'offline');
+      if (!figmaLabel.classList.contains('toast')) {
+        figmaLabel.textContent = lastLabel;
+      }
       const lines = [message.tooltip];
       if (message.page) lines.push(`Page: ${message.page}`);
       // The click does different things in the two states, so the tooltip has to say which.
-      lines.push(
-        message.figma === 'ok'
-          ? 'Click to put the current selection into the prompt'
-          : 'Click to reconnect'
-      );
+      lines.push(message.figma === 'ok' ? 'Click to check the selection' : 'Click to reconnect');
       figma.title = lines.join('\n');
       return;
     }

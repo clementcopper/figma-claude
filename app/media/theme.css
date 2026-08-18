@@ -251,3 +251,9 @@ body {
 .tab-add[data-tooltip^='New Terminal with'] {
   display: none;
 }
+
+/* A toast holds the label for a couple of seconds; brighter, so it reads as an answer. */
+.toolbar-figma-label.toast {
+  color: var(--vscode-tab-activeForeground);
+  max-width: 32ch;
+}

@@ -391,28 +391,45 @@ class PanelHost implements MessageHandlerContext {
   }
 
   /**
-   * What the Figma button does depends on the dots next to it.
+   * The Figma button is about the connection, not about content: inserting the selection is
+   * what the row above the status line does, and one action belongs in one place.
    *
-   * Connected: hand the current selection to the prompt. Not connected: try to reconnect,
-   * because a red dot with no way to act on it is just a complaint. The daemon can rebuild its
-   * CDP connection on its own whenever Figma is running with the debug port open — after a
-   * Figma restart, that is all it takes. If it cannot, the CLI's own `connect` is needed
-   * (patching, starting Figma, the macOS permission), and that belongs in the terminal where
-   * its questions can be answered — so the command is written into the prompt, unsent.
+   * Connected, a click is a check — poll now and say what it found, including "nothing
+   * selected", because a button that answers nothing looks broken. Not connected, it
+   * reconnects: the daemon rebuilds its CDP connection on its own whenever Figma is running
+   * with the debug port open, which is all it takes after a Figma restart. Only when that
+   * fails is the CLI's own `connect` needed — patching, starting Figma, the macOS permission —
+   * and those questions belong in the terminal, so the command is written into the prompt
+   * unsent.
    */
   async handleFigmaButton(): Promise<void> {
     if (this.figmaWatcher.snapshot.status.figma === 'ok') {
-      this.handleInsertEditorReference();
+      this.figmaWatcher.refresh();
+      const { selection, page } = this.figmaWatcher.snapshot;
+      this.toast(
+        selection.length === 0
+          ? `Nothing selected${page ? ` on ${page}` : ''}`
+          : describeSelection(selection, page)
+      );
       return;
     }
 
+    this.toast('Reconnecting…');
     const reconnected = await reconnect();
     this.figmaWatcher.refresh();
+
     if (reconnected) {
+      this.toast('Connected');
       return;
     }
 
+    this.toast('No connection — run figma-cli connect');
     this.insertIntoActiveTerminal('figma-cli connect');
+  }
+
+  /** A short message in place of the file name, for a couple of seconds. */
+  private toast(text: string): void {
+    this.postMessage({ type: 'panelToast', text } as unknown as ExtensionMessage);
   }
 
   dispose(): void {
