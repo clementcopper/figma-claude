@@ -236,3 +236,18 @@ body {
 .terminal-wrapper .xterm {
   height: auto;
 }
+
+/*
+ * The tab strip's second button — "New Terminal with Custom Command" — is hidden.
+ *
+ * It opens VS Code's QuickPick to run a different CLI or extra flags. There is no QuickPick in
+ * a window, and building one would be ~730 lines of picker for a case that `panel.json` (args)
+ * or simply typing in the terminal already covers. A button that does something other than what
+ * it promises is worse than no button.
+ *
+ * Matched by its tooltip because both buttons share the class `tab-add`. Should the extension
+ * ever reword that tooltip, the button reappears — visibly, not silently.
+ */
+.tab-add[data-tooltip^='New Terminal with'] {
+  display: none;
+}

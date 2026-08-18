@@ -81,8 +81,9 @@
   });
   toolbar.appendChild(figma);
 
-  // Same order as the extension's view/title group.
-  toolbar.appendChild(button('newTab', 'New Terminal Tab', 'add'));
+  // Session actions, in the order the extension's view/title group had them. "New Terminal Tab"
+  // is deliberately absent: the tab strip already carries a `+` that sends the same message, and
+  // two identical buttons forty pixels apart is not two features.
   toolbar.appendChild(button('resume', 'Resume Session in Current Tab…', 'history'));
   toolbar.appendChild(button('continue', 'Continue Last Session in Current Tab', 'continue'));
   toolbar.appendChild(button('restart', 'Restart Terminal', 'restart'));

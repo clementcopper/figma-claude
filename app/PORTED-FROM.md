@@ -37,9 +37,17 @@ only the parts that depended on VS Code are replaced.
 
 | `src/host/figmaContext.ts` | replaces `editorContextTracker.ts`: same `editorContext` message and the same click-to-insert row, but the context is the Figma file, page and selection, read through the CLI daemon |
 
-## Not ported (yet)
+## Not ported, deliberately
 
-`commandInputPicker.ts` and `pathAutocompleteProvider.ts` — both are VS Code QuickPick UI.
+`commandInputPicker.ts` and `pathAutocompleteProvider.ts` — VS Code QuickPick UI, about 730
+lines, for starting a tab with a different CLI or extra flags. A window has no QuickPick, and
+the case is covered by `args` in `panel.json` or by typing in the terminal. The tab strip's
+"New Terminal with Custom Command" button is therefore hidden in `media/theme.css` rather than
+left to do something other than it promises.
+
+The top bar also drops the extension's "New Terminal Tab": the tab strip already carries a `+`
+that sends the same message, and two identical buttons forty pixels apart are not two
+features.
 
 ## Re-porting later
 
