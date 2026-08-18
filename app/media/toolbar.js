@@ -119,4 +119,5 @@
 
   // Asking on startup would be a modal in the way; the host answers with the current one.
   vscode.postMessage({ type: 'toolbar', action: 'requestCwd' });
+
 })();

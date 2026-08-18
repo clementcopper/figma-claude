@@ -75,6 +75,14 @@ passes its own producer per session via `claude --settings`. **Your `~/.claude/s
 not touched**, and your own status line keeps running: the producer calls it and prints its
 output unchanged.
 
+## Development
+
+`PANEL_CAPTURE=<file>` writes a PNG of the window once it has drawn (`PANEL_CAPTURE_DELAY=<ms>`
+to wait longer), and `PANEL_DEBUG=1` prints the terminal's geometry — wrapper height, row
+height, row count, status-line height. Both exist because judging layout from a screenshot is
+guesswork: the cut-off `auto mode on` line turned out to be 56 rows of 16.5 px in a 913 px box,
+which no amount of looking would have told you.
+
 ## Known
 
 - `ELECTRON_RUN_AS_NODE` is deleted before spawning, and `npm start` goes through

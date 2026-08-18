@@ -463,7 +463,12 @@ class PanelHost implements MessageHandlerContext {
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
       return;
     }
-    window.webContents.send('panel:message', message);
+    try {
+      window.webContents.send('panel:message', message);
+    } catch {
+      // The render frame can be gone a moment before `isDestroyed()` admits it, and a PTY
+      // keeps producing output meanwhile — one throw per chunk otherwise.
+    }
   }
 
   private sendTabsUpdate(): void {
@@ -550,6 +555,35 @@ function createWindow(): BrowserWindowType {
   window.webContents.on('console-message', (_e, level, message, line, source) => {
     if (level >= 2) console.error(`[renderer] ${message} (${source}:${String(line)})`);
   });
+
+  // PANEL_DEBUG: read the terminal's geometry out of the page once it has settled. Row height
+  // against container height is what decides whether the last line is cut off, and guessing at
+  // that from a screenshot is how an afternoon disappears.
+  if (process.env.PANEL_DEBUG) {
+    setTimeout(() => {
+      void window.webContents
+        .executeJavaScript(`(() => {
+          const wrapper = document.querySelector('.terminal-wrapper');
+          const screen = document.querySelector('.xterm-screen');
+          const rows = document.querySelectorAll('.xterm-rows > div').length;
+          const status = document.getElementById('status-line');
+          const style = wrapper ? getComputedStyle(wrapper) : null;
+          return {
+            wrapperClient: wrapper ? wrapper.clientHeight : null,
+            padTop: style ? style.paddingTop : null,
+            padBottom: style ? style.paddingBottom : null,
+            screenHeight: screen ? screen.clientHeight : null,
+            rows,
+            rowHeight: screen && rows ? +(screen.clientHeight / rows).toFixed(2) : null,
+            statusHeight: status ? +status.getBoundingClientRect().height.toFixed(1) : null,
+            columnHeight: document.getElementById('terminal-column')?.clientHeight ?? null
+          };
+        })()`)
+        .then((metrics) => {
+          console.log('[metrics]', JSON.stringify(metrics));
+        });
+    }, 8000);
+  }
   window.webContents.on('render-process-gone', (_e, details) => {
     console.error('[renderer] gone:', details.reason);
   });
@@ -567,7 +601,7 @@ function createWindow(): BrowserWindowType {
           writeFileSync(capturePath, image.toPNG());
           console.log('[panel] captured', capturePath);
         });
-      }, 2500);
+      }, Number(process.env.PANEL_CAPTURE_DELAY ?? 2500));
     }
   });
 

@@ -207,3 +207,32 @@ body {
   white-space: nowrap;
   max-width: 18ch;
 }
+
+/*
+ * The terminal's breathing room — as an inset, not as padding.
+ *
+ * The copied rule is `padding: 6px 10px 0`: three sides inset, the terminal flush against the
+ * status line below. In a window that reads as lopsided, but simply adding padding at the
+ * bottom made it worse. Measured: wrapper 925 px tall, 56 rows at 16.5 px = 924 px of terminal.
+ * The fit counts the padding box, so the rows overflow the content box and the last line — the
+ * `auto mode on` hint — is cut in half.
+ *
+ * Insetting the absolutely positioned wrapper instead makes its own height the honest number,
+ * so the fit lands on 55 rows and the air is equal above and below.
+ */
+.terminal-wrapper {
+  top: 6px;
+  right: 10px;
+  bottom: 6px;
+  left: 10px;
+  padding: 0;
+  /* Rows are whole; the wrapper's height is not. Centring the terminal splits the leftover
+     (up to one row) evenly instead of piling all of it under the last line. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.terminal-wrapper .xterm {
+  height: auto;
+}
