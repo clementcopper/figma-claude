@@ -10,7 +10,12 @@ npm install
 npm run rebuild     # node-pty against Electron's ABI, once per Electron version
 npm start           # run from source
 npm run dist        # build release/mac/FigmaClaude.app
+npm run install:app # build it and put it in /Applications
 ```
+
+Installed, it is an ordinary app: Spotlight, Dock, Launchpad. It carries its own copy of the
+code, so after changing anything here run `npm run install:app` again — `npm start` runs the
+source directly and is the faster loop while working on the panel.
 
 Running from source, the Dock says "Electron" — that name comes from the bundle's Info.plist,
 and only the packaged build has its own. Everything else (menu bar, window, Dock icon) says
