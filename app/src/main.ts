@@ -583,6 +583,7 @@ function createWindow(): BrowserWindowType {
           console.log('[metrics]', JSON.stringify(metrics));
         });
     }, 8000);
+
   }
   window.webContents.on('render-process-gone', (_e, details) => {
     console.error('[renderer] gone:', details.reason);

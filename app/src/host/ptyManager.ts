@@ -280,6 +280,12 @@ export class PtyManager {
     });
 
     pty.onExit(({ exitCode }) => {
+      // Drop the dead process before telling anyone. Its file descriptor is gone, and every
+      // later write or resize on it throws from native code — `Error: ioctl(2) failed`, which
+      // in the main process means the whole app goes down.
+      if (this.ptys.get(terminalId) === pty) {
+        this.ptys.delete(terminalId);
+      }
       this.callbacks.onExit(terminalId, exitCode);
     });
   }
@@ -292,11 +298,26 @@ export class PtyManager {
   }
 
   write(terminalId: string, data: string): void {
-    this.ptys.get(terminalId)?.write(data);
+    const pty = this.ptys.get(terminalId);
+    if (!pty) return;
+    try {
+      pty.write(data);
+    } catch {
+      // The process can die between the keystroke and this call; typing into a dead terminal
+      // is a no-op, not a reason to bring the window down.
+    }
   }
 
   resize(terminalId: string, cols: number, rows: number): void {
-    this.ptys.get(terminalId)?.resize(cols, rows);
+    const pty = this.ptys.get(terminalId);
+    if (!pty) return;
+    try {
+      pty.resize(cols, rows);
+    } catch {
+      // Same race, and this one is the common path: the UI resizes on every window change and
+      // on every status-line height change, so a tab whose process has exited would take the
+      // app with it (`ioctl(2) failed`).
+    }
   }
 
   kill(terminalId: string): void {
