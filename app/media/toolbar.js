@@ -77,7 +77,7 @@
     '<span class="toolbar-dot" data-role="figma"></span>' +
     '<span class="toolbar-figma-label">—</span>';
   figma.addEventListener('click', () => {
-    vscode.postMessage({ type: 'toolbar', action: 'insertSelection' });
+    vscode.postMessage({ type: 'toolbar', action: 'figma' });
   });
   toolbar.appendChild(figma);
 
@@ -104,7 +104,12 @@
       figmaLabel.textContent = message.file || (message.daemon === 'ok' ? 'no file' : 'offline');
       const lines = [message.tooltip];
       if (message.page) lines.push(`Page: ${message.page}`);
-      lines.push('Click to put the current selection into the prompt');
+      // The click does different things in the two states, so the tooltip has to say which.
+      lines.push(
+        message.figma === 'ok'
+          ? 'Click to put the current selection into the prompt'
+          : 'Click to reconnect'
+      );
       figma.title = lines.join('\n');
       return;
     }

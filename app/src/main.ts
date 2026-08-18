@@ -12,7 +12,7 @@ import { StatusLineWatcher } from './host/statusLineWatcher';
 import { WORKSPACE_ACCENT_COLORS } from './host/types';
 import type { ExtensionMessage, TerminalInstance, WebviewMessage } from './host/types';
 import { loadBounds, saveBounds, clampBounds } from './lib/window-bounds';
-import { FigmaContextWatcher, type FigmaSnapshot } from './host/figmaContext';
+import { FigmaContextWatcher, reconnect, type FigmaSnapshot } from './host/figmaContext';
 import { describeSelection, selectionPromptText } from './lib/figma-status';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
@@ -390,6 +390,31 @@ class PanelHost implements MessageHandlerContext {
     this.figmaWatcher.refresh();
   }
 
+  /**
+   * What the Figma button does depends on the dots next to it.
+   *
+   * Connected: hand the current selection to the prompt. Not connected: try to reconnect,
+   * because a red dot with no way to act on it is just a complaint. The daemon can rebuild its
+   * CDP connection on its own whenever Figma is running with the debug port open — after a
+   * Figma restart, that is all it takes. If it cannot, the CLI's own `connect` is needed
+   * (patching, starting Figma, the macOS permission), and that belongs in the terminal where
+   * its questions can be answered — so the command is written into the prompt, unsent.
+   */
+  async handleFigmaButton(): Promise<void> {
+    if (this.figmaWatcher.snapshot.status.figma === 'ok') {
+      this.handleInsertEditorReference();
+      return;
+    }
+
+    const reconnected = await reconnect();
+    this.figmaWatcher.refresh();
+    if (reconnected) {
+      return;
+    }
+
+    this.insertIntoActiveTerminal('figma-cli connect');
+  }
+
   dispose(): void {
     this.disposed = true;
     this.figmaWatcher.stop();
@@ -488,7 +513,7 @@ interface ToolbarMessage {
     | 'restart'
     | 'pickCwd'
     | 'requestCwd'
-    | 'insertSelection';
+    | 'figma';
 }
 
 const host = new PanelHost();
@@ -514,8 +539,8 @@ function handleToolbarAction(action: ToolbarMessage['action']): void {
       host.broadcastCwd();
       host.sendFigmaContext(host.figmaSnapshot);
       break;
-    case 'insertSelection':
-      host.handleInsertEditorReference();
+    case 'figma':
+      void host.handleFigmaButton();
       break;
   }
 }

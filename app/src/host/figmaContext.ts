@@ -40,6 +40,26 @@ async function health(): Promise<Health | null> {
   }
 }
 
+/**
+ * Asks the daemon to rebuild its CDP connection. Works whenever Figma is running with the
+ * debug port open — the usual case after Figma was restarted — and fails when there is nothing
+ * to connect to, which is when the CLI's own `connect` (patching, starting Figma, permissions)
+ * is needed instead.
+ */
+export async function reconnect(): Promise<boolean> {
+  const token = readToken();
+  if (!token) return false;
+  try {
+    const response = await fetch(`http://127.0.0.1:${String(DAEMON_PORT)}/reconnect`, {
+      headers: { 'X-Daemon-Token': token },
+      signal: AbortSignal.timeout(8000)
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Runs code inside Figma through the daemon — the same `/exec` route the CLI uses. */
 async function evaluate<T>(code: string, timeoutMs = 4000): Promise<T | null> {
   const token = readToken();
