@@ -68,9 +68,14 @@
 
   // Figma connection: two dots, because the two halves fail separately — the daemon can be up
   // with no Figma behind it, which is the state that otherwise looks like "commands do nothing".
+  //
+  // A button, but disabled while the connection is up: then there is nothing to press, and an
+  // element that invites a click it cannot honour is worse than a plain readout. `disabled`
+  // takes the click, the focus and the keyboard with it in one attribute.
   const figma = document.createElement('button');
   figma.className = 'toolbar-figma';
   figma.type = 'button';
+  figma.disabled = true;
   figma.title = 'Figma connection';
   figma.innerHTML =
     '<span class="toolbar-dot" data-role="daemon"></span>' +
@@ -125,7 +130,8 @@
       const lines = [message.tooltip];
       if (message.page) lines.push(`Page: ${message.page}`);
       // The click does different things in the two states, so the tooltip has to say which.
-      lines.push(message.figma === 'ok' ? 'Click to check the selection' : 'Click to reconnect');
+      figma.disabled = message.figma === 'ok';
+      if (message.figma !== 'ok') lines.push('Click to reconnect');
       figma.title = lines.join('\n');
       return;
     }

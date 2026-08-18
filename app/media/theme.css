@@ -257,3 +257,18 @@ body {
   color: var(--vscode-tab-activeForeground);
   max-width: 32ch;
 }
+
+/*
+ * Connected, the indicator is a readout, not a control: no hover, no pointer, and full
+ * strength — a greyed-out button would read as "broken", which is the opposite of what two
+ * green dots are saying.
+ */
+.toolbar-figma:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.toolbar-figma:disabled:hover {
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+}

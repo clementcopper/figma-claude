@@ -391,29 +391,17 @@ class PanelHost implements MessageHandlerContext {
   }
 
   /**
-   * The Figma button is about the connection, not about content: inserting the selection is
-   * what the row above the status line does, and one action belongs in one place.
+   * The Figma indicator is about the connection and nothing else. Handing the selection to the
+   * prompt is the job of the row above the status line — one action, one place — and the
+   * indicator is not even clickable while the connection is up, so this only ever runs when
+   * there is something to fix.
    *
-   * Connected, a click is a check — poll now and say what it found, including "nothing
-   * selected", because a button that answers nothing looks broken. Not connected, it
-   * reconnects: the daemon rebuilds its CDP connection on its own whenever Figma is running
-   * with the debug port open, which is all it takes after a Figma restart. Only when that
-   * fails is the CLI's own `connect` needed — patching, starting Figma, the macOS permission —
-   * and those questions belong in the terminal, so the command is written into the prompt
-   * unsent.
+   * The daemon rebuilds its CDP connection on its own whenever Figma is running with the debug
+   * port open, which is all it takes after a Figma restart. Only when that fails is the CLI's
+   * own `connect` needed — patching, starting Figma, the macOS permission — and those questions
+   * belong in the terminal, so the command is written into the prompt unsent.
    */
   async handleFigmaButton(): Promise<void> {
-    if (this.figmaWatcher.snapshot.status.figma === 'ok') {
-      this.figmaWatcher.refresh();
-      const { selection, page } = this.figmaWatcher.snapshot;
-      this.toast(
-        selection.length === 0
-          ? `Nothing selected${page ? ` on ${page}` : ''}`
-          : describeSelection(selection, page)
-      );
-      return;
-    }
-
     this.toast('Reconnecting…');
     const reconnected = await reconnect();
     this.figmaWatcher.refresh();
@@ -618,7 +606,8 @@ function createWindow(): BrowserWindowType {
             rows,
             rowHeight: screen && rows ? +(screen.clientHeight / rows).toFixed(2) : null,
             statusHeight: status ? +status.getBoundingClientRect().height.toFixed(1) : null,
-            columnHeight: document.getElementById('terminal-column')?.clientHeight ?? null
+            columnHeight: document.getElementById('terminal-column')?.clientHeight ?? null,
+            figmaDisabled: document.querySelector('.toolbar-figma')?.disabled ?? null
           };
         })()`)
         .then((metrics) => {
