@@ -4,6 +4,19 @@
 follows Apple's macOS grid: the body measures 823 × 823 at (100, 100), so a 100 px margin all
 round, with the soft shadow reaching a little further down and right.
 
+`icon-flat.png` is that export unchanged. `icon.png` is the same picture with the four dots
+recoloured: Figma's own Dock icon does not use the flat brand palette, it gives every shape a
+vertical gradient, and `tint-dots.py` puts the measured ones (`#FD3636 → #EF2E2E` and friends)
+onto the dots. It works out how much of each pixel belongs to a dot, so the anti-aliased rim
+survives — replacing the colour outright would leave a hard edge.
+
+```bash
+python3 build/tint-dots.py build/icon-flat.png build/icon.png
+```
+
+After a fresh export from Figma: overwrite `icon-flat.png`, run that line, then build the
+iconset below.
+
 Everything else is generated from it:
 
 ```bash
