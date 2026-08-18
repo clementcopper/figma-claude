@@ -107,6 +107,12 @@
   window.addEventListener('message', (event) => {
     const message = event.data;
 
+    if (message && message.type === 'panelWindow') {
+      // In full screen macOS hides the traffic lights, so the space kept for them is dead.
+      document.body.classList.toggle('is-fullscreen', message.fullScreen === true);
+      return;
+    }
+
     if (message && message.type === 'panelToast') {
       clearTimeout(toastTimer);
       figmaLabel.textContent = message.text;

@@ -22,7 +22,9 @@ and only the packaged build has its own. Everything else (menu bar, window, Dock
 FigmaClaude either way.
 
 An ordinary window: move and resize it as usual, it remembers where it was, and **⌘⌥C**
-shows or hides it. Closing it ends the session — the tab's process belongs to the window.
+shows or hides it. In full screen the bar drops the 62 px it keeps clear of the traffic lights,
+since macOS hides them there — maximising by double-clicking the bar keeps them, and keeps the
+space. Closing it ends the session — the tab's process belongs to the window.
 
 The top bar carries the four actions the VS Code extension put in the view title — new tab,
 resume session, continue last session, restart — and on the left the working directory.

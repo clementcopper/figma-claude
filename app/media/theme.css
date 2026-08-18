@@ -272,3 +272,8 @@ body {
   background: transparent;
   color: var(--vscode-descriptionForeground);
 }
+
+/* Full screen: no traffic lights, so nothing to keep clear of — the directory moves left. */
+body.is-fullscreen .toolbar-trafficlights {
+  width: 0;
+}

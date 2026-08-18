@@ -415,6 +415,11 @@ class PanelHost implements MessageHandlerContext {
     this.insertIntoActiveTerminal('figma-cli connect');
   }
 
+  /** Full screen or not — the bar reserves space for the traffic lights only when they exist. */
+  sendWindowState(fullScreen: boolean): void {
+    this.postMessage({ type: 'panelWindow', fullScreen } as unknown as ExtensionMessage);
+  }
+
   /** A short message in place of the file name, for a couple of seconds. */
   private toast(text: string): void {
     this.postMessage({ type: 'panelToast', text } as unknown as ExtensionMessage);
@@ -569,6 +574,15 @@ function createWindow(): BrowserWindowType {
     }
   });
 
+  // macOS hides the traffic lights in full screen, which leaves 62 px of reserved space with
+  // nothing in it. The bar is told, so it can give that space back.
+  const sendWindowState = () => {
+    if (window.isDestroyed()) return;
+    host.sendWindowState(window.isFullScreen());
+  };
+  window.on('enter-full-screen', sendWindowState);
+  window.on('leave-full-screen', sendWindowState);
+
   const persist = () => {
     if (!window.isDestroyed() && !window.isMinimized()) {
       saveBounds(window.getBounds());
@@ -607,7 +621,9 @@ function createWindow(): BrowserWindowType {
             rowHeight: screen && rows ? +(screen.clientHeight / rows).toFixed(2) : null,
             statusHeight: status ? +status.getBoundingClientRect().height.toFixed(1) : null,
             columnHeight: document.getElementById('terminal-column')?.clientHeight ?? null,
-            figmaDisabled: document.querySelector('.toolbar-figma')?.disabled ?? null
+            figmaDisabled: document.querySelector('.toolbar-figma')?.disabled ?? null,
+            trafficLightGap: document.querySelector('.toolbar-trafficlights')?.clientWidth ?? null,
+            fullScreen: document.body.classList.contains('is-fullscreen')
           };
         })()`)
         .then((metrics) => {
@@ -622,6 +638,7 @@ function createWindow(): BrowserWindowType {
 
   window.once('ready-to-show', () => {
     window.show();
+    sendWindowState();
 
     // Development aid: PANEL_CAPTURE=<file> writes a PNG of the window once it has drawn.
     // Checking the UI otherwise means being at the machine, which makes remote iteration
