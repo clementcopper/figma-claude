@@ -10,8 +10,9 @@
   <a href="#using-cursor"><img src="https://img.shields.io/badge/Works_in-Cursor-000000?logo=cursor&logoColor=white" alt="Works in Cursor"></a>
   <a href="https://www.linkedin.com/in/silbormueller"><img src="https://img.shields.io/badge/Built_by-Sil_Bormüller-0A66C2?logo=linkedin&logoColor=white" alt="Built by Sil Bormüller"></a>
   <br>
+  <a href="https://github.com/clementcopper"><img src="https://img.shields.io/badge/This_fork_by-Clement_Copper-E28458?logo=github&logoColor=white" alt="This fork by Clement Copper"></a>
   <a href="https://github.com/silships/figma-cli"><img src="https://img.shields.io/badge/Fork_of-silships%2Ffigma--cli-181717?logo=github&logoColor=white" alt="Fork of silships/figma-cli"></a>
-  <a href="app/README.md"><img src="https://img.shields.io/badge/Includes-FigmaClaude_app-E28458" alt="Includes the FigmaClaude app"></a>
+  <a href="app/README.md"><img src="https://img.shields.io/badge/Includes-FigmaClaude_app-1ABCFE" alt="Includes the FigmaClaude app"></a>
   <a href="https://github.com/nolikzero/claude-terminal-panel"><img src="https://img.shields.io/badge/Panel_UI-claude--terminal--panel-0A66C2?logo=visualstudiocode&logoColor=white" alt="Panel UI from claude-terminal-panel"></a>
 </p>
 
@@ -26,8 +27,9 @@
 > ### This is a fork
 >
 > The CLI is [**silships/figma-cli**](https://github.com/silships/figma-cli) by Sil Bormüller
-> (upstream v2.1.2) — everything described below is his work. This fork adds four things and
-> sends the useful ones back:
+> (upstream v2.1.2) — everything described below is his work. This fork is kept by
+> [**Clement Copper**](https://github.com/clementcopper); it adds four things and sends the
+> useful ones back:
 >
 > | | |
 > |---|---|
@@ -73,7 +75,10 @@ You don't install this by hand. You use an **AI coding assistant** , **Claude Co
 ### 2. Get this project onto your computer
 Don't know git? No problem. Open Claude Code anywhere and paste:
 
-> "Download the figma-cli project from https://github.com/silships/figma-cli into a folder in my home directory, then go into it."
+> "Download the figma-cli project from https://github.com/clementcopper/figma-cli into a folder in my home directory, then go into it."
+
+(That is this fork, which includes the FigmaClaude app. For the CLI alone, use the original:
+`https://github.com/silships/figma-cli`.)
 
 (Or, if you prefer: click the green **Code** button on the GitHub page → **Download ZIP** → unzip it.)
 
@@ -106,6 +111,9 @@ a two-line install:
 /plugin install figma-cli@intodesignsystems
 ```
 
+*(The marketplace is the original repo's — it teaches Claude Code the CLI. The fork's extras,
+FigmaClaude above all, come from cloning this repo.)*
+
 That installs a skill that teaches Claude Code how to drive figma-cli (connect
 modes, the render/JSX rules, tokens, verify, a11y). The **CLI itself still needs
 Node ≥ 18 and its dependencies** , clone this repo and run `npm install` once (or
@@ -125,7 +133,7 @@ Prefer **Cursor**? It works exactly the same , the CLI controls Figma Desktop, n
 ### 2. Tell Cursor to install it , one line
 Open Cursor in any folder, open the chat (the Agent), and paste:
 
-> **"Install github.com/silships/figma-cli and connect it to my Figma."**
+> **"Install github.com/clementcopper/figma-cli and connect it to my Figma."**
 
 Cursor downloads the project, installs it, sets up its own rules so it knows how to drive it, and connects to your open Figma Desktop. You watch , you don't type commands.
 
@@ -470,13 +478,13 @@ Figma plugins are slow to build and tied to one UI. AI assistants are great at *
 
 What each connection mode touches (Yolo patches one string in Figma's `app.asar`, Browser and Safe Mode leave the app alone), what the local daemon does, and where credentials live: [SECURITY.md](SECURITY.md). That is also the page to hand to whoever approves tools at your company.
 
-Found a vulnerability? Report it privately via [GitHub private vulnerability reporting](https://github.com/silships/figma-cli/security/advisories/new) or sil@intodesignsystems.com, not in a public issue.
+Found a vulnerability in the CLI? Report it privately via [GitHub private vulnerability reporting](https://github.com/silships/figma-cli/security/advisories/new) or sil@intodesignsystems.com, not in a public issue. For anything specific to this fork — FigmaClaude, `bin/`, the connect patch — use [this repo's advisories](https://github.com/clementcopper/figma-cli/security/advisories/new).
 
 ---
 
 ## Who built this
 
-**Sil Bormüller**, founder of [Into Design Systems](https://www.intodesignsystems.com/), the conference and training platform for design system practitioners.
+**figma-cli — Sil Bormüller**, founder of [Into Design Systems](https://www.intodesignsystems.com/), the conference and training platform for design system practitioners.
 
 - LinkedIn: [linkedin.com/in/silbormueller](https://www.linkedin.com/in/silbormueller)
 - Personal site: [silbormueller.com](https://www.silbormueller.com/)
@@ -484,8 +492,14 @@ Found a vulnerability? Report it privately via [GitHub private vulnerability rep
 - Newsletter with tutorials: [intodesignsystems.substack.com](https://intodesignsystems.substack.com/)
 - GitHub: [@silships](https://github.com/silships)
 
+**This fork and the FigmaClaude app — [Clement Copper](https://github.com/clementcopper)**, with
+the panel UI ported from [nolikzero/claude-terminal-panel](https://github.com/nolikzero/claude-terminal-panel).
+
 ---
 
 ## License
 
-MIT. Built by [Sil Bormüller](https://www.linkedin.com/in/silbormueller).
+MIT. figma-cli built by [Sil Bormüller](https://www.linkedin.com/in/silbormueller); this fork
+and the FigmaClaude app by [Clement Copper](https://github.com/clementcopper), with the panel UI
+from [nolikzero/claude-terminal-panel](https://github.com/nolikzero/claude-terminal-panel)
+(MIT, © 2025 nolikzero).
