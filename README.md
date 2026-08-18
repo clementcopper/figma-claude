@@ -10,7 +10,7 @@
   <a href="#using-cursor"><img src="https://img.shields.io/badge/Works_in-Cursor-000000?logo=cursor&logoColor=white" alt="Works in Cursor"></a>
   <a href="https://www.linkedin.com/in/silbormueller"><img src="https://img.shields.io/badge/Built_by-Sil_Bormüller-0A66C2?logo=linkedin&logoColor=white" alt="Built by Sil Bormüller"></a>
   <br>
-  <a href="https://github.com/clementcopper"><img src="https://img.shields.io/badge/This_fork_by-Clement_Copper-E28458?logo=github&logoColor=white" alt="This fork by Clement Copper"></a>
+  <a href="https://designdone.de"><img src="https://img.shields.io/badge/This_fork_by-designdone.de-E28458" alt="This fork by designdone.de"></a>
   <a href="https://github.com/silships/figma-cli"><img src="https://img.shields.io/badge/Fork_of-silships%2Ffigma--cli-181717?logo=github&logoColor=white" alt="Fork of silships/figma-cli"></a>
   <a href="app/README.md"><img src="https://img.shields.io/badge/Includes-FigmaClaude_app-1ABCFE" alt="Includes the FigmaClaude app"></a>
   <a href="https://github.com/nolikzero/claude-terminal-panel"><img src="https://img.shields.io/badge/Panel_UI-claude--terminal--panel-0A66C2?logo=visualstudiocode&logoColor=white" alt="Panel UI from claude-terminal-panel"></a>
@@ -518,13 +518,20 @@ Three people, three parts. Nothing here is a solo project.
 Code extension whose UI FigmaClaude runs: tabs, toolbar, status line, prompt detection. On the
 Marketplace as [`0ly.claude-terminal-panel`](https://marketplace.visualstudio.com/items?itemName=0ly.claude-terminal-panel).
 
-**This fork and FigmaClaude — [Clement Copper](https://github.com/clementcopper)**. Maintains a
-[fork of claude-terminal-panel](https://github.com/clementcopper/claude-terminal-panel), and built
-FigmaClaude by combining that panel with this CLI: the Electron shell and preload shim, the top
-bar, the working-directory picker, the bridge to the CLI daemon (connection state, reconnect,
-Figma selection as prompt context), the icon and the packaging. Plus the fork's CLI additions
-(`bin/fig-start`, `bin/fig-status`, non-destructive `connect`, `docs <topic>`, text styles, the
-render fixes), which are offered back upstream.
+**This fork and FigmaClaude — [Clement Copper](https://github.com/clementcopper)**, interface
+designer and design engineer behind [**designdone.de**](https://designdone.de) — interface design
+and design engineering as a monthly subscription: UI and product design, design systems, and the
+front-end work that turns them into something running.
+
+Maintains a [fork of claude-terminal-panel](https://github.com/clementcopper/claude-terminal-panel),
+and built FigmaClaude by combining that panel with this CLI: the Electron shell and preload shim,
+the top bar, the working-directory picker, the bridge to the CLI daemon (connection state,
+reconnect, Figma selection as prompt context), the icon and the packaging. Plus the fork's CLI
+additions (`bin/fig-start`, `bin/fig-status`, non-destructive `connect`, `docs <topic>`, text
+styles, the render fixes), which are offered back upstream.
+
+- Design subscription: [designdone.de](https://designdone.de)
+- GitHub: [@clementcopper](https://github.com/clementcopper)
 
 ---
 
