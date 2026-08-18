@@ -1,8 +1,9 @@
 # Claude Panel
 
-Claude Code in a floating window next to Figma, instead of a terminal beside it. The UI is
-[`claude-terminal-panel`](https://github.com/clementcopper/claude-terminal-panel) — same tabs,
-same toolbar, same status line — running in Electron rather than VS Code. See `PORTED-FROM.md`.
+Claude Code in a window next to Figma, instead of a terminal beside it. The UI is
+[`claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel) by nolikzero (MIT),
+by way of [this fork](https://github.com/clementcopper/claude-terminal-panel) — same tabs, same
+toolbar, same status line — running in Electron rather than VS Code. See `PORTED-FROM.md`.
 
 ```bash
 cd app

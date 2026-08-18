@@ -9,6 +9,10 @@
   <img src="https://img.shields.io/badge/Works_in-Claude_Code-D97757?logo=claude&logoColor=white" alt="Works in Claude Code">
   <a href="#using-cursor"><img src="https://img.shields.io/badge/Works_in-Cursor-000000?logo=cursor&logoColor=white" alt="Works in Cursor"></a>
   <a href="https://www.linkedin.com/in/silbormueller"><img src="https://img.shields.io/badge/Built_by-Sil_Bormüller-0A66C2?logo=linkedin&logoColor=white" alt="Built by Sil Bormüller"></a>
+  <br>
+  <a href="https://github.com/silships/figma-cli"><img src="https://img.shields.io/badge/Fork_of-silships%2Ffigma--cli-181717?logo=github&logoColor=white" alt="Fork of silships/figma-cli"></a>
+  <a href="app/README.md"><img src="https://img.shields.io/badge/Includes-FigmaClaude_app-E28458" alt="Includes the FigmaClaude app"></a>
+  <a href="https://github.com/nolikzero/claude-terminal-panel"><img src="https://img.shields.io/badge/Panel_UI-claude--terminal--panel-0A66C2?logo=visualstudiocode&logoColor=white" alt="Panel UI from claude-terminal-panel"></a>
 </p>
 
 <p align="center">
@@ -18,6 +22,26 @@
 </p>
 
 ---
+
+> ### This is a fork
+>
+> The CLI is [**silships/figma-cli**](https://github.com/silships/figma-cli) by Sil Bormüller
+> (upstream v2.1.2) — everything described below is his work. This fork adds four things and
+> sends the useful ones back:
+>
+> | | |
+> |---|---|
+> | **[FigmaClaude](app/README.md)** | Claude Code in a window beside Figma instead of two terminals next to it — a macOS app under `app/` |
+> | `bin/fig-start` | connect, then pick among the open Figma files |
+> | `bin/fig-status` | Figma, CDP, daemon and the active file at a glance |
+> | non-destructive `connect` | never quits a Figma that is already debuggable |
+>
+> Offered upstream as [#40](https://github.com/silships/figma-cli/pull/40) (connect),
+> [#41](https://github.com/silships/figma-cli/pull/41) (`docs <topic>`),
+> [#43](https://github.com/silships/figma-cli/pull/43) (render fixes for
+> [#42](https://github.com/silships/figma-cli/issues/42)) and
+> [#44](https://github.com/silships/figma-cli/pull/44) (text styles). Once they land, the copies
+> here go away. For everything else, use the original repo.
 
 ## What is this?
 
@@ -365,6 +389,48 @@ Prefer to keep everything on your machine? figma-cli also works with **local LLM
 **🔒 No strings (2)**
 - No API key, no cloud roundtrip, no plugin store waits
 - Talks to Figma Desktop directly , real, editable Figma every time
+
+---
+
+## FigmaClaude — Claude Code next to Figma
+
+<img src="app/build/icon.png" width="96" align="right" alt="FigmaClaude icon">
+
+Driving Figma by conversation works; sitting in front of two terminal windows beside Figma to do
+it does not. `app/` is a small macOS app that puts Claude Code in a window of its own, next to
+Figma, with the things a terminal cannot show:
+
+- **Claude's status line** rendered natively — model, effort, context bar, session and weekly
+  limits, working directory. None of that can be read from the terminal stream; Claude Code
+  hands it to a `statusLine` command, which the app supplies per session, so your own
+  `~/.claude/settings.json` is never touched.
+- **Tabs**, resume and continue a session in place, restart.
+- **A working directory you pick** — Claude Code keeps its session history per directory, so
+  this decides which conversations `--resume` offers.
+- **Figma's state**: two dots for the daemon and the connection into Figma, the open file's
+  name, and one click to reconnect when it drops. With something selected in Figma, a row above
+  the status line puts that selection — names and node ids — into the prompt.
+
+```bash
+cd app
+npm install
+npm run rebuild      # node-pty against Electron's ABI, once per Electron version
+npm run install:app  # builds and puts FigmaClaude.app in /Applications
+```
+
+Details in [app/README.md](app/README.md).
+
+**The UI is not new.** It is
+[**nolikzero/claude-terminal-panel**](https://github.com/nolikzero/claude-terminal-panel) (MIT,
+© 2025 nolikzero), by way of [this
+fork](https://github.com/clementcopper/claude-terminal-panel) — the same VS Code panel running
+in an Electron window instead of an editor. The webview, its stylesheet, the message protocol
+and the status-line producer are copied byte-identical; only what depended on VS Code was
+replaced. [app/PORTED-FROM.md](app/PORTED-FROM.md) lists every file and names the source commit,
+so improvements over there come across as a diff.
+
+macOS only, unsigned (right-click → Open on first launch), and not for the Figma Community —
+it needs the local CLI, which the plugin rules do not allow.
 
 ---
 

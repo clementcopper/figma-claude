@@ -1,11 +1,21 @@
 # Ported from claude-terminal-panel
 
-Source: [`clementcopper/claude-terminal-panel`](https://github.com/clementcopper/claude-terminal-panel), MIT
+```
+nolikzero/claude-terminal-panel        the original, MIT, © 2025 nolikzero
+        ↓  fork
+clementcopper/claude-terminal-panel    the copy this was taken from
+        ↓  port
+app/                                   FigmaClaude
+```
+
+Original: [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel)
+— on the Marketplace as `0ly.claude-terminal-panel`.
+Taken from: [`clementcopper/claude-terminal-panel`](https://github.com/clementcopper/claude-terminal-panel)
 Commit: `b89760a514de29888a8b8b9bf39d060a2047e435` (2026-08-15)
 
-Same author, same licence (`LICENSE-claude-terminal-panel`). This is the VS Code panel running
-next to Figma instead of inside an editor, so the UI is not reimplemented — it is copied, and
-only the parts that depended on VS Code are replaced.
+The licence is nolikzero's and ships alongside as `LICENSE-claude-terminal-panel`. This is that
+VS Code panel running next to Figma instead of inside an editor, so the UI is not reimplemented
+— it is copied, and only the parts that depended on VS Code are replaced.
 
 ## Copied byte-identical
 
@@ -54,7 +64,7 @@ features.
 Improvements to the extension come over as a diff:
 
 ```bash
-git clone https://github.com/clementcopper/claude-terminal-panel /tmp/ctp
+git clone https://github.com/nolikzero/claude-terminal-panel /tmp/ctp
 diff -u /tmp/ctp/media/main.ts app/media/main.ts
 ```
 
