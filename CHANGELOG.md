@@ -1,5 +1,66 @@
 # Changelog
 
+> Everything below **Upstream** is `silships/figma-cli`'s own history, untouched. This first
+> section is what the fork [`clementcopper/figma-cli`](https://github.com/clementcopper/figma-cli)
+> adds on top.
+
+## Fork — unreleased
+
+### New
+
+- **FigmaClaude (`app/`).** Claude Code in a macOS window beside Figma instead of two terminals
+  next to it. The UI is [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel)
+  (MIT, © 2025 nolikzero) by way of [this fork](https://github.com/clementcopper/claude-terminal-panel),
+  ported to Electron: webview, stylesheet, message protocol, tab handling, prompt detector and
+  status-line producer are copied byte-identical, and only what depended on VS Code was replaced
+  (`app/PORTED-FROM.md` lists every file and the source commit). What it carries beyond the
+  original: Figma's own state — a dot each for the CLI daemon and the connection into Figma, the
+  open file's name, one click to reconnect — and a row above the status line that writes the
+  current Figma selection, names and node ids, into the prompt. `npm run install:app` builds and
+  installs it; the icon is a designed master plus `build/tint-dots.py`, which gives the flat brand
+  colours the gradients Figma's and Claude's own icons use.
+- **`figma-cli docs [topic]`.** The usage guide is ~10,200 tokens and was read whole before any
+  work started. `docs` lists its 20 sections with their token cost, `docs jsx-syntax` prints one
+  (~930 tok). Guide content moved to `docs/FIGMA-USAGE.md` byte-identical, so upstream edits still
+  apply to it through Git's rename detection. Offered upstream as
+  [#41](https://github.com/silships/figma-cli/pull/41).
+- **`<Text textStyle="Heading/H1">` and automatic text-style matching.** Rendered text never
+  picked up a file's text styles — every `<Text>` was an island of hardcoded values, and
+  `figma-cli analyze` flagged the CLI's own output as "missing style". `textStyle=` binds one by
+  name (the tail of a slash-grouped name works too, like `var:` aliases), resolving against local
+  *and* the library styles the document already uses. Without it, a style is applied when exactly
+  one matches the text's size and weight; several or none apply nothing and say why.
+  `figma-cli styles` lists what a file has. Measured and unavoidable: writing `fontSize`,
+  `fontName`, `lineHeight` or `letterSpacing` onto a styled node **clears** `textStyleId`, so
+  conflicting props are reported rather than applied. Offered upstream as
+  [#44](https://github.com/silships/figma-cli/pull/44).
+- **`bin/fig-start`** — connect, then pick among the open Figma files — and **`bin/fig-status`**,
+  which shows Figma, CDP, daemon and the active file at a glance.
+
+### Fixed
+
+- **Every render error was reported as `ReferenceError: frame is not defined`.** The generated
+  code declared `const frame` inside the `try` and called `frame.remove()` from the `catch`, where
+  that binding is not in scope, so the real error never surfaced and the cleanup never ran — a
+  failed render left an orphan frame on the canvas. Offered upstream as
+  [#43](https://github.com/silships/figma-cli/pull/43), reported as
+  [#42](https://github.com/silships/figma-cli/issues/42).
+- **`w="fill"` / `h="fill"` worked in none of three places**, all masked by the above: on a root
+  frame with `--parent` the FILL was set before `appendChild`, so it could never take; without
+  `--parent` there is nothing to fill (now a warning); and `<Rectangle>` / `<Ellipse>` / `<Image>`
+  passed the keyword straight into `resize()` as the string `"fill"`.
+- **`connect` quit a Figma that was already debuggable**, taking unsaved window arrangement with
+  it. It now probes CDP first and leaves a working session alone. Offered upstream as
+  [#40](https://github.com/silships/figma-cli/pull/40).
+- A timed-out command suggested `connect`, which restarts Figma; it suggests `daemon restart`.
+
+### Tests
+
+585 unit tests in the CLI (upstream's plus text styles, fill sizing, doc sections and the connect
+plan), none needing Figma; 24 more in `app/`, none needing Electron.
+
+## Upstream
+
 ## Unreleased
 
 ### Fixed — auto-layout

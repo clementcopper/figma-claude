@@ -114,7 +114,7 @@ The `connect` fix is written to be upstreamable (pure function + unit test, no f
 git fetch upstream && git merge upstream/main
 ```
 
-Expect conflicts only in `CLAUDE.md` (ours), `README.md` (two fork blocks: the note under the header, the FigmaClaude section before *For developers*) and possibly `package.json` (`bin`/`files` entries for `bin/`).
+Expect conflicts only in `CLAUDE.md` (ours), `README.md` (two fork blocks: the note under the header, the FigmaClaude section before *For developers*), `CHANGELOG.md` (the `## Fork` section above `## Upstream`) and possibly `package.json` (`bin`/`files` entries for `bin/`). All fork additions sit at the top or at a section edge, so a conflict stays local.
 
 ---
 
