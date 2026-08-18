@@ -192,6 +192,9 @@ class PanelHost implements MessageHandlerContext {
     this.ptyManager.spawn(activeId, this.configManager.getConfig(), this.lastCols, this.lastRows, cwd);
     this.sendTabsUpdate();
     this.broadcastCwd();
+    // The status row belongs to the old directory now. Claude re-renders it only after its
+    // first output, so seed it from the new directory's remembered snapshot right away.
+    this.sendInitialStatusLine(activeId, cwd);
   }
 
   // --- Terminals ---

@@ -19,7 +19,7 @@ only the parts that depended on VS Code are replaced.
 | `src/host/terminalStateManager.ts` | |
 | `src/host/promptDetector.ts` | |
 | `src/host/commandHelpParser.ts`, `src/host/helpExecutor.ts` | not wired up yet |
-| `resources/panel-statusline.js` | the status line producer Claude Code runs |
+| `resources/panel-statusline.cjs` | the status line producer Claude Code runs (renamed from `.js`, see below) |
 
 ## Changed, and why
 
@@ -33,6 +33,7 @@ only the parts that depended on VS Code are replaced.
 | `media/theme.css` | new — the `--vscode-*` variables VS Code injected, plus the layout the copied CSS cannot know about (it assumes a sidebar, not a window with a top bar) |
 | `media/toolbar.js` | new — the four view/title buttons (New Tab, Resume, Continue, Restart) plus the working-directory chip; VS Code contributed those through `package.json`, not through the webview |
 | `index.html` | new — the same DOM the provider generated |
+| `resources/panel-statusline.cjs` | extension: `.js`. This package is `"type": "module"`, so the CommonJS producer had to be renamed or it died with `ReferenceError: require is not defined` — silently, because Claude Code never surfaces what its statusLine command wrote to stderr |
 
 ## Not ported (yet)
 

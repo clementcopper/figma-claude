@@ -143,7 +143,10 @@ export class PtyManager {
    * Electron app started from that terminal would inherit it.
    */
   private getBundledStatusLineCommand(): string {
-    const script = path.join(this.appRoot, 'resources', 'panel-statusline.js');
+    // `.cjs`, not `.js`: this package is `"type": "module"`, and the producer is CommonJS.
+    // As a `.js` file it died with "require is not defined in ES module scope" — silently,
+    // because Claude Code never shows what its statusLine command printed to stderr.
+    const script = path.join(this.appRoot, 'resources', 'panel-statusline.cjs');
     return `ELECTRON_RUN_AS_NODE=1 ${shellQuote(process.execPath)} ${shellQuote(script)}`;
   }
 
