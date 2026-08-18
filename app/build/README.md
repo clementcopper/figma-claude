@@ -1,32 +1,25 @@
 # Icon
 
-The artwork is shape data in `icon-src/artwork.mjs`, rendered by `render-icon.mjs`:
+`icon.png` is the master — 1024 × 1024, RGBA, designed in Figma and exported at @2x. It already
+follows Apple's macOS grid: the body measures 823 × 823 at (100, 100), so a 100 px margin all
+round, with the soft shadow reaching a little further down and right.
 
-```bash
-node build/render-icon.mjs icon      build/icon.png       1024
-node build/render-icon.mjs iconSmall build/icon-small.png 1024
-```
-
-Then the `.icns` (the small drawing carries 16 and 32 px, the large one everything above):
+Everything else is generated from it:
 
 ```bash
 mkdir -p build/FigmaClaude.iconset
-sips -z 16 16 build/icon-small.png --out build/FigmaClaude.iconset/icon_16x16.png
-# … 16@2x, 32, 32@2x from icon-small.png; 128 … 512@2x from icon.png …
+sips -z 16 16 build/icon.png --out build/FigmaClaude.iconset/icon_16x16.png
+# … 16@2x, 32, 32@2x, 128, 128@2x, 256, 256@2x, 512 …
+cp build/icon.png build/FigmaClaude.iconset/icon_512x512@2x.png
 iconutil -c icns build/FigmaClaude.iconset -o build/icon.icns
 ```
 
-## Why not SVG
+`icon.icns` goes into the packaged bundle; `icon.png` is what `app.dock.setIcon` uses while
+running from source, where the Dock name still comes from Electron's own bundle.
 
-macOS renders SVG through `qlmanage`, but it composites onto **white** — that is where the white
-block behind the icon came from. Driving a browser to rasterise a single file was the heavier
-alternative, so `render-icon.mjs` draws rounded rectangles, circles and capsules directly, with
-4×4 supersampling and a PNG writer over `zlib`. About two seconds per icon, no dependency.
+Earlier versions drew the icon from shape data and carried a simplified second drawing for 16
+and 32 px. Both are gone: with a designed icon, a different mark at small sizes would be a
+different icon. Git history has the generator if it is ever wanted again.
 
-## Measurements
-
-Apple's macOS icon grid: 1024 canvas, body 824×824 centred (100 px margin), corner radius
-185.4 = 0.225 × 824. The margin is not decoration — every other app in the Dock keeps it, so an
-icon without it stands out as oversized.
-
-Original artwork: Figma's logo is a trademark and is deliberately not reproduced.
+Every size comes out of one file, so check the small ones after a change — `sips` downscales
+well, but four dots in a row can merge at 16 px.
