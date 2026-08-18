@@ -16,7 +16,13 @@ import { FigmaContextWatcher, type FigmaSnapshot } from './host/figmaContext';
 import { describeSelection, selectionPromptText } from './lib/figma-status';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
-const { app, BrowserWindow, dialog, ipcMain, globalShortcut, screen } = electron;
+const { app, BrowserWindow, dialog, ipcMain, globalShortcut, nativeImage, screen } = electron;
+
+// Before anything else: `app.setName` decides the name in the menu bar, in `~/Library` paths
+// and in notifications. In a packaged build the bundle's Info.plist owns the Dock name; while
+// running from source it says "Electron" no matter what, so the Dock icon is set explicitly
+// below to make the window at least recognisable during development.
+app.setName('FigmaClaude');
 
 // dist/main.cjs → the app directory. CommonJS output, so `__dirname` is the honest way.
 declare const __dirname: string;
@@ -516,7 +522,7 @@ function createWindow(): BrowserWindowType {
     ...bounds,
     minWidth: 320,
     minHeight: 240,
-    title: 'Claude Panel',
+    title: 'FigmaClaude',
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 10, y: 11 },
     backgroundColor: '#1e1e1e',
@@ -570,6 +576,13 @@ function createWindow(): BrowserWindowType {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin' && app.dock) {
+    const icon = nativeImage.createFromPath(path.join(APP_ROOT, 'build', 'icon.png'));
+    if (!icon.isEmpty()) {
+      app.dock.setIcon(icon);
+    }
+  }
+
   const window = createWindow();
   host.attach(window);
 
