@@ -8,8 +8,10 @@
 
 ### New
 
-- **FigmaClaude (`app/`).** Claude Code in a macOS window beside Figma instead of two terminals
-  next to it. The UI is [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel)
+- **FigmaClaude (`app/`).** A macOS app built from two projects that each do half the job: this
+  CLI, which drives Figma, and an AI terminal panel for VS Code. Claude Code ends up in a window
+  beside Figma instead of two terminals next to it. The UI is
+  [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel)
   (MIT, © 2025 nolikzero) by way of [this fork](https://github.com/clementcopper/claude-terminal-panel),
   ported to Electron: webview, stylesheet, message protocol, tab handling, prompt detector and
   status-line producer are copied byte-identical, and only what depended on VS Code was replaced

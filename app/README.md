@@ -1,9 +1,21 @@
 # Claude Panel
 
-Claude Code in a window next to Figma, instead of a terminal beside it. The UI is
-[`claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel) by nolikzero (MIT),
-by way of [this fork](https://github.com/clementcopper/claude-terminal-panel) — same tabs, same
-toolbar, same status line — running in Electron rather than VS Code. See `PORTED-FROM.md`.
+Claude Code in a window next to Figma, instead of a terminal beside it. Built by
+[Clement Copper](https://github.com/clementcopper) from two projects that each do half of it:
+
+```
+silships/figma-cli                 drives Figma Desktop over CDP
+nolikzero/claude-terminal-panel    the AI terminal panel for VS Code
+        ⇩   combined, ported to Electron and extended here
+FigmaClaude
+```
+
+The panel's UI — tabs, toolbar, status line — is copied byte-identical from
+[`claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel) (MIT, © 2025
+nolikzero) by way of [this fork](https://github.com/clementcopper/claude-terminal-panel); see
+`PORTED-FROM.md` for the file-by-file list. Written here: the Electron shell and its preload
+shim, the top bar, the working-directory picker, the bridge to the CLI daemon, the icon and the
+packaging.
 
 ```bash
 cd app
