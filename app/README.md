@@ -30,6 +30,13 @@ Installed, it is an ordinary app: Spotlight, Dock, Launchpad. It carries its own
 code, so after changing anything here run `npm run install:app` again — `npm start` runs the
 source directly and is the faster loop while working on the panel.
 
+The panel asks your login shell what PATH a real terminal has — **interactively** (`zsh -lic`),
+because zsh reads `.zshrc` only in interactive shells, and that is where installers put their
+line: Claude Code's own writes `export PATH="$HOME/.local/bin:$PATH"` there. Probed without it,
+`claude` was missing from the PATH the terminals got, and every tab exited with a silent code 1.
+`~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` are appended as a fallback, and a
+command that still cannot be found is named in the tab.
+
 `install:app` quits a running FigmaClaude before it replaces the bundle, and says so. That is
 not politeness: replacing the bundle underneath a running instance leaves the window alive but
 kills its terminals — every new tab then exits instantly with code 1 and prints nothing. If it

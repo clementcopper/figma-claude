@@ -5,6 +5,7 @@ import { execFileSync } from 'child_process';
 import type { IPty, INodePty, TerminalConfig } from './types';
 import { getStatusLineDir } from './statusLineWatcher';
 import { pathWithShim } from '../lib/cli-shim';
+import { extractProbedPath, pathProbeCommand, whichOnPath, withUserBinDirs } from '../lib/shell-path';
 
 // Bundled to CommonJS for Electron's main process, so the loader's own `require` is what
 // pulls in the native module. node-pty has no usable ESM entry point.
@@ -23,8 +24,13 @@ function shellQuote(value: string): string {
 }
 
 /**
- * The PATH a login shell would have. Cached: it costs a shell start, and it cannot change while
- * the app runs. Failure is silent — the inherited PATH is then all there is.
+ * The PATH a real terminal would have. Cached: it costs a shell start, and it cannot change
+ * while the app runs. Failure is silent — the inherited PATH is then all there is.
+ *
+ * `-lic`, not `-lc`: interactive as well as login. zsh reads `.zshrc` only when interactive, and
+ * that is where installers put their PATH line — Claude Code's own writes
+ * `export PATH="$HOME/.local/bin:$PATH"` there. Probed without `-i`, the answer came back
+ * without `claude` on it, and every tab died with a silent exit code 1.
  */
 let cachedLoginPath: string | null | undefined;
 export function loginShellPath(): string | null {
@@ -35,16 +41,18 @@ export function loginShellPath(): string | null {
   const shell = process.env.SHELL;
   if (shell && process.platform !== 'win32') {
     try {
-      const out = execFileSync(shell, ['-l', '-c', 'printf %s "$PATH"'], {
+      const out = execFileSync(shell, ['-lic', pathProbeCommand()], {
         encoding: 'utf8',
-        timeout: 4000,
+        // An interactive rc file can be slow: version managers, completions, greetings.
+        timeout: 8000,
         stdio: ['ignore', 'pipe', 'ignore']
-      }).trim();
-      if (out.includes('/')) {
-        cachedLoginPath = out;
+      });
+      const probed = extractProbedPath(out);
+      if (probed) {
+        cachedLoginPath = withUserBinDirs(probed, os.homedir());
       }
     } catch {
-      // No login shell, or it took too long. Not worth a message.
+      // No shell, or it took too long. Not worth a message.
     }
   }
   return cachedLoginPath;
@@ -93,6 +101,22 @@ export class PtyManager {
       const effectiveConfig = this.withStatusLineSettings(config);
       const { shell, env, cwd: defaultCwd } = this.prepareSpawnOptions(config, terminalId);
       const workingDir = cwd ?? defaultCwd;
+
+      // A command that is not on the PATH we just built exits 1 without printing anything, and
+      // the tab shows a bare exit code. Saying which command is missing costs one lookup.
+      if (config.directMode && config.command) {
+        const found = whichOnPath(config.command, env.PATH ?? '', fs.existsSync);
+        if (!found) {
+          this.callbacks.onError(
+            terminalId,
+            `"${config.command}" is not on the PATH this window sees. ` +
+              'Set "command" in ~/.figma-ds-cli/panel.json to its full path, or install it where ' +
+              'your shell can find it.'
+          );
+          return;
+        }
+      }
+
       const pty = this.createPty(effectiveConfig, shell, cols, rows, workingDir, env);
 
       this.ptys.set(terminalId, pty);

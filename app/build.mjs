@@ -43,6 +43,12 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/shell-path.ts')],
+    outfile: join(ROOT, 'dist/lib/shell-path.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'src/lib/pty-exit.ts')],
     outfile: join(ROOT, 'dist/lib/pty-exit.mjs'),
     platform: 'node',
