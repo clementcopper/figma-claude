@@ -33,6 +33,13 @@
   DESIGN.md and structure trees, contracts from `rules gen`); a real project had half a megabyte
   of that sitting between its own documents. Visible rather than hidden, because the CLI's own
   DESIGN.md lookup skips dot-directories.
+- **`install:app` quits the app before replacing it.** It ran `rm -rf` on the installed bundle
+  regardless, which left a running instance alive but with dead terminals: every new tab exited
+  instantly with code 1 and no output. The installer now asks the app to quit, waits, and stops
+  rather than deleting anything if it will not. A tab that dies that way also says what to try,
+  instead of showing a bare exit code. Which file the stale instance trips over is not
+  established — removing node-pty's `spawn-helper` produces a different message — so the hint is
+  worded as the one known cause, not as a diagnosis.
 - **Light mode, and a window that knows its own name.** The panel followed no appearance at all:
   a dark rectangle beside a light Figma. It now follows macOS (System / Light / Dark in the Figma
   menu, switching live). The chrome values are Figma's own light UI tokens, read out of the

@@ -10,7 +10,7 @@ import { dispatchMessage, type MessageHandlerContext } from './host/messageHandl
 import { PromptDetector, type PromptDetectorConfig } from './host/promptDetector';
 import { StatusLineWatcher } from './host/statusLineWatcher';
 import { WORKSPACE_ACCENT_COLORS } from './host/types';
-import type { ExtensionMessage, TerminalInstance, WebviewMessage } from './host/types';
+import type { ExtensionMessage, TerminalConfig, TerminalInstance, WebviewMessage } from './host/types';
 import { loadBounds, saveBounds, clampBounds } from './lib/window-bounds';
 import { evaluate, FigmaContextWatcher, reconnect, type FigmaSnapshot } from './host/figmaContext';
 import {
@@ -34,6 +34,7 @@ import {
 } from './lib/figma-status';
 import { RULES_FILE } from './lib/project-layout';
 import { resolveTheme, type ThemeSetting } from './lib/theme-choice';
+import { describePtyExit } from './lib/pty-exit';
 import {
   buildUndoEval,
   parseLastRender,
@@ -89,6 +90,9 @@ class PanelHost implements MessageHandlerContext {
   private readonly figmaWatcher: FigmaContextWatcher;
   /** One CLI action at a time — each of them restarts the daemon or Figma underneath. */
   private figmaBusy = false;
+  /** When each PTY was spawned and whether it ever spoke — see `describePtyExit`. */
+  private readonly ptyStarted = new Map<string, number>();
+  private readonly ptySawOutput = new Set<string>();
   private cliCache: CliInvocation | undefined;
 
   constructor() {
@@ -250,7 +254,7 @@ class PanelHost implements MessageHandlerContext {
       this.isRestarting = false;
     }, 100);
 
-    this.ptyManager.spawn(activeId, this.configManager.getConfig(), this.lastCols, this.lastRows, cwd);
+    this.spawnPty(activeId, this.configManager.getConfig(), cwd);
     this.sendTabsUpdate();
     this.broadcastCwd();
     // The status row belongs to the old directory now. Claude re-renders it only after its
@@ -284,7 +288,7 @@ class PanelHost implements MessageHandlerContext {
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
-    this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
+    this.spawnPty(id, config, cwd);
     this.postMessage({ type: 'switchTab', id });
     this.broadcastCwd();
 
@@ -382,7 +386,7 @@ class PanelHost implements MessageHandlerContext {
     const cwd = this.stateManager.get(activeId)?.cwd;
     const spawnConfig =
       extraArgs.length > 0 ? { ...config, args: [...config.args, ...extraArgs] } : config;
-    this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
+    this.spawnPty(activeId, spawnConfig, cwd);
   }
 
   /** Writes text into the active tab's input without sending it. */
@@ -644,7 +648,18 @@ class PanelHost implements MessageHandlerContext {
 
   // --- PTY events ---
 
+  /**
+   * The only place a PTY is started, so the two facts `describePtyExit` needs — when it began
+   * and whether it ever spoke — cannot drift apart from the spawn itself.
+   */
+  private spawnPty(terminalId: string, config: TerminalConfig, cwd: string | undefined): void {
+    this.ptyStarted.set(terminalId, Date.now());
+    this.ptySawOutput.delete(terminalId);
+    this.ptyManager.spawn(terminalId, config, this.lastCols, this.lastRows, cwd);
+  }
+
   private handlePtyData(terminalId: string, data: string): void {
+    this.ptySawOutput.add(terminalId);
     if (!this.disposed && this.window) {
       this.postMessage({ type: 'output', id: terminalId, data });
       this.promptDetector.onData(terminalId, data);
@@ -652,11 +667,20 @@ class PanelHost implements MessageHandlerContext {
   }
 
   private handlePtyExit(terminalId: string, exitCode: number): void {
+    const started = this.ptyStarted.get(terminalId);
+    const sawOutput = this.ptySawOutput.has(terminalId);
+    this.ptyStarted.delete(terminalId);
+    this.ptySawOutput.delete(terminalId);
+
     if (!this.disposed && this.window && !this.isRestarting) {
       this.postMessage({
         type: 'output',
         id: terminalId,
-        data: `\r\n[Process exited with code ${String(exitCode)}]\r\n`
+        data: describePtyExit({
+          code: exitCode,
+          msSinceSpawn: started === undefined ? Number.MAX_SAFE_INTEGER : Date.now() - started,
+          sawOutput
+        })
       });
     }
   }

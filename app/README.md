@@ -30,6 +30,11 @@ Installed, it is an ordinary app: Spotlight, Dock, Launchpad. It carries its own
 code, so after changing anything here run `npm run install:app` again — `npm start` runs the
 source directly and is the faster loop while working on the panel.
 
+`install:app` quits a running FigmaClaude before it replaces the bundle, and says so. That is
+not politeness: replacing the bundle underneath a running instance leaves the window alive but
+kills its terminals — every new tab then exits instantly with code 1 and prints nothing. If it
+cannot quit the app (an open dialog, say), it stops instead of deleting anything.
+
 Running from source, the Dock says "Electron" — that name comes from the bundle's Info.plist,
 and only the packaged build has its own. Everything else (menu bar, window, Dock icon) says
 FigmaClaude either way.
