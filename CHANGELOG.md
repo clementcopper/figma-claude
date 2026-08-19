@@ -16,10 +16,23 @@
   runs `figma-cli` as a child process and reports back in the menu, so nothing lands in the
   conversation. Two things it fixes on the way: `bin/fig-start` showed a file picker that never set
   `FIGMA_FILE`, so the daemon kept binding to whichever file was first; and on a machine where the
-  CLI is only a checkout, the `figma-cli …` commands that `init-agent` writes into `AGENTS.md` had
+  CLI is only a checkout, the `figma-cli …` commands that `init-agent` writes into the rules had
   nothing to run — the panel now writes `~/.figma-ds-cli/bin/figma-cli` and puts that directory on
   the PATH of its own terminals, without installing anything globally. Patching Figma from the menu
   needs macOS "App Management" for FigmaClaude itself; the menu says so and opens the pane.
+- **Rules land where Claude Code reads them, and generated files get their own folder.**
+  `init-agent` wrote `AGENTS.md`, on the stated assumption that "Claude Code, Cursor, Codex all
+  read it". Claude Code does not: it reads `CLAUDE.md` and `.claude/rules/`, so the panel's
+  "Prepare this folder" produced a file no session ever loaded. `--tool claude` now targets
+  `.claude/rules/figma-cli.md` — which also means no `CLAUDE.md` somebody else maintains is
+  opened or edited. `--tool agents` keeps writing `AGENTS.md` for Codex and friends, and the
+  default `both` is unchanged. New `--no-setup` leaves out "run `figma-cli connect` once per
+  session": where a host app owns the connection — the panel connects by button — that line
+  contradicts the project's own instructions, and contradictions get resolved arbitrarily.
+  In the panel, `FigmaClaude/` is now the place for what the CLI generates (`extract`'s
+  DESIGN.md and structure trees, contracts from `rules gen`); a real project had half a megabyte
+  of that sitting between its own documents. Visible rather than hidden, because the CLI's own
+  DESIGN.md lookup skips dot-directories.
 - **The connection button names file and page** — `Designdone/Landingpage`, the way Figma's own
   breadcrumb reads. Both names come from the Plugin API rather than the CDP target title, so the
   file shows in Safe Mode too, where the daemon has no page title at all.

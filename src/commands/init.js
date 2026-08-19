@@ -1,21 +1,32 @@
 // Command: init — scaffold agent guidance into a designer's project so figma-cli
-// "just works" with whichever AI coding tool they use (Claude Code or Cursor).
-// Writes the SAME condensed usage ruleset to:
+// "just works" with whichever AI coding tool they use.
+// Writes the SAME condensed usage ruleset to, depending on --tool:
+//   - .claude/rules/figma-cli.md    (Claude Code — it reads CLAUDE.md and .claude/rules/,
+//                                    NOT AGENTS.md; a rules file loads at session start
+//                                    without touching a CLAUDE.md somebody else maintains)
+//   - AGENTS.md                     (Codex, Cursor and other agents that read it)
 //   - .cursor/rules/figma-cli.mdc   (Cursor)
-//   - AGENTS.md                     (Claude Code, Cursor, Codex all read it)
 // The CLI binary needs nothing else — it controls Figma Desktop directly, so it
 // already runs in any terminal. This just teaches the agent HOW to drive it.
 import chalk from 'chalk';
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { program } from '../lib/cli-core.js';
+import { assembleRules, planAgentRules, toolTargets } from '../lib/agent-rules-plan.js';
 
 // The shared, designer-facing usage rules. Kept tight on purpose — an agent
 // needs the operating rules, not the CLI's internals.
-const RULES_BODY = `# Using figma-cli
+const RULES_HEAD = `# Using figma-cli
 
 figma-cli controls **Figma Desktop** directly (no API key). It runs in any
-terminal. Open Figma Desktop, then \`figma-cli connect\` once per session.
+terminal.`;
+
+// Dropped by --no-setup: where a host app owns the connection (the FigmaClaude panel
+// connects by button), telling the agent to run `connect` contradicts the project's own
+// instructions — and conflicting instructions get resolved arbitrarily.
+const RULES_SETUP = ` Open Figma Desktop, then \`figma-cli connect\` once per session.`;
+
+const RULES_REST = `
 
 ## Golden rules
 1. **Create frames with \`render\` / \`render-batch\`** — they have smart positioning.
@@ -64,42 +75,52 @@ figma-cli a11y audit                   # contrast / touch / text checks
 \`\`\`
 `;
 
-function writeFile(path, content, force) {
-  if (existsSync(path) && !force) {
-    const existing = readFileSync(path, 'utf8');
-    if (existing.includes('# Using figma-cli')) return { path, status: 'up-to-date' };
-    return { path, status: 'exists' };  // don't clobber unrelated content
-  }
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content);
-  return { path, status: 'written' };
-}
-
 program
   .command('init-agent')
-  .description('Scaffold agent rules so figma-cli works out of the box in Claude Code & Cursor')
-  .option('--tool <tool>', 'claude | cursor | both', 'both')
+  .description('Scaffold agent rules so figma-cli works out of the box in Claude Code, Codex & Cursor')
+  .option('--tool <tool>', 'claude | agents | cursor | both | all', 'both')
+  .option('--no-setup', 'leave out the "run connect once per session" line (a host app owns the connection)')
   .option('--force', 'overwrite existing figma-cli rule files')
   .action((options) => {
-    const tool = String(options.tool).toLowerCase();
     const cwd = process.cwd();
-    const results = [];
+    // Commander turns --no-setup into setup:false; the default is true.
+    const body = assembleRules({
+      head: RULES_HEAD,
+      setup: RULES_SETUP,
+      rest: RULES_REST,
+      noSetup: options.setup === false
+    });
 
-    if (tool === 'cursor' || tool === 'both') {
-      const mdc = `---\ndescription: How to drive figma-cli (controls Figma Desktop) from this project\nalwaysApply: true\n---\n\n${RULES_BODY}`;
-      results.push(writeFile(join(cwd, '.cursor', 'rules', 'figma-cli.mdc'), mdc, options.force));
-    }
-    if (tool === 'claude' || tool === 'both') {
-      // AGENTS.md is read by Claude Code, Cursor and Codex — one file, all tools.
-      results.push(writeFile(join(cwd, 'AGENTS.md'), RULES_BODY, options.force));
+    const targets = toolTargets(options.tool);
+    if (!targets) {
+      console.error(chalk.red('✗'), `Unknown --tool "${options.tool}". Use claude, agents, cursor, both or all.`);
+      process.exit(1);
     }
 
-    for (const r of results) {
-      const rel = r.path.replace(cwd + '/', '');
-      if (r.status === 'written') console.log(chalk.green('✓ wrote'), rel);
-      else if (r.status === 'up-to-date') console.log(chalk.gray('• up-to-date'), rel);
-      else console.log(chalk.yellow('• exists (use --force to overwrite)'), rel);
+    // Read first, decide, then write: the decision is unit-tested in isolation.
+    const existing = {};
+    for (const step of planAgentRules({ tool: options.tool, body })) {
+      const abs = join(cwd, step.path);
+      existing[step.path] = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
     }
-    console.log(chalk.gray('\nDesigners can now ask Claude Code or Cursor to build in Figma — the agent knows the rules.'));
-    console.log(chalk.gray('Next: open Figma Desktop and run `figma-cli connect`.'));
+
+    const steps = planAgentRules({ tool: options.tool, body, existing, force: options.force });
+
+    for (const step of steps) {
+      const abs = join(cwd, step.path);
+      if (step.action === 'write') {
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(abs, step.content);
+        console.log(chalk.green(step.reason === 'updated' ? '✓ updated' : '✓ wrote'), step.path);
+      } else if (step.reason === 'up-to-date') {
+        console.log(chalk.gray('• up-to-date'), step.path);
+      } else {
+        console.log(chalk.yellow('• exists (use --force to overwrite)'), step.path);
+      }
+    }
+
+    console.log(chalk.gray('\nDesigners can now ask their agent to build in Figma — it knows the rules.'));
+    if (options.setup !== false) {
+      console.log(chalk.gray('Next: open Figma Desktop and run `figma-cli connect`.'));
+    }
   });

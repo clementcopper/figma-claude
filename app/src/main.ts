@@ -32,6 +32,7 @@ import {
   selectionPromptText,
   statusRows
 } from './lib/figma-status';
+import { RULES_FILE } from './lib/project-layout';
 import {
   buildUndoEval,
   parseLastRender,
@@ -579,11 +580,13 @@ class PanelHost implements MessageHandlerContext {
       return;
     }
     await this.withBusy(async () => {
-      const result = await runCli(this.cli(), ['init-agent', '--tool', 'both'], {
+      // `claude`, not `both`: Claude Code reads .claude/rules/, never AGENTS.md. `--no-setup`
+      // drops the "run connect once per session" line — connecting is a button here.
+      const result = await runCli(this.cli(), ['init-agent', '--tool', 'claude', '--no-setup'], {
         cwd,
         timeoutMs: 15_000
       });
-      return result.ok ? `Rules written to ${cwd}` : result.message;
+      return result.ok ? `Rules written to ${RULES_FILE}` : result.message;
     });
   }
 

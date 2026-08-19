@@ -16,8 +16,9 @@ node src/index.js docs critical-pitfalls
 
 ```bash
 npm install                             # first run; deps changed in 2.x (jpeg-js, pngjs, yaml)
-npm test                                # full suite — 585 tests, no Figma needed
+npm test                                # full suite — no Figma touched (live tests stay skipped)
 node --test tests/connect-plan.test.js  # single test file
+FIGMA_LIVE=1 npm test                   # LIVE: adds the roundtrip test, which BUILDS in the open file
 npm run test:parity                     # LIVE: renders through both paths, diffs node trees
 npm run examples                        # LIVE: auto-layout gallery that verifies itself
 
@@ -25,7 +26,7 @@ npm run examples                        # LIVE: auto-layout gallery that verifie
 for f in src/index.js src/lib/*.js src/commands/*.js src/daemon.js src/figma-client.js; do node --check "$f"; done
 ```
 
-`test:parity` and `examples` drive a real Figma Desktop and change the open file — never run them to "check something quickly". No build step, no linter. Pure ESM, Node ≥18.
+`test:parity`, `examples` and `FIGMA_LIVE=1` drive a real Figma Desktop and change the open file — never run them to "check something quickly". Until 19.08.2026 `tests/instantiate-roundtrip.test.js` unlocked itself on any live connection, so a plain `npm test` built a component set in whoever's file was open; it now needs `FIGMA_LIVE=1` as well. No build step, no linter. Pure ESM, Node ≥18.
 
 ---
 

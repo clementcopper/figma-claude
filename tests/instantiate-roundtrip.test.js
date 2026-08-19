@@ -9,10 +9,16 @@ const CLI = join(process.cwd(), 'src', 'index.js');
 function run(args, opts = {}) {
   return execFileSync('node', [CLI, ...args], { encoding: 'utf8', ...opts });
 }
-// Gate on a LIVE Figma connection, not just a running daemon: probe with a
-// trivial eval. When Figma is not connected the CLI exits 1 → execFileSync
-// throws → we skip. Only a real round-trip (exit 0, 'ok') unlocks the test.
+// TWO gates, not one. This test BUILDS a component set in whatever file the daemon is bound to —
+// the user's open document — and `extract` walks every page of it. A connected Figma must
+// therefore never be enough to unlock it: without FIGMA_LIVE=1 it stays skipped, so `npm test`
+// is Figma-free even on a machine that happens to have a live connection.
+const OPTED_IN = process.env.FIGMA_LIVE === '1';
+
+// Second gate: a real round-trip. When Figma is not connected the CLI exits 1 → execFileSync
+// throws → we skip.
 function figmaReady() {
+  if (!OPTED_IN) return false;
   try { return /ok/.test(run(['eval', `(async () => 'ok')()`])); } catch { return false; }
 }
 
@@ -31,10 +37,11 @@ const cleanup = (id) => `(async () => {
   return 'ok';
 })()`;
 
-test('extract → instantiate roundtrip (gated on a connected Figma)', { skip: !figmaReady() }, () => {
+test('extract → instantiate roundtrip (opt-in: FIGMA_LIVE=1 plus a connected Figma)', { skip: !figmaReady() }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'inst-'));
   const md = join(dir, 'DESIGN.md');
   let setId;
+  let instanceIds = [];
   try {
     const built = JSON.parse(run(['eval', BUILD_SET]).trim().split('\n').pop());
     setId = built.id;
@@ -46,9 +53,17 @@ test('extract → instantiate roundtrip (gated on a connected Figma)', { skip: !
 
     const out = run(['instantiate', 'Button', '--file', md]);
     assert.match(out, /Instanced "Button" via (key|id)/);
+
+    // `instantiate` leaves its instance selected. Remember it BY ID: deleting "whatever is
+    // selected" during cleanup would take the user's own selection with it.
+    instanceIds = JSON.parse(
+      run(['eval', `(async () => JSON.stringify(figma.currentPage.selection.map(n => n.id)))()`])
+        .trim().split('\n').pop()
+    );
   } finally {
-    // Delete the created set (and the instance, selected by `instantiate`).
-    if (setId) { try { run(['eval', cleanup(setId)]); } catch {} }
-    try { run(['eval', `(async () => { const s = figma.currentPage.selection; s.forEach(n => n.remove()); return 'ok'; })()`]); } catch {}
+    // Only the ids this test created — never a search, never the selection.
+    for (const id of [...instanceIds, setId].filter(Boolean)) {
+      try { run(['eval', cleanup(id)]); } catch {}
+    }
   }
 });

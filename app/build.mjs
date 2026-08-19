@@ -43,6 +43,12 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/project-layout.ts')],
+    outfile: join(ROOT, 'dist/lib/project-layout.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'src/lib/cli-shim.ts')],
     outfile: join(ROOT, 'dist/lib/cli-shim.mjs'),
     platform: 'node',

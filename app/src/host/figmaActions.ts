@@ -13,6 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { resolveCliInvocation, type CliInvocation } from '../lib/cli-command';
 import { pathWithShim, shimDir, shimPath, shimScript } from '../lib/cli-shim';
+import { RULES_FILE, rulesInstalled } from '../lib/project-layout';
 import { loginShellPath } from './ptyManager';
 
 const HOME = os.homedir();
@@ -215,11 +216,11 @@ export function clearLastRender(): void {
   }
 }
 
-/** Whether `init-agent` has run in this directory. */
+/** Whether `init-agent` has run in this directory — the file Claude Code actually loads. */
 export function hasAgentRules(cwd: string): boolean {
   if (!cwd) return false;
   try {
-    return fs.readFileSync(path.join(cwd, 'AGENTS.md'), 'utf8').includes('# Using figma-cli');
+    return rulesInstalled(fs.readFileSync(path.join(cwd, RULES_FILE), 'utf8'));
   } catch {
     return false;
   }

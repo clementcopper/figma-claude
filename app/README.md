@@ -83,8 +83,29 @@ below stays Claude's:
 | **Restart / Stop daemon** | `figma-cli daemon restart` and `daemon stop`. Restart also re-pins the bound file. |
 | **Bound file** | `figma-cli files` lists what is open; picking one restarts the daemon with `FIGMA_FILE` set. Appears only when more than one file is open. Without it the daemon binds to whichever file happened to be first — silently the wrong one. |
 | **Undo last render** | Removes the nodes of the most recent `render` / `render-batch`, read from `~/.figma-ds-cli/last-render.json`. Only those ids; nothing on the canvas is searched for or guessed at. Disabled when the file is gone. |
-| **Prepare this folder** | `figma-cli init-agent` in the **active tab's** working directory (named under the button), so Claude gets `AGENTS.md` and the Cursor rule where it actually runs. |
+| **Prepare this folder** | `figma-cli init-agent --tool claude --no-setup` in the **active tab's** working directory (named under the button). Writes `.claude/rules/figma-cli.md` — see below. |
 | **Mode** | Yolo, Safe or Browser; switching reconnects. |
+
+Two places in the project, and the split is deliberate:
+
+```
+project/
+├── CLAUDE.md                      # yours — never opened, never edited
+├── .claude/rules/figma-cli.md     # the rules; delete the file to remove them
+└── FigmaClaude/                   # everything the CLI generates
+    ├── DESIGN.md                  # figma-cli extract
+    ├── DESIGN-structure/          # extract --split
+    └── rules/                     # rules gen
+```
+
+**Not `AGENTS.md`.** Claude Code reads `CLAUDE.md` and the files in `.claude/rules/`; `AGENTS.md`
+it does not load ([docs](https://code.claude.com/docs/en/memory)). A rules file loads at session
+start on its own, so no `CLAUDE.md` you or another agent maintains has to be touched. The written
+rules also leave out "run `figma-cli connect` once per session" — connecting is a button here, and
+an instruction that contradicts the project's own guidance gets resolved arbitrarily.
+
+`FigmaClaude/` is visible rather than a dot-folder on purpose: the CLI's own DESIGN.md lookup
+scans the working directory plus one level of subdirectories and skips dot-directories.
 
 Results appear as a line in the menu, not in the terminal. Patching Figma needs macOS "App
 Management" **for FigmaClaude itself** — the app spawns the CLI, so the permission follows the
