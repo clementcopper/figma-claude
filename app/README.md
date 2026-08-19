@@ -107,6 +107,14 @@ an instruction that contradicts the project's own guidance gets resolved arbitra
 `FigmaClaude/` is visible rather than a dot-folder on purpose: the CLI's own DESIGN.md lookup
 scans the working directory plus one level of subdirectories and skips dot-directories.
 
+**Appearance** sits in the same menu: System, Light, Dark. System is the default and follows
+macOS live — switch the system setting and the bar, the tabs, the menu *and the terminal* change
+without a restart. The palette is Figma's own light UI, read out of the running app rather than
+guessed (`#fff`, `#f5f5f5`, `#e6e6e6`, text `#000000e5`, brand `#0d99ff`); the terminal gets a
+second, complete ANSI set, because the dark one is unreadable on white — bright yellow `#f5f543`
+disappears entirely. Figma itself keeps its menus dark in light mode, so a dark panel next to a
+light Figma was never wrong either; it is a much larger surface, which is the whole argument.
+
 Results appear as a line in the menu, not in the terminal. Patching Figma needs macOS "App
 Management" **for FigmaClaude itself** — the app spawns the CLI, so the permission follows the
 app, not your terminal. When it is missing, the menu says so and offers to open the settings pane.

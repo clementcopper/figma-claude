@@ -33,6 +33,15 @@
   DESIGN.md and structure trees, contracts from `rules gen`); a real project had half a megabyte
   of that sitting between its own documents. Visible rather than hidden, because the CLI's own
   DESIGN.md lookup skips dot-directories.
+- **Light mode, and a window that knows its own name.** The panel followed no appearance at all:
+  a dark rectangle beside a light Figma. It now follows macOS (System / Light / Dark in the Figma
+  menu, switching live). The chrome values are Figma's own light UI tokens, read out of the
+  running app instead of guessed; the terminal gets a second complete ANSI palette, since the
+  dark one loses colours outright on white. It cost almost nothing structurally: the ported
+  ThemeBuilder already reads every colour from `--vscode-*` variables and re-themes xterm when
+  the `class` on `<html>` changes, so `media/main.ts` stays byte-identical to the extension.
+  Separately, the full-screen title bar said "Claude Panel" — Electron lets the page title
+  rename the window, which the ported `index.html` did.
 - **The connection button names file and page** — `Designdone/Landingpage`, the way Figma's own
   breadcrumb reads. Both names come from the Plugin API rather than the CDP target title, so the
   file shows in Safe Mode too, where the daemon has no page title at all.

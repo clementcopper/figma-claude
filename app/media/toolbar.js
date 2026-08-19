@@ -142,6 +142,13 @@
       return;
     }
 
+    if (message && message.type === 'panelTheme') {
+      // A class, not a data attribute: media/main.ts watches `class` on <html> and hands xterm
+      // the new palette when it changes. Nothing in that ported file had to be touched.
+      document.documentElement.classList.toggle('theme-light', message.theme === 'light');
+      return;
+    }
+
     if (message && message.type === 'panelFigmaMenu') {
       renderMenu(message);
       return;
@@ -325,6 +332,18 @@
     for (const [value, label] of modes) {
       parts.modes.appendChild(
         menuButton(label, 'setMode', value, { selected: data.mode === value, disabled: data.busy })
+      );
+    }
+
+    parts.modes.appendChild(heading('Appearance'));
+    const themes = [
+      ['system', 'System — follow macOS'],
+      ['light', 'Light'],
+      ['dark', 'Dark']
+    ];
+    for (const [value, label] of themes) {
+      parts.modes.appendChild(
+        menuButton(label, 'setTheme', value, { selected: (data.theme || 'system') === value })
       );
     }
 

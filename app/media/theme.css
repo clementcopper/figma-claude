@@ -48,11 +48,109 @@
   --vscode-notificationsErrorIcon-foreground: #f24822;
   --vscode-textLink-activeForeground: #0d99ff;
 
-  /* Terminal palette — same values VS Code's dark+ ships, so ANSI output looks familiar */
+  /* Status dot and the selected-entry marker — one token, because the light mode needs a
+     darker green to stay readable on white. */
+  --panel-accent-ok: #4ac26b;
+
+  /*
+   * Terminal palette — VS Code's Dark+ values, so ANSI output looks familiar.
+   *
+   * Declared here rather than left to ThemeBuilder's fallbacks (media/main.ts): those fallbacks
+   * are Dark+ too, so a light window would otherwise keep the dark ANSI colours and lose, for
+   * example, bright yellow on white entirely.
+   */
   --vscode-terminal-foreground: #d4d4d4;
   --vscode-terminal-selectionBackground: #264f78;
   --vscode-terminalCursor-foreground: #d4d4d4;
   --vscode-terminalCursor-background: #1e1e1e;
+  --vscode-terminal-ansiBlack: #000000;
+  --vscode-terminal-ansiRed: #cd3131;
+  --vscode-terminal-ansiGreen: #0dbc79;
+  --vscode-terminal-ansiYellow: #e5e510;
+  --vscode-terminal-ansiBlue: #2472c8;
+  --vscode-terminal-ansiMagenta: #bc3fbc;
+  --vscode-terminal-ansiCyan: #11a8cd;
+  --vscode-terminal-ansiWhite: #e5e5e5;
+  --vscode-terminal-ansiBrightBlack: #666666;
+  --vscode-terminal-ansiBrightRed: #f14c4c;
+  --vscode-terminal-ansiBrightGreen: #23d18b;
+  --vscode-terminal-ansiBrightYellow: #f5f543;
+  --vscode-terminal-ansiBrightBlue: #3b8eea;
+  --vscode-terminal-ansiBrightMagenta: #d670d6;
+  --vscode-terminal-ansiBrightCyan: #29b8db;
+  --vscode-terminal-ansiBrightWhite: #ffffff;
+}
+
+/*
+ * Light mode.
+ *
+ * The chrome values are Figma's own light UI, read out of the running app rather than guessed:
+ * `--color-bg #fff`, `--color-bg-secondary #f5f5f5`, `--color-bg-tertiary`/`--color-border
+ * #e6e6e6`, `--color-text #000000e5`, `--color-bg-brand #0d99ff`, danger `#dc3412`, warning
+ * `#b86200`, success `#009951`. Alpha values are flattened against white so xterm gets opaque
+ * colours. The terminal palette is VS Code's Light+, which exists for exactly this problem.
+ *
+ * The class, not a data attribute: the ported theme observer (media/main.ts) watches `class`
+ * on <html>, so switching this way re-themes xterm without touching that file.
+ */
+html.theme-light {
+  color-scheme: light;
+
+  --vscode-editor-background: #ffffff;
+  --vscode-terminal-background: #ffffff;
+  --vscode-foreground: #1a1a1a;
+  --vscode-descriptionForeground: #767676;
+  --vscode-icon-foreground: #333333;
+  --vscode-widget-border: #e6e6e6;
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.16);
+  --vscode-focusBorder: #0d99ff;
+
+  --vscode-tab-activeBackground: #ffffff;
+  --vscode-tab-activeForeground: #1a1a1a;
+  --vscode-tab-inactiveBackground: #f5f5f5;
+  --vscode-tab-inactiveForeground: #767676;
+  --vscode-tab-hoverBackground: #e6e6e6;
+  --vscode-tab-border: #e6e6e6;
+  --vscode-toolbar-hoverBackground: #e6e6e6;
+
+  --vscode-badge-background: #0d99ff;
+  --vscode-badge-foreground: #ffffff;
+  --vscode-progressBar-background: #0d99ff;
+  --vscode-scrollbarSlider-background: rgba(0, 0, 0, 0.14);
+  --vscode-scrollbarSlider-hoverBackground: rgba(0, 0, 0, 0.24);
+
+  --vscode-editorHoverWidget-background: #ffffff;
+  --vscode-editorHoverWidget-border: #e6e6e6;
+  --vscode-editorHoverWidget-foreground: #1a1a1a;
+
+  --vscode-editorError-foreground: #dc3412;
+  --vscode-editorWarning-foreground: #b86200;
+  --vscode-notificationsErrorIcon-foreground: #dc3412;
+  --vscode-textLink-activeForeground: #007be5;
+
+  /* #4ac26b would sit at 2.2 : 1 on white; Figma's own success text colour holds up. */
+  --panel-accent-ok: #009951;
+
+  --vscode-terminal-foreground: #1a1a1a;
+  --vscode-terminal-selectionBackground: #add6ff;
+  --vscode-terminalCursor-foreground: #1a1a1a;
+  --vscode-terminalCursor-background: #ffffff;
+  --vscode-terminal-ansiBlack: #000000;
+  --vscode-terminal-ansiRed: #cd3131;
+  --vscode-terminal-ansiGreen: #00bc00;
+  --vscode-terminal-ansiYellow: #949800;
+  --vscode-terminal-ansiBlue: #0451a5;
+  --vscode-terminal-ansiMagenta: #bc05bc;
+  --vscode-terminal-ansiCyan: #0598bc;
+  --vscode-terminal-ansiWhite: #555555;
+  --vscode-terminal-ansiBrightBlack: #666666;
+  --vscode-terminal-ansiBrightRed: #cd3131;
+  --vscode-terminal-ansiBrightGreen: #14ce14;
+  --vscode-terminal-ansiBrightYellow: #b5ba00;
+  --vscode-terminal-ansiBrightBlue: #0451a5;
+  --vscode-terminal-ansiBrightMagenta: #bc05bc;
+  --vscode-terminal-ansiBrightCyan: #0598bc;
+  --vscode-terminal-ansiBrightWhite: #a5a5a5;
 }
 
 html,
@@ -192,7 +290,7 @@ body {
 }
 
 .toolbar-dot.on {
-  background: #4ac26b;
+  background: var(--panel-accent-ok);
   opacity: 1;
 }
 
@@ -361,7 +459,7 @@ body.is-fullscreen .toolbar-trafficlights {
 /* The bound file and the active mode: a marker, not a colour — grey would read as disabled. */
 .figma-menu-item.is-selected::before {
   content: '● ';
-  color: #4ac26b;
+  color: var(--panel-accent-ok);
 }
 
 .figma-menu-path {

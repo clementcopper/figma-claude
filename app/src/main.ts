@@ -33,6 +33,7 @@ import {
   statusRows
 } from './lib/figma-status';
 import { RULES_FILE } from './lib/project-layout';
+import { resolveTheme, type ThemeSetting } from './lib/theme-choice';
 import {
   buildUndoEval,
   parseLastRender,
@@ -42,7 +43,7 @@ import {
 } from './lib/render-undo';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
-const { app, BrowserWindow, dialog, ipcMain, globalShortcut, nativeImage, screen } = electron;
+const { app, BrowserWindow, dialog, ipcMain, globalShortcut, nativeImage, nativeTheme, screen } = electron;
 
 // Before anything else: `app.setName` decides the name in the menu bar, in `~/Library` paths
 // and in notifications. In a packaged build the bundle's Info.plist owns the Dock name; while
@@ -126,6 +127,7 @@ class PanelHost implements MessageHandlerContext {
   handleReady(cols: number, rows: number): void {
     this.lastCols = cols;
     this.lastRows = rows;
+    this.sendTheme();
     this.sendFigmaContext(this.figmaWatcher.snapshot);
     this.figmaWatcher.start();
 
@@ -467,6 +469,7 @@ class PanelHost implements MessageHandlerContext {
         bound: bound ? file.title.toLowerCase().includes(bound) : file.title === snapshot.file
       })),
       mode: config.figmaMode ?? 'yolo',
+      theme: config.theme ?? 'system',
       undo: { label: undoLabel(recorded), enabled: recorded.length > 0 },
       cwd,
       agentsReady: hasAgentRules(cwd)
@@ -594,6 +597,31 @@ class PanelHost implements MessageHandlerContext {
   private figmaMessage(text: string): void {
     if (!text) return;
     this.postMessage({ type: 'panelFigmaMessage', text } as unknown as ExtensionMessage);
+  }
+
+  /**
+   * Which palette the window wears. The renderer only ever hears the answer, never the two
+   * inputs — one place decides, and it is unit-tested.
+   */
+  currentTheme(): 'light' | 'dark' {
+    return resolveTheme({
+      setting: this.configManager.getConfig().theme as ThemeSetting | undefined,
+      systemPrefersDark: nativeTheme.shouldUseDarkColors
+    });
+  }
+
+  sendTheme(): void {
+    this.postMessage({
+      type: 'panelTheme',
+      theme: this.currentTheme(),
+      setting: this.configManager.getConfig().theme ?? 'system'
+    } as unknown as ExtensionMessage);
+  }
+
+  setThemeSetting(setting: ThemeSetting): void {
+    this.configManager.update({ theme: setting });
+    this.sendTheme();
+    void this.sendFigmaMenu();
   }
 
   /** Full screen or not — the bar reserves space for the traffic lights only when they exist. */
@@ -727,7 +755,11 @@ function handleToolbarAction(action: ToolbarMessage['action']): void {
       void host.promptForWorkingDirectory({ startTerminal: false });
       break;
     case 'requestCwd':
+      // The top bar asks once it has its listeners up. Answering the theme here too is what
+      // makes it arrive at all: `handleReady` fires while media/main.js is still loading, so a
+      // theme sent then lands before toolbar.js is listening and is simply lost.
       host.broadcastCwd();
+      host.sendTheme();
       host.sendFigmaContext(host.figmaSnapshot);
       break;
     case 'figma':
@@ -749,6 +781,7 @@ interface FigmaMenuMessage {
     | 'setMode'
     | 'undo'
     | 'initAgent'
+    | 'setTheme'
     | 'openPermissions';
   value?: string;
 }
@@ -781,6 +814,11 @@ function handleFigmaMenuAction(message: FigmaMenuMessage): void {
     case 'initAgent':
       void host.prepareWorkingDirectory();
       break;
+    case 'setTheme':
+      if (message.value === 'system' || message.value === 'light' || message.value === 'dark') {
+        host.setThemeSetting(message.value);
+      }
+      break;
     case 'openPermissions':
       // macOS 13+: patching another app is gated behind App Management, and the pane is deep.
       void electron.shell.openExternal(
@@ -800,7 +838,7 @@ function createWindow(): BrowserWindowType {
     title: 'FigmaClaude',
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 10, y: 11 },
-    backgroundColor: '#1e1e1e',
+    backgroundColor: host.currentTheme() === 'light' ? '#ffffff' : '#1e1e1e',
     webPreferences: {
       preload: path.join(APP_ROOT, 'preload.cjs'),
       contextIsolation: true,
@@ -858,7 +896,15 @@ function createWindow(): BrowserWindowType {
             columnHeight: document.getElementById('terminal-column')?.clientHeight ?? null,
             figmaDisabled: document.querySelector('.toolbar-figma')?.disabled ?? null,
             trafficLightGap: document.querySelector('.toolbar-trafficlights')?.clientWidth ?? null,
-            fullScreen: document.body.classList.contains('is-fullscreen')
+            fullScreen: document.body.classList.contains('is-fullscreen'),
+            // Which palette actually landed — the class alone would not prove the tokens resolve.
+            themeLight: document.documentElement.classList.contains('theme-light'),
+            bodyBackground: getComputedStyle(document.body).backgroundColor,
+            terminalForeground: getComputedStyle(document.documentElement)
+              .getPropertyValue('--vscode-terminal-foreground').trim(),
+            ansiBrightYellow: getComputedStyle(document.documentElement)
+              .getPropertyValue('--vscode-terminal-ansiBrightYellow').trim(),
+            title: document.title
           };
         })()`)
         .then((metrics) => {
@@ -903,6 +949,18 @@ app.whenReady().then(() => {
 
   const window = createWindow();
   host.attach(window);
+
+  // The page carries its own <title>; without this it would rename the window — which is how
+  // "Claude Panel" ended up in the full-screen title bar.
+  window.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+
+  // macOS switched appearance: only interesting while the setting says `system`, and
+  // `currentTheme` already knows that.
+  nativeTheme.on('updated', () => {
+    host.sendTheme();
+  });
 
   ipcMain.on('panel:message', (_event, message: WebviewMessage | ToolbarMessage | FigmaMenuMessage) => {
     // The top bar is ours, not the extension's: its actions are intercepted before the

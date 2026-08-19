@@ -27,7 +27,8 @@ const DEFAULTS: TerminalConfig = {
   editorContext: true,
   figmaCli: '',
   figmaFile: '',
-  figmaMode: 'yolo'
+  figmaMode: 'yolo',
+  theme: 'system'
 };
 
 export class ConfigManager {

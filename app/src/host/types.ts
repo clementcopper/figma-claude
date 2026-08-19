@@ -69,6 +69,8 @@ export interface TerminalConfig {
   figmaFile?: string;
   /** Connection mode the panel's connect button uses. */
   figmaMode?: 'yolo' | 'safe' | 'browser';
+  /** Window appearance. `system` follows macOS, which is the default. */
+  theme?: 'system' | 'light' | 'dark';
 }
 
 /**
