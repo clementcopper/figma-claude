@@ -25,6 +25,12 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/cli-command.ts')],
+    outfile: join(ROOT, 'dist/lib/cli-command.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'src/lib/figma-status.ts')],
     outfile: join(ROOT, 'dist/lib/figma-status.mjs'),
     platform: 'node',

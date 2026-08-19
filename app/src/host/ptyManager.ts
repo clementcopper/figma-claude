@@ -1,6 +1,7 @@
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import type { IPty, INodePty, TerminalConfig } from './types';
 import { getStatusLineDir } from './statusLineWatcher';
 
@@ -18,6 +19,34 @@ declare const require: (id: string) => unknown;
  */
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The PATH a login shell would have. Cached: it costs a shell start, and it cannot change while
+ * the app runs. Failure is silent — the inherited PATH is then all there is.
+ */
+let cachedLoginPath: string | null | undefined;
+export function loginShellPath(): string | null {
+  if (cachedLoginPath !== undefined) {
+    return cachedLoginPath;
+  }
+  cachedLoginPath = null;
+  const shell = process.env.SHELL;
+  if (shell && process.platform !== 'win32') {
+    try {
+      const out = execFileSync(shell, ['-l', '-c', 'printf %s "$PATH"'], {
+        encoding: 'utf8',
+        timeout: 4000,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
+      if (out.includes('/')) {
+        cachedLoginPath = out;
+      }
+    } catch {
+      // No login shell, or it took too long. Not worth a message.
+    }
+  }
+  return cachedLoginPath;
 }
 
 export interface PtyEventCallbacks {
@@ -200,6 +229,15 @@ export class PtyManager {
       COLORTERM: 'truecolor',
       FORCE_COLOR: '1'
     });
+
+    // An app started from the Dock inherits launchd's PATH — /usr/bin:/bin:/usr/sbin:/sbin —
+    // which holds neither `claude` nor anything installed by npm or Homebrew. Started from a
+    // terminal it inherits that terminal's PATH, so the same build works in one place and not
+    // the other. Asking the login shell once settles it.
+    const loginPath = loginShellPath();
+    if (loginPath) {
+      env.PATH = loginPath;
+    }
 
     // The statusLine script has no other way to say which tab it belongs to: Claude Code
     // hands it the session data on stdin, and the host only ever sees PTY bytes. These two

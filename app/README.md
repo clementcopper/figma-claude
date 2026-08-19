@@ -83,6 +83,17 @@ line is a *prompt* there, and Claude would start working on it; the `!` is what 
 command. Tabs running anything else get the command without the prefix, since only Claude Code
 reads it that way.
 
+Which command that is gets looked up rather than assumed. `figma-cli` on PATH wins; otherwise set
+`figmaCli` in `panel.json` to a checkout and the panel writes `node <checkout>/src/index.js`
+instead. Found nothing, it says so rather than typing a command that cannot run:
+
+```json
+{ "figmaCli": "~/figma-cli" }
+```
+
+The simplest fix is to have the binary at all — `npm link` once in the CLI's checkout puts
+`figma-cli` on PATH for everything, this app included.
+
 With something selected in Figma, a row appears above the status line. Clicking it writes the
 selection into the prompt without sending it:
 
@@ -118,5 +129,9 @@ which no amount of looking would have told you.
 - `open path/to/FigmaClaude.app` from a terminal hands the app that terminal's environment. From
   one that carries `ELECTRON_RUN_AS_NODE` the app starts as plain Node and exits silently —
   launch it from Finder or the Dock instead.
+- Started from the Dock, an app inherits launchd's PATH — `/usr/bin:/bin:/usr/sbin:/sbin` —
+  which holds neither `claude` nor anything from npm or Homebrew, so the same build worked from
+  a terminal and not from the Dock. The panel now asks the login shell for its PATH once
+  (`$SHELL -l -c 'printf %s "$PATH"'`) and hands that to the terminal.
 - The icon lives in `build/icon-src/variants.mjs` as SVG; `build/README.md` has the two commands
   that turn it into `icon.png` and `icon.icns`.

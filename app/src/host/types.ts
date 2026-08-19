@@ -56,6 +56,12 @@ export interface TerminalConfig {
   statusLineCompactBudget: number;
   /** Show the open file, and any selected lines, at the top of the status line. */
   editorContext: boolean;
+  /**
+   * How to invoke figma-cli when the panel offers the command. A name on PATH
+   * (`figma-cli`), or the path to a checkout — then `node <checkout>/src/index.js` is used.
+   * Empty means: look it up on PATH.
+   */
+  figmaCli?: string;
 }
 
 /**

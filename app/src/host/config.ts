@@ -24,7 +24,8 @@ const DEFAULTS: TerminalConfig = {
   statusLine: true,
   statusLineProvider: 'bundled',
   statusLineCompactBudget: 0,
-  editorContext: true
+  editorContext: true,
+  figmaCli: ''
 };
 
 export class ConfigManager {

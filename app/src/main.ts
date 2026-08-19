@@ -2,7 +2,7 @@
 // `__esModule`, so esbuild's named-import interop hands back an empty namespace.
 import electron from 'electron';
 import * as path from 'path';
-import { writeFileSync } from 'fs';
+import { existsSync, writeFileSync } from 'fs';
 import { PtyManager, type PtyEventCallbacks } from './host/ptyManager';
 import { ConfigManager } from './host/config';
 import { TerminalStateManager } from './host/terminalStateManager';
@@ -13,6 +13,8 @@ import { WORKSPACE_ACCENT_COLORS } from './host/types';
 import type { ExtensionMessage, TerminalInstance, WebviewMessage } from './host/types';
 import { loadBounds, saveBounds, clampBounds } from './lib/window-bounds';
 import { FigmaContextWatcher, reconnect, type FigmaSnapshot } from './host/figmaContext';
+import { resolveCliCommand } from './lib/cli-command';
+import { loginShellPath } from './host/ptyManager';
 import { describeSelection, selectionPromptText } from './lib/figma-status';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
@@ -411,8 +413,20 @@ class PanelHost implements MessageHandlerContext {
       return;
     }
 
-    this.toast('No connection — run figma-cli connect');
-    this.insertIntoActiveTerminal(this.shellPrefix() + 'figma-cli connect');
+    const cli = resolveCliCommand({
+      pathDirs: (loginShellPath() ?? process.env.PATH ?? '').split(':').filter(Boolean),
+      exists: existsSync,
+      configured: this.configManager.getConfig().figmaCli
+    });
+
+    if (!cli.command) {
+      // Typing a command that is not installed only moves the failure one step along.
+      this.toast('figma-cli is not on PATH — see app/README.md');
+      return;
+    }
+
+    this.toast('No connection — run the command in the prompt');
+    this.insertIntoActiveTerminal(`${this.shellPrefix()}${cli.command} connect`);
   }
 
   /**
