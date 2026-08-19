@@ -2,7 +2,7 @@
 // `__esModule`, so esbuild's named-import interop hands back an empty namespace.
 import electron from 'electron';
 import * as path from 'path';
-import { existsSync, writeFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 import { PtyManager, type PtyEventCallbacks } from './host/ptyManager';
 import { ConfigManager } from './host/config';
 import { TerminalStateManager } from './host/terminalStateManager';
@@ -12,10 +12,33 @@ import { StatusLineWatcher } from './host/statusLineWatcher';
 import { WORKSPACE_ACCENT_COLORS } from './host/types';
 import type { ExtensionMessage, TerminalInstance, WebviewMessage } from './host/types';
 import { loadBounds, saveBounds, clampBounds } from './lib/window-bounds';
-import { FigmaContextWatcher, reconnect, type FigmaSnapshot } from './host/figmaContext';
-import { resolveCliCommand } from './lib/cli-command';
-import { loginShellPath } from './host/ptyManager';
-import { describeSelection, figmaButtonLabel, selectionPromptText } from './lib/figma-status';
+import { evaluate, FigmaContextWatcher, reconnect, type FigmaSnapshot } from './host/figmaContext';
+import {
+  clearLastRender,
+  ensureShim,
+  hasAgentRules,
+  isCdpReachable,
+  isFigmaRunning,
+  listOpenFiles,
+  quitFigma,
+  readLastRender,
+  resolveCli,
+  runCli
+} from './host/figmaActions';
+import type { CliInvocation } from './lib/cli-command';
+import {
+  describeSelection,
+  figmaButtonLabel,
+  selectionPromptText,
+  statusRows
+} from './lib/figma-status';
+import {
+  buildUndoEval,
+  parseLastRender,
+  undoLabel,
+  undoMessage,
+  type UndoResult
+} from './lib/render-undo';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
 const { app, BrowserWindow, dialog, ipcMain, globalShortcut, nativeImage, screen } = electron;
@@ -29,6 +52,9 @@ app.setName('FigmaClaude');
 // dist/main.cjs → the app directory. CommonJS output, so `__dirname` is the honest way.
 declare const __dirname: string;
 const APP_ROOT = path.dirname(__dirname);
+
+/** Figma's debug port, the same env override the CLI honours. */
+const CDP_PORT = Number(process.env.FIGMA_PORT ?? 9222);
 
 /**
  * Wraps text in the bracketed paste markers so a multi-line insert stays one input.
@@ -59,6 +85,9 @@ class PanelHost implements MessageHandlerContext {
   private readonly promptDetector: PromptDetector;
   private readonly statusLineWatcher: StatusLineWatcher;
   private readonly figmaWatcher: FigmaContextWatcher;
+  /** One CLI action at a time — each of them restarts the daemon or Figma underneath. */
+  private figmaBusy = false;
+  private cliCache: CliInvocation | undefined;
 
   constructor() {
     const callbacks: PtyEventCallbacks = {
@@ -86,6 +115,9 @@ class PanelHost implements MessageHandlerContext {
 
   attach(window: BrowserWindowType): void {
     this.window = window;
+    // Before the first terminal: locating the CLI also writes the PATH shim, and a PTY only
+    // reads its environment at spawn time.
+    this.cli();
   }
 
   // --- MessageHandlerContext ---
@@ -394,53 +426,171 @@ class PanelHost implements MessageHandlerContext {
   }
 
   /**
-   * The Figma indicator is about the connection and nothing else. Handing the selection to the
-   * prompt is the job of the row above the status line — one action, one place — and the
-   * indicator is not even clickable while the connection is up, so this only ever runs when
-   * there is something to fix.
-   *
-   * The daemon rebuilds its CDP connection on its own whenever Figma is running with the debug
-   * port open, which is all it takes after a Figma restart. Only when that fails is the CLI's
-   * own `connect` needed — patching, starting Figma, the macOS permission — and those questions
-   * belong in the terminal, so the command is written into the prompt unsent.
+   * Where figma-cli is, looked up once: it costs a login shell, and it cannot move while the
+   * app runs. Writing the PATH shim here too means Claude's terminals get the command as soon
+   * as the panel has found it.
    */
-  async handleFigmaButton(): Promise<void> {
-    this.toast('Reconnecting…');
-    const reconnected = await reconnect();
-    this.figmaWatcher.refresh();
-
-    if (reconnected) {
-      this.toast('Connected');
-      return;
+  private cli(): CliInvocation {
+    if (!this.cliCache) {
+      this.cliCache = resolveCli(APP_ROOT, this.configManager.getConfig().figmaCli);
+      this.ptyManager.pathPrefix = ensureShim(this.cliCache);
     }
-
-    const cli = resolveCliCommand({
-      pathDirs: (loginShellPath() ?? process.env.PATH ?? '').split(':').filter(Boolean),
-      exists: existsSync,
-      configured: this.configManager.getConfig().figmaCli
-    });
-
-    if (!cli.command) {
-      // Typing a command that is not installed only moves the failure one step along.
-      this.toast('figma-cli is not on PATH — see app/README.md');
-      return;
-    }
-
-    this.toast('No connection — run the command in the prompt');
-    this.insertIntoActiveTerminal(`${this.shellPrefix()}${cli.command} connect`);
+    return this.cliCache;
   }
 
   /**
-   * `!` in front of a command, when the tab runs Claude Code.
+   * Everything the CLI does on the user's behalf, gathered for the popover behind the indicator.
    *
-   * Claude Code reads a bare line as a prompt and starts working on it; `!` is what makes it run
-   * the line as a shell command instead. Any other CLI in the tab — gemini, aider, a plain shell
-   * — would take the `!` literally, so it is added only for `claude`.
+   * The rows mirror what `bin/fig-status` prints, the file list is `figma-cli files`, and the
+   * actions below run the CLI as a child process — nothing is typed into Claude's terminal.
    */
-  private shellPrefix(): string {
-    const command = this.configManager.getConfig().command;
-    const name = command.split('/').pop()?.replace(/\.(exe|cmd|bat)$/i, '');
-    return name === 'claude' ? '!' : '';
+  async sendFigmaMenu(): Promise<void> {
+    const config = this.configManager.getConfig();
+    const cli = this.cli();
+    const snapshot = this.figmaWatcher.snapshot;
+    const cwd = this.currentCwd();
+
+    const [figmaRunning, cdpOk] = await Promise.all([isFigmaRunning(), isCdpReachable(CDP_PORT)]);
+    // Listing files needs a live connection; asking without one only costs a timeout.
+    const files = snapshot.status.figma === 'ok' ? await listOpenFiles(cli) : [];
+    const recorded = parseLastRender(readLastRender());
+    const bound = (config.figmaFile ?? '').toLowerCase();
+
+    this.postMessage({
+      type: 'panelFigmaMenu',
+      busy: this.figmaBusy,
+      cliFound: Boolean(cli.file),
+      rows: statusRows({ figmaRunning, cdpOk, cdpPort: CDP_PORT, health: snapshot.health }),
+      files: files.map((file) => ({
+        title: file.title,
+        bound: bound ? file.title.toLowerCase().includes(bound) : file.title === snapshot.file
+      })),
+      mode: config.figmaMode ?? 'yolo',
+      undo: { label: undoLabel(recorded), enabled: recorded.length > 0 },
+      cwd,
+      agentsReady: hasAgentRules(cwd)
+    } as unknown as ExtensionMessage);
+  }
+
+  /** One action at a time: every one of them restarts the daemon or Figma underneath. */
+  private async withBusy(what: () => Promise<string>): Promise<void> {
+    if (this.figmaBusy) return;
+    this.figmaBusy = true;
+    void this.sendFigmaMenu();
+    try {
+      this.figmaMessage(await what());
+    } catch (error) {
+      this.figmaMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.figmaBusy = false;
+      this.figmaWatcher.refresh();
+      void this.sendFigmaMenu();
+    }
+  }
+
+  /**
+   * Connect, in the order that costs the user the least.
+   *
+   * The CLI never quits a running Figma — only the user knows whether that is safe — so when the
+   * debug port is missing the panel asks and does the quitting itself; `connect` then takes its
+   * start-fresh path and brings Figma back with the flag set.
+   */
+  async runConnect(): Promise<void> {
+    await this.withBusy(async () => {
+      const mode = this.configManager.getConfig().figmaMode ?? 'yolo';
+      const args = mode === 'yolo' ? ['connect'] : ['connect', `--${mode}`];
+
+      if (mode === 'yolo' && !(await isCdpReachable(CDP_PORT)) && (await isFigmaRunning())) {
+        const answer = await dialog.showMessageBox({
+          type: 'question',
+          buttons: ['Restart Figma', 'Cancel'],
+          defaultId: 0,
+          cancelId: 1,
+          message: 'Restart Figma to open the debug port?',
+          detail:
+            'Figma is running without --remote-debugging-port, which is what the CLI talks to. ' +
+            'Save your work first: Figma will be quit and started again.'
+        });
+        if (answer.response !== 0) return 'Cancelled';
+        await quitFigma();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      const result = await runCli(this.cli(), args, { timeoutMs: 120_000 });
+      if (!result.ok && /App Management|permission/i.test(result.stdout + result.stderr)) {
+        this.postMessage({ type: 'panelFigmaPermission' } as unknown as ExtensionMessage);
+        return 'Patching Figma needs "App Management" for FigmaClaude';
+      }
+      return result.message || (result.ok ? 'Connected' : 'Connect failed');
+    });
+  }
+
+  /** Restart the daemon, optionally pinning it to one open file. */
+  async restartDaemon(file?: string): Promise<void> {
+    await this.withBusy(async () => {
+      const pin = file ?? this.configManager.getConfig().figmaFile ?? '';
+      const result = await runCli(this.cli(), ['daemon', 'restart'], {
+        env: pin ? { FIGMA_FILE: pin } : undefined,
+        timeoutMs: 30_000
+      });
+      // The daemon needs a moment before /health answers; without it the popover reads stale.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return result.ok ? (pin ? `Daemon bound to ${pin}` : 'Daemon restarted') : result.message;
+    });
+  }
+
+  async stopDaemon(): Promise<void> {
+    await this.withBusy(async () => {
+      const result = await runCli(this.cli(), ['daemon', 'stop'], { timeoutMs: 15_000 });
+      return result.ok ? 'Daemon stopped' : result.message;
+    });
+  }
+
+  /** Binds the daemon to an open file and keeps Claude's terminals on the same one. */
+  async bindFigmaFile(title: string): Promise<void> {
+    this.configManager.update({ figmaFile: title });
+    await this.restartDaemon(title);
+  }
+
+  async setFigmaMode(mode: 'yolo' | 'safe' | 'browser'): Promise<void> {
+    this.configManager.update({ figmaMode: mode });
+    await this.runConnect();
+  }
+
+  /**
+   * Removes what the last render created — and only that. The ids come from the CLI's own state
+   * file, so nothing on the canvas is searched for, matched by name or guessed at.
+   */
+  async undoLastRender(): Promise<void> {
+    await this.withBusy(async () => {
+      const nodes = parseLastRender(readLastRender());
+      if (nodes.length === 0) return 'Nothing to undo';
+      const result = await evaluate<UndoResult>(buildUndoEval(nodes.map((n) => n.id)), 20_000);
+      clearLastRender();
+      return undoMessage(result);
+    });
+  }
+
+  /** `init-agent` in the directory Claude actually runs in — the active tab's, not the repo's. */
+  async prepareWorkingDirectory(): Promise<void> {
+    const cwd = this.currentCwd();
+    if (!cwd) {
+      await this.promptForWorkingDirectory({ startTerminal: false });
+      return;
+    }
+    await this.withBusy(async () => {
+      const result = await runCli(this.cli(), ['init-agent', '--tool', 'both'], {
+        cwd,
+        timeoutMs: 15_000
+      });
+      return result.ok ? `Rules written to ${cwd}` : result.message;
+    });
+  }
+
+  /** A line under the actions in the popover — where a terminal would have printed it. */
+  private figmaMessage(text: string): void {
+    if (!text) return;
+    this.postMessage({ type: 'panelFigmaMessage', text } as unknown as ExtensionMessage);
   }
 
   /** Full screen or not — the bar reserves space for the traffic lights only when they exist. */
@@ -578,7 +728,61 @@ function handleToolbarAction(action: ToolbarMessage['action']): void {
       host.sendFigmaContext(host.figmaSnapshot);
       break;
     case 'figma':
-      void host.handleFigmaButton();
+      // Opening the menu, not an action: what the button used to do is one entry inside it.
+      void host.sendFigmaMenu();
+      break;
+  }
+}
+
+/** The popover behind the Figma indicator — every figma-cli action the user needs. */
+interface FigmaMenuMessage {
+  type: 'figmaMenu';
+  action:
+    | 'refresh'
+    | 'connect'
+    | 'daemonRestart'
+    | 'daemonStop'
+    | 'bindFile'
+    | 'setMode'
+    | 'undo'
+    | 'initAgent'
+    | 'openPermissions';
+  value?: string;
+}
+
+function handleFigmaMenuAction(message: FigmaMenuMessage): void {
+  switch (message.action) {
+    case 'refresh':
+      void host.sendFigmaMenu();
+      break;
+    case 'connect':
+      void host.runConnect();
+      break;
+    case 'daemonRestart':
+      void host.restartDaemon();
+      break;
+    case 'daemonStop':
+      void host.stopDaemon();
+      break;
+    case 'bindFile':
+      if (message.value) void host.bindFigmaFile(message.value);
+      break;
+    case 'setMode':
+      if (message.value === 'yolo' || message.value === 'safe' || message.value === 'browser') {
+        void host.setFigmaMode(message.value);
+      }
+      break;
+    case 'undo':
+      void host.undoLastRender();
+      break;
+    case 'initAgent':
+      void host.prepareWorkingDirectory();
+      break;
+    case 'openPermissions':
+      // macOS 13+: patching another app is gated behind App Management, and the pane is deep.
+      void electron.shell.openExternal(
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles'
+      );
       break;
   }
 }
@@ -697,11 +901,15 @@ app.whenReady().then(() => {
   const window = createWindow();
   host.attach(window);
 
-  ipcMain.on('panel:message', (_event, message: WebviewMessage | ToolbarMessage) => {
+  ipcMain.on('panel:message', (_event, message: WebviewMessage | ToolbarMessage | FigmaMenuMessage) => {
     // The top bar is ours, not the extension's: its actions are intercepted before the
     // ported dispatcher sees them, which only knows the webview protocol.
     if (message.type === 'toolbar') {
       handleToolbarAction(message.action);
+      return;
+    }
+    if (message.type === 'figmaMenu') {
+      handleFigmaMenuAction(message);
       return;
     }
     dispatchMessage(message, host);

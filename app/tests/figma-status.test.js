@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import {
   cleanFileName,
   figmaButtonLabel,
+  statusRows,
   toStatusView,
   describeSelection,
   selectionPromptText
@@ -117,5 +118,49 @@ describe('figmaButtonLabel', () => {
       figmaButtonLabel({ daemon: 'off', figma: 'off', file: '', page: '' }),
       'offline'
     );
+  });
+});
+
+describe('statusRows', () => {
+  const rows = (probe) => Object.fromEntries(statusRows(probe).map((r) => [r.label, r]));
+
+  it('reports a healthy Yolo connection', () => {
+    const r = rows({
+      figmaRunning: true,
+      cdpOk: true,
+      cdpPort: 9222,
+      health: { mode: 'yolo', cdp: true }
+    });
+    assert.deepStrictEqual(r.Figma, { label: 'Figma', state: 'ok', value: 'running' });
+    assert.deepStrictEqual(r.CDP, { label: 'CDP', state: 'ok', value: 'port 9222' });
+    assert.deepStrictEqual(r.Daemon, { label: 'Daemon', state: 'ok', value: 'yolo' });
+  });
+
+  it('does not call a dead CDP port a fault in Safe Mode', () => {
+    const r = rows({
+      figmaRunning: true,
+      cdpOk: false,
+      cdpPort: 9222,
+      health: { mode: 'plugin', plugin: true }
+    });
+    assert.strictEqual(r.CDP.state, 'warn');
+    assert.strictEqual(r.CDP.value, 'unused (plugin)');
+    assert.strictEqual(r.Daemon.state, 'ok');
+  });
+
+  it('separates a dead daemon from a daemon with no Figma behind it', () => {
+    const dead = rows({ figmaRunning: false, cdpOk: false, cdpPort: 9222, health: null });
+    assert.strictEqual(dead.Daemon.value, 'not running');
+    assert.strictEqual(dead.Daemon.state, 'off');
+    assert.strictEqual(dead.Figma.state, 'warn');
+
+    const orphan = rows({
+      figmaRunning: true,
+      cdpOk: false,
+      cdpPort: 9222,
+      health: { mode: 'yolo', cdp: false, plugin: false }
+    });
+    assert.strictEqual(orphan.Daemon.state, 'warn');
+    assert.strictEqual(orphan.Daemon.value, 'no connection to Figma');
   });
 });

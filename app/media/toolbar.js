@@ -75,14 +75,14 @@
   const figma = document.createElement('button');
   figma.className = 'toolbar-figma';
   figma.type = 'button';
-  figma.disabled = true;
   figma.title = 'Figma connection';
   figma.innerHTML =
     '<span class="toolbar-dot" data-role="daemon"></span>' +
     '<span class="toolbar-dot" data-role="figma"></span>' +
     '<span class="toolbar-figma-label">—</span>';
   figma.addEventListener('click', () => {
-    vscode.postMessage({ type: 'toolbar', action: 'figma' });
+    if (menu.hidden) openMenu();
+    else closeMenu();
   });
   toolbar.appendChild(figma);
 
@@ -135,10 +135,33 @@
       }
       const lines = [message.tooltip];
       if (message.page) lines.push(`Page: ${message.page}`);
-      // The click does different things in the two states, so the tooltip has to say which.
-      figma.disabled = message.figma === 'ok';
-      if (message.figma !== 'ok') lines.push('Click to reconnect');
+      lines.push('Click for connection, files and actions');
       figma.title = lines.join('\n');
+      // An open menu shows counts and states that just changed underneath it.
+      if (!menu.hidden) send('refresh');
+      return;
+    }
+
+    if (message && message.type === 'panelFigmaMenu') {
+      renderMenu(message);
+      return;
+    }
+
+    if (message && message.type === 'panelFigmaMessage') {
+      note(message.text);
+      return;
+    }
+
+    if (message && message.type === 'panelFigmaPermission') {
+      // Patching Figma is gated behind a macOS permission the app cannot grant itself.
+      parts.note.replaceChildren();
+      parts.note.hidden = false;
+      const text = document.createElement('div');
+      text.textContent = 'FigmaClaude needs "App Management" to patch Figma.';
+      parts.note.appendChild(text);
+      parts.note.appendChild(
+        menuButton('Open System Settings', 'openPermissions', undefined, { keepOpen: true })
+      );
       return;
     }
 
@@ -149,7 +172,173 @@
     const name = cwd.replace(/\/+$/, '').split('/').pop() || cwd || '—';
     label.textContent = name;
     cwdButton.title = cwd ? `${cwd}\nClick to choose the working directory` : cwdButton.title;
+    // The menu names the folder it would write the agent rules into — that folder just changed.
+    if (!menu.hidden) send('refresh');
   });
+
+  // --- The Figma menu ---
+  //
+  // Everything the figma-CLI does for the user lives here, so the terminal below stays Claude's.
+  // The host owns the state: this file draws what `panelFigmaMenu` describes and sends back which
+  // entry was pressed. No command text, no shell, nothing typed into a prompt.
+
+  const menu = document.createElement('div');
+  menu.className = 'figma-menu';
+  menu.hidden = true;
+  menu.innerHTML =
+    '<div class="figma-menu-status" data-role="status"></div>' +
+    '<div class="figma-menu-section" data-role="files"></div>' +
+    '<div class="figma-menu-section" data-role="actions"></div>' +
+    '<div class="figma-menu-section" data-role="modes"></div>' +
+    '<div class="figma-menu-note" data-role="note" hidden></div>';
+  document.body.appendChild(menu);
+
+  const parts = {
+    status: menu.querySelector('[data-role="status"]'),
+    files: menu.querySelector('[data-role="files"]'),
+    actions: menu.querySelector('[data-role="actions"]'),
+    modes: menu.querySelector('[data-role="modes"]'),
+    note: menu.querySelector('[data-role="note"]')
+  };
+
+  function send(action, value) {
+    vscode.postMessage({ type: 'figmaMenu', action, value });
+  }
+
+  function menuButton(label, action, value, options) {
+    const settings = options || {};
+    const el = document.createElement('button');
+    el.className = 'figma-menu-item';
+    el.type = 'button';
+    el.textContent = label;
+    el.disabled = settings.disabled === true;
+    if (settings.selected) el.classList.add('is-selected');
+    if (settings.hint) el.title = settings.hint;
+    el.addEventListener('click', () => {
+      if (settings.keepOpen !== true) note('');
+      send(action, value);
+    });
+    return el;
+  }
+
+  function note(text) {
+    parts.note.textContent = text || '';
+    parts.note.hidden = !text;
+  }
+
+  function openMenu() {
+    const rect = figma.getBoundingClientRect();
+    // Anchored to the button, but never past the window edge — the bar sits at the very top.
+    const left = Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8);
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.hidden = false;
+    send('refresh');
+  }
+
+  function closeMenu() {
+    menu.hidden = true;
+    note('');
+  }
+
+  document.addEventListener('mousedown', (event) => {
+    if (menu.hidden) return;
+    if (menu.contains(event.target) || figma.contains(event.target)) return;
+    closeMenu();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !menu.hidden) closeMenu();
+  });
+
+  function renderMenu(data) {
+    parts.status.replaceChildren();
+    for (const row of data.rows || []) {
+      const line = document.createElement('div');
+      line.className = 'figma-menu-row';
+      line.innerHTML =
+        `<span class="figma-menu-key"></span>` +
+        `<span class="toolbar-dot ${row.state === 'ok' ? 'on' : row.state === 'off' ? 'off' : ''}"></span>` +
+        `<span class="figma-menu-value"></span>`;
+      line.querySelector('.figma-menu-key').textContent = row.label;
+      line.querySelector('.figma-menu-value').textContent = row.value;
+      parts.status.appendChild(line);
+    }
+
+    // Which open file the daemon talks to. One entry means there is nothing to decide.
+    parts.files.replaceChildren();
+    if ((data.files || []).length > 1) {
+      parts.files.appendChild(heading('Bound file'));
+      for (const file of data.files) {
+        parts.files.appendChild(
+          menuButton(file.title, 'bindFile', file.title, {
+            selected: file.bound,
+            disabled: data.busy,
+            hint: 'Point the daemon at this file'
+          })
+        );
+      }
+    }
+
+    parts.actions.replaceChildren();
+    parts.actions.appendChild(heading('Connection'));
+    parts.actions.appendChild(
+      menuButton(data.busy ? 'Working…' : 'Connect', 'connect', undefined, {
+        disabled: data.busy || !data.cliFound,
+        hint: 'Patch, start Figma if needed, and bring the daemon up'
+      })
+    );
+    parts.actions.appendChild(
+      menuButton('Restart daemon', 'daemonRestart', undefined, { disabled: data.busy || !data.cliFound })
+    );
+    parts.actions.appendChild(
+      menuButton('Stop daemon', 'daemonStop', undefined, { disabled: data.busy || !data.cliFound })
+    );
+
+    parts.actions.appendChild(heading('Canvas'));
+    parts.actions.appendChild(
+      menuButton(data.undo.label, 'undo', undefined, {
+        disabled: data.busy || !data.undo.enabled,
+        hint: 'Removes only what the last render created'
+      })
+    );
+
+    parts.actions.appendChild(heading('Working directory'));
+    parts.actions.appendChild(
+      menuButton(data.agentsReady ? 'Rules up to date' : 'Prepare this folder', 'initAgent', undefined, {
+        disabled: data.busy || data.agentsReady || !data.cliFound,
+        hint: 'Writes AGENTS.md and the Cursor rule so Claude knows the CLI'
+      })
+    );
+    const where = document.createElement('div');
+    where.className = 'figma-menu-path';
+    where.textContent = data.cwd || 'no folder chosen yet';
+    parts.actions.appendChild(where);
+
+    parts.modes.replaceChildren();
+    parts.modes.appendChild(heading('Mode'));
+    const modes = [
+      ['yolo', 'Yolo — patched app, CDP'],
+      ['safe', 'Safe — plugin, no patching'],
+      ['browser', 'Browser — Chromium profile']
+    ];
+    for (const [value, label] of modes) {
+      parts.modes.appendChild(
+        menuButton(label, 'setMode', value, { selected: data.mode === value, disabled: data.busy })
+      );
+    }
+
+    if (!data.cliFound) {
+      note('figma-cli not found — set "figmaCli" in ~/.figma-ds-cli/panel.json');
+    }
+  }
+
+  function heading(text) {
+    const el = document.createElement('div');
+    el.className = 'figma-menu-heading';
+    el.textContent = text;
+    return el;
+  }
 
   // Asking on startup would be a modal in the way; the host answers with the current one.
   vscode.postMessage({ type: 'toolbar', action: 'requestCwd' });

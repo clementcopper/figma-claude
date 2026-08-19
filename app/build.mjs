@@ -37,6 +37,18 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/render-undo.ts')],
+    outfile: join(ROOT, 'dist/lib/render-undo.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
+    entryPoints: [join(ROOT, 'src/lib/cli-shim.ts')],
+    outfile: join(ROOT, 'dist/lib/cli-shim.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'media/main.ts')],
     outfile: join(ROOT, 'media/main.js'),
     platform: 'browser',

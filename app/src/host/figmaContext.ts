@@ -12,6 +12,8 @@ const TOKEN_FILE = path.join(os.homedir(), '.figma-ds-cli', '.daemon-token');
  */
 export interface FigmaSnapshot {
   status: FigmaStatusView;
+  /** The daemon's raw answer, for the status block that needs more than two dots. */
+  health: Health | null;
   /** Document name from the Plugin API — present in every mode, unlike the daemon's page title. */
   file: string;
   page: string;
@@ -63,7 +65,7 @@ export async function reconnect(): Promise<boolean> {
 }
 
 /** Runs code inside Figma through the daemon — the same `/exec` route the CLI uses. */
-async function evaluate<T>(code: string, timeoutMs = 4000): Promise<T | null> {
+export async function evaluate<T>(code: string, timeoutMs = 4000): Promise<T | null> {
   const token = readToken();
   if (!token) return null;
   try {
@@ -99,6 +101,7 @@ export class FigmaContextWatcher {
   private lastSerialized = '';
   private current: FigmaSnapshot = {
     status: toStatusView(null),
+    health: null,
     file: '',
     page: '',
     selection: []
@@ -133,7 +136,8 @@ export class FigmaContextWatcher {
   }
 
   private async tick(schedule = true): Promise<void> {
-    const status = toStatusView(await health());
+    const reported = await health();
+    const status = toStatusView(reported);
 
     // The daemon's own title is the fallback: it survives an `eval` that times out mid-render.
     let file = status.file;
@@ -153,7 +157,7 @@ export class FigmaContextWatcher {
       }
     }
 
-    this.current = { status, file, page, selection };
+    this.current = { status, health: reported, file, page, selection };
 
     // Only speak when something actually changed: the row would otherwise rebuild every
     // few seconds, and rebuilding it refits xterm.

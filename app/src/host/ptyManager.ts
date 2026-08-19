@@ -4,6 +4,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import type { IPty, INodePty, TerminalConfig } from './types';
 import { getStatusLineDir } from './statusLineWatcher';
+import { pathWithShim } from '../lib/cli-shim';
 
 // Bundled to CommonJS for Electron's main process, so the loader's own `require` is what
 // pulls in the native module. node-pty has no usable ESM entry point.
@@ -64,6 +65,12 @@ export class PtyManager {
   private nodePty: INodePty | undefined;
   private readonly ptys = new Map<string, IPty>();
 
+  /**
+   * Directory prepended to every terminal's PATH — the panel's `figma-cli` shim. Set by the host
+   * once the CLI has been located; null when the CLI is genuinely installed and needs no help.
+   */
+  pathPrefix: string | null = null;
+
   constructor(
     private readonly callbacks: PtyEventCallbacks,
     /** Directory the app was installed to — holds `resources/panel-statusline.js`. */
@@ -121,7 +128,8 @@ export class PtyManager {
     const cwd = this.resolveConfiguredCwd(config.cwd) ?? this.getWorkingDirectory();
     const env = this.buildEnvironment(
       config.env,
-      config.statusLine ? { terminalId, config } : undefined
+      config.statusLine ? { terminalId, config } : undefined,
+      config
     );
     return { shell, env, cwd };
   }
@@ -214,7 +222,8 @@ export class PtyManager {
 
   private buildEnvironment(
     configEnv: Record<string, string>,
-    statusLine?: { terminalId: string; config: TerminalConfig }
+    statusLine?: { terminalId: string; config: TerminalConfig },
+    config?: TerminalConfig
   ): Record<string, string> {
     const env: Record<string, string> = {};
 
@@ -237,6 +246,21 @@ export class PtyManager {
     const loginPath = loginShellPath();
     if (loginPath) {
       env.PATH = loginPath;
+    }
+
+    // Where the panel keeps its `figma-cli` launcher, when the CLI is a checkout rather than an
+    // install. Only these terminals see it — nothing global, nothing in the user's shell files.
+    if (this.pathPrefix) {
+      env.PATH = pathWithShim(env.PATH ?? '', this.pathPrefix);
+    }
+
+    // The file the panel bound the daemon to. Without it a command from Claude's terminal talks
+    // to whichever file the daemon happened to pick first, which is silently the wrong one when
+    // several are open.
+    if (config?.figmaFile) {
+      env.FIGMA_FILE = config.figmaFile;
+    } else {
+      delete env.FIGMA_FILE;
     }
 
     // The statusLine script has no other way to say which tab it belongs to: Claude Code

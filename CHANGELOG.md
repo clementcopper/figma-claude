@@ -8,6 +8,21 @@
 
 ### New
 
+- **The Figma menu in FigmaClaude.** The panel was built to keep the terminal for Claude, but
+  everything the CLI does for the *user* still had to be typed — and the one shortcut it had wrote
+  a command into Claude's prompt. The indicator now opens a menu instead: connect (in Yolo, Safe or
+  Browser Mode), restart or stop the daemon, pick which open file the daemon is bound to, undo the
+  last render, and scaffold the agent rules into the active tab's working directory. Every entry
+  runs `figma-cli` as a child process and reports back in the menu, so nothing lands in the
+  conversation. Two things it fixes on the way: `bin/fig-start` showed a file picker that never set
+  `FIGMA_FILE`, so the daemon kept binding to whichever file was first; and on a machine where the
+  CLI is only a checkout, the `figma-cli …` commands that `init-agent` writes into `AGENTS.md` had
+  nothing to run — the panel now writes `~/.figma-ds-cli/bin/figma-cli` and puts that directory on
+  the PATH of its own terminals, without installing anything globally. Patching Figma from the menu
+  needs macOS "App Management" for FigmaClaude itself; the menu says so and opens the pane.
+- **The connection button names file and page** — `Designdone/Landingpage`, the way Figma's own
+  breadcrumb reads. Both names come from the Plugin API rather than the CDP target title, so the
+  file shows in Safe Mode too, where the daemon has no page title at all.
 - **FigmaClaude (`app/`).** A macOS app built from two projects that each do half the job: this
   CLI, which drives Figma, and an AI terminal panel for VS Code. Claude Code ends up in a window
   beside Figma instead of two terminals next to it. The UI is
@@ -17,7 +32,7 @@
   status-line producer are copied byte-identical, and only what depended on VS Code was replaced
   (`app/PORTED-FROM.md` lists every file and the source commit). What it carries beyond the
   original: Figma's own state — a dot each for the CLI daemon and the connection into Figma, the
-  open file's name, one click to reconnect — and a row above the status line that writes the
+  bound file and page, and the menu above — plus a row over the status line that writes the
   current Figma selection, names and node ids, into the prompt. `npm run install:app` builds and
   installs it; the icon is a designed master plus `build/tint-dots.py`, which gives the flat brand
   colours the gradients Figma's and Claude's own icons use.

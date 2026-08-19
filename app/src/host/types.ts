@@ -62,6 +62,13 @@ export interface TerminalConfig {
    * Empty means: look it up on PATH.
    */
   figmaCli?: string;
+  /**
+   * Which open Figma file the daemon is bound to (substring of the tab title). Passed to the
+   * CLI as FIGMA_FILE so a command from Claude's terminal hits the same file as the panel.
+   */
+  figmaFile?: string;
+  /** Connection mode the panel's connect button uses. */
+  figmaMode?: 'yolo' | 'safe' | 'browser';
 }
 
 /**

@@ -106,3 +106,47 @@ export function figmaButtonLabel({ daemon, figma, file, page }: LabelInput): str
   if (file && page) return `${file}/${page}`;
   return file || page || 'no file';
 }
+
+export interface Probe {
+  /** A Figma process exists (pgrep). */
+  figmaRunning: boolean;
+  /** The CDP port answered. */
+  cdpOk: boolean;
+  cdpPort: number;
+  health: Health | null;
+}
+
+export interface StatusRow {
+  label: string;
+  /** 'ok' green, 'warn' yellow, 'off' red — the three states fig-status prints. */
+  state: 'ok' | 'warn' | 'off';
+  value: string;
+}
+
+/**
+ * The three rows of the popover's status block — the same readout `bin/fig-status` prints, so
+ * the panel and the shell script cannot drift apart in what they call a working connection.
+ */
+export function statusRows({ figmaRunning, cdpOk, cdpPort, health }: Probe): StatusRow[] {
+  const daemonUp = health !== null;
+  const connected = Boolean(health && (health.cdp || health.plugin));
+
+  return [
+    {
+      label: 'Figma',
+      state: figmaRunning ? 'ok' : 'warn',
+      value: figmaRunning ? 'running' : 'not running'
+    },
+    {
+      // Safe Mode reaches Figma through the plugin, so a dead port is not a fault there.
+      label: 'CDP',
+      state: cdpOk ? 'ok' : health?.plugin ? 'warn' : 'off',
+      value: cdpOk ? `port ${String(cdpPort)}` : health?.plugin ? 'unused (plugin)' : 'not reachable'
+    },
+    {
+      label: 'Daemon',
+      state: connected ? 'ok' : daemonUp ? 'warn' : 'off',
+      value: !daemonUp ? 'not running' : connected ? health?.mode || 'connected' : 'no connection to Figma'
+    }
+  ];
+}

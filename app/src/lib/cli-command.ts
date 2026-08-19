@@ -11,6 +11,21 @@ export interface CliLookup {
   exists: (candidate: string) => boolean;
   /** `figmaCli` from panel.json: an explicit command or a path to a checkout. */
   configured?: string;
+  /**
+   * Repository roots to try when nothing is installed: `repoPath` from ~/.figma-cli/config.json
+   * (fig-start writes it) and the app's own parent — FigmaClaude ships inside the CLI repo.
+   */
+  checkoutDirs?: string[];
+}
+
+/** The same lookup as a spawnable command: no shell, no quoting, arguments as an array. */
+export interface CliInvocation {
+  /** Program to spawn. Empty when nothing usable was found. */
+  file: string;
+  args: string[];
+  source: CliCommand['source'];
+  /** The entry script when the CLI runs through node — what the PATH shim has to point at. */
+  entry?: string;
 }
 
 export interface CliCommand {
@@ -27,27 +42,50 @@ export function shellPath(value: string): string {
   return /[^\w@%+=:,./-]/.test(value) ? `'${value.replace(/'/g, `'\\''`)}'` : value;
 }
 
-export function resolveCliCommand(lookup: CliLookup): CliCommand {
-  const { pathDirs, exists, configured } = lookup;
+function viaNode(entry: string, source: CliCommand['source']): CliInvocation {
+  return { file: 'node', args: [entry], source, entry };
+}
+
+export function resolveCliInvocation(lookup: CliLookup): CliInvocation {
+  const { pathDirs, exists, configured, checkoutDirs = [] } = lookup;
 
   if (configured) {
     // A checkout rather than a command: run its entry point with node.
-    if (configured.endsWith('.js') || configured.endsWith('/src/index.js')) {
-      return { command: `node ${shellPath(configured)}`, source: 'configured' };
+    if (configured.endsWith('.js')) {
+      return viaNode(configured, 'configured');
     }
     if (configured.includes('/') && exists(`${configured}/src/index.js`)) {
-      return { command: `node ${shellPath(`${configured}/src/index.js`)}`, source: 'configured' };
+      return viaNode(`${configured}/src/index.js`, 'configured');
     }
-    return { command: configured, source: 'configured' };
+    return { file: configured, args: [], source: 'configured' };
   }
 
   for (const dir of pathDirs) {
     for (const name of BIN_NAMES) {
       if (exists(`${dir}/${name}`)) {
-        return { command: name, source: 'path' };
+        return { file: name, args: [], source: 'path' };
       }
     }
   }
 
-  return { command: '', source: 'none' };
+  // Last resort, and the normal case on a machine where the repo is a checkout: run it in place.
+  for (const dir of checkoutDirs) {
+    if (!dir) continue;
+    const entry = `${dir}/src/index.js`;
+    if (exists(entry)) {
+      return viaNode(entry, 'checkout');
+    }
+  }
+
+  return { file: '', args: [], source: 'none' };
+}
+
+/** The same answer as a line a shell (or Claude's prompt) can take. */
+export function resolveCliCommand(lookup: CliLookup): CliCommand {
+  const found = resolveCliInvocation(lookup);
+  if (!found.file) {
+    return { command: '', source: 'none' };
+  }
+  const parts = [found.file, ...found.args.map(shellPath)];
+  return { command: parts.join(' '), source: found.source };
 }

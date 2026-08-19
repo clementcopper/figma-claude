@@ -67,32 +67,42 @@ active tab in the new directory.
 
 The top bar's two dots are the two halves that fail separately: the CLI daemon, and a live
 connection into Figma behind it. Daemon up with Figma gone is the state that otherwise looks
-like "commands silently do nothing". Next to them stands the open file.
+like "commands silently do nothing". Next to them stand the bound file and the open page,
+the way Figma's own breadcrumb reads: `Designdone/Landingpage`.
 
-Everything comes from the daemon (`/health` plus one `eval` for the selection, polled every
-2.5 s while the window has focus) — the panel opens no connection of its own, so it can never
-show more than `figma-cli` can.
+What it shows comes from the daemon (`/health` plus one `eval` for file, page and selection,
+polled every 2.5 s while the window has focus); what it does runs the CLI as a child process. The
+panel opens no connection of its own, so it can never do more than `figma-cli` can.
 
-It is a readout, not a control — while the connection is up it is not clickable at all. It
-becomes a button the moment Figma is gone: a click then asks the daemon to rebuild its CDP
-connection, which is all it takes after a Figma restart, and answers in place of the file name
-(`Reconnecting…` → `Connected`). Only if that fails is `figma-cli connect` needed — patching,
-starting Figma, the macOS permission — and it is written into the input unsent, because those
-questions belong in the terminal. In a Claude Code tab it arrives as `!figma-cli connect`: a bare
-line is a *prompt* there, and Claude would start working on it; the `!` is what makes it a shell
-command. Tabs running anything else get the command without the prefix, since only Claude Code
-reads it that way.
+Clicking it opens the menu that holds every figma-cli action the panel offers, so the terminal
+below stays Claude's:
 
-Which command that is gets looked up rather than assumed. `figma-cli` on PATH wins; otherwise set
-`figmaCli` in `panel.json` to a checkout and the panel writes `node <checkout>/src/index.js`
-instead. Found nothing, it says so rather than typing a command that cannot run:
+| Entry | What runs |
+|---|---|
+| **Connect** | `figma-cli connect` in the configured mode. With the debug port missing but Figma running, a dialog asks first — the CLI never quits Figma, and only you know whether that is safe. |
+| **Restart / Stop daemon** | `figma-cli daemon restart` and `daemon stop`. Restart also re-pins the bound file. |
+| **Bound file** | `figma-cli files` lists what is open; picking one restarts the daemon with `FIGMA_FILE` set. Appears only when more than one file is open. Without it the daemon binds to whichever file happened to be first — silently the wrong one. |
+| **Undo last render** | Removes the nodes of the most recent `render` / `render-batch`, read from `~/.figma-ds-cli/last-render.json`. Only those ids; nothing on the canvas is searched for or guessed at. Disabled when the file is gone. |
+| **Prepare this folder** | `figma-cli init-agent` in the **active tab's** working directory (named under the button), so Claude gets `AGENTS.md` and the Cursor rule where it actually runs. |
+| **Mode** | Yolo, Safe or Browser; switching reconnects. |
+
+Results appear as a line in the menu, not in the terminal. Patching Figma needs macOS "App
+Management" **for FigmaClaude itself** — the app spawns the CLI, so the permission follows the
+app, not your terminal. When it is missing, the menu says so and offers to open the settings pane.
+Safe Mode needs no permission at all.
+
+Which command all of this runs gets looked up rather than assumed: `figmaCli` from `panel.json`
+first, then `figma-cli` on PATH, then a checkout — `repoPath` from `~/.figma-cli/config.json`
+(fig-start writes it) or the repo this app sits in.
 
 ```json
 { "figmaCli": "~/figma-cli" }
 ```
 
-The simplest fix is to have the binary at all — `npm link` once in the CLI's checkout puts
-`figma-cli` on PATH for everything, this app included.
+When the CLI is a checkout, the panel writes `~/.figma-ds-cli/bin/figma-cli` — a two-line launcher
+— and puts that directory on the PATH of the terminals it spawns. That is what makes the
+`figma-cli …` commands in `AGENTS.md` work in Claude's tab without installing anything globally or
+touching your shell files. Delete the file to undo it.
 
 With something selected in Figma, a row appears above the status line. Clicking it writes the
 selection into the prompt without sending it:

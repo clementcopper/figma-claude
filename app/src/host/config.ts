@@ -25,7 +25,9 @@ const DEFAULTS: TerminalConfig = {
   statusLineProvider: 'bundled',
   statusLineCompactBudget: 0,
   editorContext: true,
-  figmaCli: ''
+  figmaCli: '',
+  figmaFile: '',
+  figmaMode: 'yolo'
 };
 
 export class ConfigManager {
