@@ -434,8 +434,9 @@ Figma, with the things a terminal cannot show:
 - **A working directory you pick** — Claude Code keeps its session history per directory, so
   this decides which conversations `--resume` offers.
 - **Figma's state**: two dots for the daemon and the connection into Figma, the open file's
-  name, and one click to reconnect when it drops. With something selected in Figma, a row above
-  the status line puts that selection — names and node ids — into the prompt.
+  name, and one click to reconnect when it drops — falling back to writing `!figma-cli connect`
+  into the input, unsent. With something selected in Figma, a row above the status line puts that
+  selection — names and node ids — into the prompt.
 
 ```bash
 cd app

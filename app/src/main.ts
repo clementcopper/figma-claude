@@ -412,7 +412,20 @@ class PanelHost implements MessageHandlerContext {
     }
 
     this.toast('No connection — run figma-cli connect');
-    this.insertIntoActiveTerminal('figma-cli connect');
+    this.insertIntoActiveTerminal(this.shellPrefix() + 'figma-cli connect');
+  }
+
+  /**
+   * `!` in front of a command, when the tab runs Claude Code.
+   *
+   * Claude Code reads a bare line as a prompt and starts working on it; `!` is what makes it run
+   * the line as a shell command instead. Any other CLI in the tab — gemini, aider, a plain shell
+   * — would take the `!` literally, so it is added only for `claude`.
+   */
+  private shellPrefix(): string {
+    const command = this.configManager.getConfig().command;
+    const name = command.split('/').pop()?.replace(/\.(exe|cmd|bat)$/i, '');
+    return name === 'claude' ? '!' : '';
   }
 
   /** Full screen or not — the bar reserves space for the traffic lights only when they exist. */

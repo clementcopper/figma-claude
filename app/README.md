@@ -77,8 +77,11 @@ It is a readout, not a control — while the connection is up it is not clickabl
 becomes a button the moment Figma is gone: a click then asks the daemon to rebuild its CDP
 connection, which is all it takes after a Figma restart, and answers in place of the file name
 (`Reconnecting…` → `Connected`). Only if that fails is `figma-cli connect` needed — patching,
-starting Figma, the macOS permission — and it is written into the prompt unsent, because those
-questions belong in the terminal.
+starting Figma, the macOS permission — and it is written into the input unsent, because those
+questions belong in the terminal. In a Claude Code tab it arrives as `!figma-cli connect`: a bare
+line is a *prompt* there, and Claude would start working on it; the `!` is what makes it a shell
+command. Tabs running anything else get the command without the prefix, since only Claude Code
+reads it that way.
 
 With something selected in Figma, a row appears above the status line. Clicking it writes the
 selection into the prompt without sending it:
