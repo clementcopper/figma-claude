@@ -128,8 +128,8 @@
     if (message && message.type === 'panelFigma') {
       daemonDot.className = 'toolbar-dot ' + (message.daemon === 'ok' ? 'on' : 'off');
       figmaDot.className = 'toolbar-dot ' + (message.figma === 'ok' ? 'on' : 'off');
-      // The file is what tells two Figma windows apart; the page follows in the tooltip.
-      lastLabel = message.file || (message.daemon === 'ok' ? 'no file' : 'offline');
+      // Built host-side (`figmaButtonLabel`) so the states are unit-tested, not eyeballed here.
+      lastLabel = message.label || '—';
       if (!figmaLabel.classList.contains('toast')) {
         figmaLabel.textContent = lastLabel;
       }

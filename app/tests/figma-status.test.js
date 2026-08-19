@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
   cleanFileName,
+  figmaButtonLabel,
   toStatusView,
   describeSelection,
   selectionPromptText
@@ -86,5 +87,35 @@ describe('selectionPromptText', () => {
       { id: '1:3', name: 'B', type: 'TEXT' }
     ]);
     assert.strictEqual(text, 'Figma selection: "A" (FRAME 1:2), "B" (TEXT 1:3)');
+  });
+});
+
+describe('figmaButtonLabel', () => {
+  const on = { daemon: 'ok', figma: 'ok' };
+
+  it('reads like Figma\'s breadcrumb when both names are known', () => {
+    assert.strictEqual(
+      figmaButtonLabel({ ...on, file: 'Designdone', page: 'Landingpage' }),
+      'Designdone/Landingpage'
+    );
+  });
+
+  it('shows the file alone while the page is unknown', () => {
+    assert.strictEqual(figmaButtonLabel({ ...on, file: 'Designdone', page: '' }), 'Designdone');
+  });
+
+  it('falls back to a state, never to an empty button', () => {
+    assert.strictEqual(figmaButtonLabel({ ...on, file: '', page: '' }), 'no file');
+  });
+
+  it('names the two failure states apart', () => {
+    assert.strictEqual(
+      figmaButtonLabel({ daemon: 'ok', figma: 'off', file: 'Designdone', page: 'Landingpage' }),
+      'not connected'
+    );
+    assert.strictEqual(
+      figmaButtonLabel({ daemon: 'off', figma: 'off', file: '', page: '' }),
+      'offline'
+    );
   });
 });

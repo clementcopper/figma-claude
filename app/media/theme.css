@@ -205,7 +205,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 18ch;
+  /* Room for `File/Page`; longer names ellipse, the tooltip carries the full text. */
+  max-width: 28ch;
 }
 
 /*

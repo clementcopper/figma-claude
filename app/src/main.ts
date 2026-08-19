@@ -15,7 +15,7 @@ import { loadBounds, saveBounds, clampBounds } from './lib/window-bounds';
 import { FigmaContextWatcher, reconnect, type FigmaSnapshot } from './host/figmaContext';
 import { resolveCliCommand } from './lib/cli-command';
 import { loginShellPath } from './host/ptyManager';
-import { describeSelection, selectionPromptText } from './lib/figma-status';
+import { describeSelection, figmaButtonLabel, selectionPromptText } from './lib/figma-status';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 
 const { app, BrowserWindow, dialog, ipcMain, globalShortcut, nativeImage, screen } = electron;
@@ -359,7 +359,7 @@ class PanelHost implements MessageHandlerContext {
   }
 
   sendFigmaContext(snapshot: FigmaSnapshot): void {
-    const { status, page, selection } = snapshot;
+    const { status, file, page, selection } = snapshot;
 
     // The row exists to be clicked, so it only appears when there is something to insert.
     this.postMessage({
@@ -368,7 +368,7 @@ class PanelHost implements MessageHandlerContext {
         selection.length > 0
           ? {
               fileName: describeSelection(selection, page),
-              relativePath: status.file ? `${status.file} · ${page}` : page
+              relativePath: file ? `${file} · ${page}` : page
             }
           : null
     });
@@ -378,8 +378,9 @@ class PanelHost implements MessageHandlerContext {
       daemon: status.daemon,
       figma: status.figma,
       mode: status.mode,
-      file: status.file,
+      file,
       page,
+      label: figmaButtonLabel({ daemon: status.daemon, figma: status.figma, file, page }),
       tooltip: status.tooltip
     } as unknown as ExtensionMessage);
   }

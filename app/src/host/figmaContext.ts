@@ -12,6 +12,8 @@ const TOKEN_FILE = path.join(os.homedir(), '.figma-ds-cli', '.daemon-token');
  */
 export interface FigmaSnapshot {
   status: FigmaStatusView;
+  /** Document name from the Plugin API — present in every mode, unlike the daemon's page title. */
+  file: string;
   page: string;
   selection: SelectedNode[];
 }
@@ -80,6 +82,7 @@ async function evaluate<T>(code: string, timeoutMs = 4000): Promise<T | null> {
 }
 
 const SELECTION_CODE = `return JSON.stringify({
+  file: figma.root.name,
   page: figma.currentPage.name,
   selection: figma.currentPage.selection.map(n => ({ id: n.id, name: n.name, type: n.type })).slice(0, 12)
 })`;
@@ -96,6 +99,7 @@ export class FigmaContextWatcher {
   private lastSerialized = '';
   private current: FigmaSnapshot = {
     status: toStatusView(null),
+    file: '',
     page: '',
     selection: []
   };
@@ -131,13 +135,16 @@ export class FigmaContextWatcher {
   private async tick(schedule = true): Promise<void> {
     const status = toStatusView(await health());
 
+    // The daemon's own title is the fallback: it survives an `eval` that times out mid-render.
+    let file = status.file;
     let page = '';
     let selection: SelectedNode[] = [];
     if (status.figma === 'ok') {
       const raw = await evaluate<string>(SELECTION_CODE);
       if (raw) {
         try {
-          const parsed = JSON.parse(raw) as { page?: string; selection?: SelectedNode[] };
+          const parsed = JSON.parse(raw) as { file?: string; page?: string; selection?: SelectedNode[] };
+          file = parsed.file || file;
           page = parsed.page ?? '';
           selection = parsed.selection ?? [];
         } catch {
@@ -146,7 +153,7 @@ export class FigmaContextWatcher {
       }
     }
 
-    this.current = { status, page, selection };
+    this.current = { status, file, page, selection };
 
     // Only speak when something actually changed: the row would otherwise rebuild every
     // few seconds, and rebuilding it refits xterm.

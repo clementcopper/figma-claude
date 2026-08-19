@@ -86,3 +86,23 @@ export function selectionPromptText(nodes: SelectedNode[]): string | null {
   const parts = nodes.map((n) => `"${n.name}" (${n.type} ${n.id})`);
   return `Figma selection: ${parts.join(', ')}`;
 }
+
+export interface LabelInput {
+  daemon: 'ok' | 'off';
+  figma: 'ok' | 'off';
+  file: string;
+  page: string;
+}
+
+/**
+ * The one line the connection button shows: file and page, the way Figma's own breadcrumb reads.
+ *
+ * Both names come from the Plugin API, so this is the same string in every connection mode. The
+ * fallbacks name the state instead of the file — an empty button says nothing about why it is empty.
+ */
+export function figmaButtonLabel({ daemon, figma, file, page }: LabelInput): string {
+  if (daemon !== 'ok') return 'offline';
+  if (figma !== 'ok') return 'not connected';
+  if (file && page) return `${file}/${page}`;
+  return file || page || 'no file';
+}
