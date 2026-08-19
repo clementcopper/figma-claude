@@ -235,9 +235,12 @@
 
   function openMenu() {
     const rect = figma.getBoundingClientRect();
-    // Anchored to the button, but never past the window edge — the bar sits at the very top.
-    const left = Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8);
-    menu.style.left = `${Math.max(8, left)}px`;
+    // Anchored to the button's RIGHT edge, which is the only stable one: the label grows to the
+    // left as the file and page names get longer, so a left anchor made the menu wander with
+    // them. (The earlier attempt clamped against `menu.offsetWidth`, which is 0 while the
+    // element is still hidden, so the clamp never did anything.)
+    menu.style.left = 'auto';
+    menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
     menu.style.top = `${rect.bottom + 4}px`;
     menu.hidden = false;
     send('refresh');

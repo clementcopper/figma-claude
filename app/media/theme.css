@@ -386,8 +386,10 @@ body.is-fullscreen .toolbar-trafficlights {
 
 .figma-menu {
   position: fixed;
-  z-index: 40;
+  /* Above #tab-bar (100) and the ported tooltip (1000), both of which belong under it. */
+  z-index: 1100;
   width: 268px;
+  max-width: calc(100vw - 16px);
   padding: 8px;
   border: 1px solid var(--vscode-tab-border);
   border-radius: 8px;
