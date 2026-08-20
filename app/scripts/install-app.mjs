@@ -10,11 +10,26 @@
  */
 
 import { execFileSync, spawnSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 
 const TARGET = '/Applications/FigmaClaude.app';
-const SOURCE = new URL('../release/mac/FigmaClaude.app', import.meta.url).pathname;
+const RELEASE = new URL('../release/', import.meta.url).pathname;
 const QUIT_TIMEOUT_MS = 10_000;
+
+// electron-builder names the output directory after the arch it packed for: `mac` on x64,
+// `mac-arm64` on Apple Silicon. Hardcoding `mac` made this script report "nothing built" on an
+// arm64 machine seconds after the build succeeded.
+function findBundle() {
+  if (!existsSync(RELEASE)) return null;
+  for (const entry of readdirSync(RELEASE)) {
+    if (!entry.startsWith('mac')) continue;
+    const candidate = `${RELEASE}${entry}/FigmaClaude.app`;
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+const SOURCE = findBundle();
 
 function isRunning() {
   // pgrep exits 1 when nothing matches, which is a normal answer here, not a failure.
@@ -26,8 +41,8 @@ function sleep(ms) {
   execFileSync('/bin/sleep', [String(ms / 1000)]);
 }
 
-if (!existsSync(SOURCE)) {
-  console.error(`✗ Nothing built at ${SOURCE} — run \`npm run dist\` first.`);
+if (!SOURCE) {
+  console.error(`✗ No FigmaClaude.app under ${RELEASE}mac*/ — run \`npm run dist\` first.`);
   process.exit(1);
 }
 

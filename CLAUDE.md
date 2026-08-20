@@ -26,6 +26,8 @@ npm run examples                        # LIVE: auto-layout gallery that verifie
 for f in src/index.js src/lib/*.js src/commands/*.js src/daemon.js src/figma-client.js; do node --check "$f"; done
 ```
 
+A fresh checkout has no `node_modules`: without `npm install`, 29 of the 47 test files fail with `Cannot find package 'ws' imported from src/figma-client.js`. That is a missing install, not a broken suite. `npm test` globs `tests/*.test.js` only — `tests/live/` never runs from it.
+
 `test:parity`, `examples` and `FIGMA_LIVE=1` drive a real Figma Desktop and change the open file — never run them to "check something quickly". Until 19.08.2026 `tests/instantiate-roundtrip.test.js` unlocked itself on any live connection, so a plain `npm test` built a component set in whoever's file was open; it now needs `FIGMA_LIVE=1` as well. No build step, no linter. Pure ESM, Node ≥18.
 
 ---
@@ -60,13 +62,17 @@ CLI (src/index.js → src/commands/*.js)
 | `src/daemon.js` | persistent server, mode switching, request auth |
 | `src/figma-patch.js` / `src/platform.js` | `app.asar` patching / macOS-Windows-Linux behavior |
 | `src/blocks/`, `src/shadcn.js` | pre-built layouts and component templates |
+| `src/design-extract.js`, `src/design-md.js`, `src/gradient-extractor.js`, `src/code-import/` | DESIGN.md export/import side: read a Figma file out, read code in |
+| `src/figjam-client.js` | FigJam-specific client, separate from `figma-client.js` |
+| `src/plugins.js` + `plugins/` | figma-cli's own plugin system (`plugins install voice`), installs to `~/.figma-cli/plugins/<name>/`. Unrelated to `plugin/` (Safe Mode) and to `.claude-plugin/` |
+| `src/credentials.js`, `src/api-docs.js` | keychain-backed key storage, Plugin API doc lookup |
 | `plugin/` | Safe Mode Figma plugin |
 | `skills/figma-cli/`, `.claude-plugin/` | the repo installable as a Claude Code plugin |
 | `bin/` | **fork-local** launcher scripts, see below |
 
 ### The testing convention worth copying
 
-Logic that decides something goes into `src/lib/` as a pure function with a unit test; the command module keeps only the I/O. `browserDebugArgs` (`src/platform.js` + `tests/browser-mode.test.js`) and `resolveConnectAction` (`src/lib/connect-plan.js` + `tests/connect-plan.test.js`) are the pattern. That is why 585 tests run without a Figma instance.
+Logic that decides something goes into `src/lib/` as a pure function with a unit test; the command module keeps only the I/O. `browserDebugArgs` (`src/platform.js` + `tests/browser-mode.test.js`) and `resolveConnectAction` (`src/lib/connect-plan.js` + `tests/connect-plan.test.js`) are the pattern. That is why 594 tests in 107 suites run without a Figma instance (1 skipped: the live roundtrip).
 
 ### Connection modes
 
@@ -111,6 +117,8 @@ The `connect` fix is written to be upstreamable (pure function + unit test, no f
 
 ### Pulling from upstream
 
+**The fork's default branch is `v2`, not `main`** — `origin/HEAD -> origin/v2`. Local work sits on `v2` tracking `origin/v2`; upstream's default is `main`.
+
 ```bash
 git fetch upstream && git merge upstream/main
 ```
@@ -126,6 +134,8 @@ Expect conflicts only in `CLAUDE.md` (ours), `README.md` (two fork blocks: the n
 - **`figma.loadFontAsync` before setting `characters`**, always.
 - **`frame.isSlot = true` does nothing via `eval`** — slots need `slot convert`.
 - **Never delete existing nodes** on a user's canvas; place new work past the rightmost edge.
+- **`plugins/` is not in package.json `files`.** From an npm install, `figma-cli plugins install voice` prints `Plugin "voice" not found in figma-cli.` — `src/plugins.js:106` copies from `<repo>/plugins/<name>`, which the published tarball does not contain. Works from a checkout only. Same for `bin/fig-status`: `bin` in package.json exposes `fig-start` only.
+- **CI's syntax check covers `src/index.js`, `src/lib/*`, `src/commands/*`, `daemon.js`, `figma-client.js` only** — `plugins.js`, `design-*.js`, `figjam-client.js` and `code-import/` are not `node --check`ed anywhere.
 - Verify visual creations with `figma-cli verify [nodeId]` (or `render --verify` for one roundtrip). Internal check, not user-facing output.
 
 ---
@@ -140,3 +150,4 @@ Expect conflicts only in `CLAUDE.md` (ours), `README.md` (two fork blocks: the n
 | `.claude/MEMORY.md`, `.claude/bugs-and-fixes.md`, `.claude/figma-plugin-api.md` | parser internals, past bugs with root causes, Plugin API notes |
 | `docs/ARCHITECTURE.md`, `docs/TECHNIQUES.md`, `docs/FIGJAM.md` | connection flow, techniques, FigJam |
 | `LEARNINGS.md` | project learnings and dead ends |
+| `Sessions/<date>.md` | per-session decision logs (written by the `pre-compact` skill) |

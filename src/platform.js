@@ -287,12 +287,28 @@ export function getFigmaVersion() {
   return 'unknown';
 }
 
+/**
+ * How to ask the OS whether Figma Desktop is running — pure, so the flag can be tested.
+ *
+ * The process *name*, never the command line: `pgrep -f Figma` also matched Figma's own
+ * updater (`FigmaAgent.app/.../figma_agent`, which runs while Figma is closed) and anything
+ * else carrying the word, e.g. the FigmaClaude panel. `connect` then read "Figma is running"
+ * with no Figma at all, answered `needs-quit` forever, and never reached the branch that
+ * launches it. `killFigmaApp`, `bin/fig-start` and `bin/fig-status` all match exactly.
+ */
+export function figmaRunningCommand(platform = PLATFORM) {
+  if (platform === 'win32') return 'tasklist /FI "IMAGENAME eq Figma.exe" 2>nul';
+  const name = platform === 'darwin' ? 'Figma' : 'figma';
+  // pgrep exits 1 when nothing matches, which is an answer here, not a failure.
+  return `pgrep -x ${name} 2>/dev/null || true`;
+}
+
 export function isFigmaRunning() {
   if (PLATFORM === 'darwin' || PLATFORM === 'linux') {
-    const ps = execSync('pgrep -f Figma 2>/dev/null || true', { encoding: 'utf8' });
+    const ps = execSync(figmaRunningCommand(PLATFORM), { encoding: 'utf8' });
     return ps.trim().length > 0;
   } else if (PLATFORM === 'win32') {
-    const ps = execSync('tasklist /FI "IMAGENAME eq Figma.exe" 2>nul', { encoding: 'utf8' });
+    const ps = execSync(figmaRunningCommand(PLATFORM), { encoding: 'utf8' });
     return ps.includes('Figma.exe');
   }
   return false;

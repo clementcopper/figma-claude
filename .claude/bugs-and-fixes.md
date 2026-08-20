@@ -39,3 +39,16 @@
 **Symptom**: Sizing conflicts between old and new API
 **Cause**: Mixed use of `primaryAxisSizingMode`/`counterAxisSizingMode` (old) and `layoutSizingHorizontal`/`layoutSizingVertical` (new)
 **Fix**: Use `layoutSizingHorizontal`/`layoutSizingVertical` for children, keep `primaryAxisSizingMode`/`counterAxisSizingMode` for root frame self-sizing only
+
+## `connect` Deadlock: "Quit Figma (Cmd+Q)" Forever (2026-08-19)
+**Symptom**: `connect` printed "Figma is running, but the debug port is not open. Quit Figma (Cmd+Q), then run connect again." Quitting Figma changed nothing — the same message on every retry, and Figma was never relaunched.
+**Cause**: `isFigmaRunning()` used `pgrep -f Figma`. `-f` matches the whole command line, so it hit processes that are not Figma Desktop: `~/Library/Application Support/Figma/FigmaAgent.app/.../figma_agent` (Figma's updater, running while Figma is closed) and `/Applications/FigmaClaude.app` plus its three helpers. `figmaRunning` was therefore always true, `resolveConnectAction({cdpReachable: false, figmaRunning: true})` always answered `needs-quit`, and the `start-fresh` branch that calls `startFigma()` was unreachable.
+**Fix**: `figmaRunningCommand(platform)` in `src/platform.js` — `pgrep -x Figma` on darwin, `pgrep -x figma` on linux, tasklist filter unchanged on win32. `-x` matches the process name, which is what `killFigmaApp`, `bin/fig-start`, `bin/fig-status` and `app/src/host/figmaActions.ts` already did.
+**Location**: `src/platform.js:290` (the only `-f` in the repo), tests in `tests/figma-running.test.js`
+**Verified**: after the fix, `isFigmaRunning()` returned false with Figma quit, `connect` took `start-fresh`, and the launched process carried `--remote-debugging-port=9222` with CDP answering `200`.
+
+## `install:app` Reported "Nothing built" on Apple Silicon (2026-08-19)
+**Symptom**: `npm run install:app` in `app/` ran the build to completion, then failed with "✗ Nothing built at .../app/release/mac/FigmaClaude.app — run `npm run dist` first."
+**Cause**: electron-builder names its output directory after the target arch — `release/mac` on x64, `release/mac-arm64` on arm64. `scripts/install-app.mjs` hardcoded `release/mac`, so the script never found a bundle built on an M-series Mac.
+**Fix**: `findBundle()` scans `release/` for the first `mac*/FigmaClaude.app`; the error message now names `release/mac*/`.
+**Location**: `app/scripts/install-app.mjs`
