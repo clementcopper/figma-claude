@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import type { StatusLineSnapshot } from './types';
+import { applyResetWindow } from '../lib/limit-window';
 
 /**
  * Directory the statusLine script writes its per-tab snapshots into.
@@ -114,23 +115,8 @@ export class StatusLineWatcher {
       }
     }
 
-    // A remembered "resets in 84 min" is a lie an hour later: recompute from the absolute point,
-    // and drop the session values once that point has passed — the window reset, so the old
-    // percentage says nothing about the new one.
-    if (merged.sessionResetsAt !== undefined) {
-      const minutes = Math.round((merged.sessionResetsAt * 1000 - Date.now()) / 60000);
-      if (minutes <= 0) {
-        delete merged.sessionPercent;
-        delete merged.sessionResetsAt;
-        delete merged.sessionResetsInMin;
-      } else {
-        merged.sessionResetsInMin = minutes;
-      }
-    } else {
-      delete merged.sessionResetsInMin;
-    }
-
-    return merged;
+    // A remembered "resets in 84 min" is a lie an hour later; the rules live in one tested place.
+    return applyResetWindow(merged, Date.now());
   }
 
   /**

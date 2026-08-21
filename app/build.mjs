@@ -43,6 +43,12 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/limit-window.ts')],
+    outfile: join(ROOT, 'dist/lib/limit-window.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'src/lib/shell-path.ts')],
     outfile: join(ROOT, 'dist/lib/shell-path.mjs'),
     platform: 'node',

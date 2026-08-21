@@ -11,7 +11,9 @@ app/                                   FigmaClaude
 Original: [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel)
 — on the Marketplace as `0ly.claude-terminal-panel`.
 Taken from: [`clementcopper/claude-terminal-panel`](https://github.com/clementcopper/claude-terminal-panel)
-Commit: `b89760a514de29888a8b8b9bf39d060a2047e435` (2026-08-15)
+Commit: `61415dd` (2026-08-21) — re-synced from `b89760a` (2026-08-15), which brought the
+extension's own terminal-spacing fix (`cdfcd2c`) and a limits row whose countdown keeps ticking
+while Claude is not rendering (`6dfc2eb`).
 
 The licence is nolikzero's and ships alongside as `LICENSE-claude-terminal-panel`. This is that
 VS Code panel running next to Figma instead of inside an editor, so the UI is not reimplemented
@@ -22,7 +24,7 @@ VS Code panel running next to Figma instead of inside an editor, so the UI is no
 | File | Note |
 |---|---|
 | `media/main.ts` | the whole UI: tabs, toolbar, status line, prompt indicator, link provider |
-| `media/styles.css` | |
+| `media/styles.css` | owns the terminal's geometry — `theme.css` deliberately no longer overrides `.terminal-wrapper` |
 | `media/types.ts` | |
 | `src/host/types.ts` | |
 | `src/host/messageHandlers.ts` | the UI↔host protocol |

@@ -308,33 +308,34 @@ body {
 }
 
 /*
- * The terminal's breathing room — as an inset, not as padding.
+ * One override the copied stylesheet cannot win on its own.
  *
- * The copied rule is `padding: 6px 10px 0`: three sides inset, the terminal flush against the
- * status line below. In a window that reads as lopsided, but simply adding padding at the
- * bottom made it worse. Measured: wrapper 925 px tall, 56 rows at 16.5 px = 924 px of terminal.
- * The fit counts the padding box, so the rows overflow the content box and the last line — the
- * `auto mode on` hint — is cut in half.
+ * `styles.css` asks for `display: flex` on the wrapper so the leftover row space is split above
+ * and below the terminal. But `main.ts:1155` writes `element.style.display = 'block'` inline
+ * when a tab becomes active, and an inline style outranks a stylesheet — so the centring never
+ * happens. Measured in a live window: 0 px above and 7.5 px below with `block`, 3.75/3.75 with
+ * flex restored.
  *
- * Insetting the absolutely positioned wrapper instead makes its own height the honest number,
- * so the fit lands on 55 rows and the air is equal above and below.
+ * `!important` is the only thing that beats an inline style, and it has to spare the hidden
+ * tabs: the same line writes `display: none` for every terminal that is not active, and an
+ * unconditional rule would show them all at once. Hence the `:not()` on the inline value.
+ *
+ * Remove this once the extension toggles visibility with `''` instead of `'block'` — then the
+ * stylesheet wins by itself. Reported to the fork.
  */
-.terminal-wrapper {
-  top: 6px;
-  right: 10px;
-  bottom: 6px;
-  left: 10px;
-  padding: 0;
-  /* Rows are whole; the wrapper's height is not. Centring the terminal splits the leftover
-     (up to one row) evenly instead of piling all of it under the last line. */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+.terminal-wrapper:not([style*='display: none']) {
+  display: flex !important;
 }
 
-.terminal-wrapper .xterm {
-  height: auto;
-}
+/*
+ * The rest of the terminal's geometry is NOT overridden here.
+ *
+ * This file used to carry its own `.terminal-wrapper` insets and centring, written when the last
+ * line was cut off. The extension has since grown the same fix, measured headlessly against
+ * xterm 6.0.0 (`styles.css`, commit cdfcd2c) — including a deliberately uneven top and bottom
+ * because symmetric geometry read as bottom-heavy. Since this file loads *after* `styles.css`,
+ * anything written here silently wins over that measurement. Leave it to the copy upstream.
+ */
 
 /*
  * The tab strip's second button — "New Terminal with Custom Command" — is hidden.

@@ -33,6 +33,17 @@
   DESIGN.md and structure trees, contracts from `rules gen`); a real project had half a megabyte
   of that sitting between its own documents. Visible rather than hidden, because the CLI's own
   DESIGN.md lookup skips dot-directories.
+- **Re-synced with `claude-terminal-panel` (`61415dd`).** The extension grew two things the port
+  wanted: the limits row now recomputes its countdown from the absolute reset point, so it keeps
+  moving while Claude is not rendering — which is exactly when the limit is spent — and the
+  terminal's spacing fix landed there properly (insets instead of padding, leftover row space
+  split, viewport background). `media/main.ts` and `media/styles.css` are byte-identical again;
+  the app's own `.terminal-wrapper` override, written when the last line was cut off, is gone.
+  Two things had to follow: the host stopped deleting `sessionResetsAt` once it passes (the new
+  row needs the past point to say "Limit reset"; the rule now lives in `app/src/lib/limit-window.ts`
+  with tests), and one override had to stay — the extension sets `display: block` inline on tab
+  activation, which beats its own `display: flex` and left the whole leftover under the last
+  line. Measured live: 0/7.5 px before, 3.75/3.75 px after.
 - **Terminals died with a silent `[Process exited with code 1]` when the app was opened from the
   Dock.** The panel asks a shell for the PATH a real terminal would have, because an app started
   from the Dock inherits launchd's four directories. It asked with `zsh -l -c` — login, but not
