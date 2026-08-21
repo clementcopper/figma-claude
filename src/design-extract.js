@@ -521,13 +521,24 @@ export function buildCensus(pages) {
   const census = {
     colors: new Map(), typography: new Map(), radii: new Map(),
     spacing: new Map(), shadows: new Map(), fonts: new Set(), componentSets: [],
+    // hex → Map<variable name, count>. The walker already resolves bound variables to names
+    // (`n.bv`), so a colour that came from a token can be reported under the name the file
+    // gives it rather than an invented `accent-3`.
+    colorVars: new Map(),
   };
-  const visitPaints = (arr) => (arr || []).forEach(p => {
-    if (typeof p === 'string' && p.startsWith('#')) bump(census.colors, p.split('@')[0]);
+  const visitPaints = (arr, names) => (arr || []).forEach((p, i) => {
+    if (typeof p !== 'string' || !p.startsWith('#')) return;
+    const hex = p.split('@')[0];
+    bump(census.colors, hex);
+    const varName = Array.isArray(names) ? names[i] : undefined;
+    if (typeof varName === 'string' && varName && varName !== UNRESOLVED_VAR) {
+      if (!census.colorVars.has(hex)) census.colorVars.set(hex, new Map());
+      bump(census.colorVars.get(hex), varName);
+    }
   });
   const visit = (n, pageName) => {
-    visitPaints(n.fills);
-    visitPaints(n.strokes);
+    visitPaints(n.fills, n.bv && n.bv.fills);
+    visitPaints(n.strokes, n.bv && n.bv.strokes);
     if (n.gap > 0) bump(census.spacing, n.gap);
     (n.pad || []).forEach(v => { if (v > 0) bump(census.spacing, v); });
     if (n.r != null) (Array.isArray(n.r) ? n.r : [n.r]).forEach(v => { if (v > 0) bump(census.radii, v); });
@@ -551,6 +562,50 @@ export function buildCensus(pages) {
  * accent — with -alt / -3 / -4 suffixes for repeats within a role).
  * Input: Map<hex, count>. Output: { name: hex } ordered by usage.
  */
+/**
+ * Replace invented colour names with the ones the file itself uses.
+ *
+ * `assignSemanticNames` derives `accent`, `accent-alt`, `accent-3` … from HSL plus a repeat
+ * counter. That is a guess, and it reads like an extraction: a node bound to `color/brand-500`
+ * turned up in DESIGN.md as `accent-3`, which sends the code side looking for a token that does
+ * not exist. Where a hex was bound to a variable, its name wins.
+ *
+ * @param {Record<string,string>} names   name → hex, from assignSemanticNames
+ * @param {Map<string, Map<string, number>>} colorVars  hex → variable names and their counts
+ * @returns {Record<string,string>} name → hex, bound names first, order preserved
+ */
+export function preferBoundNames(names, colorVars) {
+  if (!colorVars || colorVars.size === 0) return { ...names };
+
+  // The most-used binding wins; a hex bound to two variables is genuinely ambiguous, and the
+  // majority is the honest answer rather than whichever came first in the walk.
+  const dominant = (hex) => {
+    const counts = colorVars.get(hex);
+    if (!counts || counts.size === 0) return null;
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+  };
+
+  // `Semantic:color/text-primary` → `text-primary`: the collection prefix and the group are
+  // navigation in Figma, not part of the token's identity.
+  const shorten = (full) => full.split(':').pop().split('/').pop();
+
+  const out = {};
+  const taken = new Set();
+  for (const [generated, hex] of Object.entries(names)) {
+    const bound = dominant(hex);
+    let name = generated;
+    if (bound) {
+      const short = shorten(bound);
+      // Two variables that shorten to the same word keep the longer path to stay distinct.
+      name = taken.has(short) ? bound.split(':').pop() : short;
+    }
+    if (taken.has(name)) name = generated;
+    taken.add(name);
+    out[name] = hex;
+  }
+  return out;
+}
+
 export function assignSemanticNames(colors) {
   const roleOf = (hex) => {
     const { s, l } = hexToHsl(hex);
@@ -848,7 +903,7 @@ const SECTION_TITLES = {
 export function generateDesignMd(extraction, options = {}) {
   const sections = ALL_SECTIONS.filter(s => !options.sections || options.sections.includes(s));
   const census = buildCensus(extraction.pages);
-  const colorNames = assignSemanticNames(census.colors);
+  const colorNames = preferBoundNames(assignSemanticNames(census.colors), census.colorVars);
   const typeScale = buildTypeScale(census.typography);
   const radiusNames = nameRadii(census.radii);
   const baseUnit = inferBaseUnit(census.spacing);
@@ -928,7 +983,17 @@ export function generateDesignMd(extraction, options = {}) {
     }
     if (key === 'spacing') {
       header(key);
-      out.push('### Base Unit', '', `${baseUnit}px`, '');
+      // Derived, and said so. `inferBaseUnit` is a GCD over the observed spacings: one odd
+      // value anywhere drags it to 2px, and the document then instructed a 2px grid for a
+      // design whose own variables say 4px. A reader cannot tell a guess from a reading
+      // unless the document tells them.
+      out.push('### Base Unit', '');
+      out.push(
+        `${baseUnit}px — _derived_: the greatest common divisor of ${census.spacing.size} ` +
+        'distinct observed spacings, not read from a variable. Where the file has spacing ' +
+        'variables, those are authoritative.',
+        ''
+      );
       out.push('### Border Radius', '');
       out.push('| Token | Value |', '|---|---|');
       for (const [name, v] of Object.entries(radiusNames)) out.push(`| ${name} | ${v}px |`);
@@ -966,6 +1031,12 @@ export function generateDesignMd(extraction, options = {}) {
     }
     if (key === 'states') {
       header(key);
+      out.push(
+        '_Generic recommendations, not read from this file._ Where the design has real state ' +
+        'variants, they are in the component tables above (`State=Hover` and friends) and those ' +
+        'values win over anything here.',
+        ''
+      );
       out.push('State tokens should be derived from the base palette above. Recommended mappings:', '');
       out.push('| State | Treatment |', '|-------|-----------|');
       out.push('| Hover | Lighten/darken accent by 10% |');
@@ -976,7 +1047,9 @@ export function generateDesignMd(extraction, options = {}) {
     if (key === 'rules') {
       header(key);
       out.push('### Do', '');
-      out.push(`- Use the ${baseUnit}px base unit for all spacing decisions`);
+      // An observation, not an order: this number is inferred (see § Spacing), and stating it
+      // in the imperative made agents build to a grid the design does not use.
+      out.push(`- Observed spacings share a common divisor of ${baseUnit}px; prefer the file's own spacing variables where they exist`);
       const accent = colorNames['accent'];
       if (accent) out.push(`- Use \`${accent}\` (accent) as the primary accent color`);
       out.push('- Bind colors to the tokens below instead of hardcoding hex values', '');

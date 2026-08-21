@@ -469,3 +469,58 @@ test('Variables roundtrip: parseDesignMd reads the JSON variables block back', (
   // existing color/typography parsing still works alongside the new block
   assert.ok(Object.values(parsed.tokens.color).includes('#ffffff'));
 });
+
+// --- Estimates must not read like readings ---
+
+import { preferBoundNames } from '../src/design-extract.js';
+
+test('buildCensus records which variable a colour came from', () => {
+  const pages = [{
+    id: '1:1', name: 'P', frames: [
+      { t: 'FRAME', n: 'Card', fills: ['#5757ff'], bv: { fills: ['Primitives:color/brand-500'] }, kids: [
+        { t: 'FRAME', n: 'Inner', fills: ['#5757ff'], bv: { fills: ['Primitives:color/brand-500'] } },
+        { t: 'FRAME', n: 'Loose', fills: ['#123456'] },
+      ] },
+    ],
+  }];
+  const census = buildCensus(pages);
+  assert.strictEqual(census.colorVars.get('#5757ff').get('Primitives:color/brand-500'), 2);
+  assert.strictEqual(census.colorVars.has('#123456'), false, 'an unbound colour has no name to borrow');
+});
+
+test('preferBoundNames uses the file\'s own token name instead of accent-3', () => {
+  const names = { accent: '#5757ff', 'text-primary': '#111111' };
+  const colorVars = new Map([['#5757ff', new Map([['Primitives:color/brand-500', 7]])]]);
+  const out = preferBoundNames(names, colorVars);
+  assert.deepStrictEqual(out, { 'brand-500': '#5757ff', 'text-primary': '#111111' });
+});
+
+test('preferBoundNames takes the majority binding and keeps names unique', () => {
+  const names = { accent: '#5757ff', 'accent-alt': '#5858ff' };
+  const colorVars = new Map([
+    ['#5757ff', new Map([['A:color/brand-500', 2], ['B:color/brand-500', 9]])],
+    ['#5858ff', new Map([['A:color/brand-500', 3]])]
+  ]);
+  const out = preferBoundNames(names, colorVars);
+  // Majority wins for the first; the second shortens to the same word, so it keeps its path.
+  assert.strictEqual(out['brand-500'], '#5757ff');
+  assert.strictEqual(out['color/brand-500'], '#5858ff');
+});
+
+test('preferBoundNames leaves everything alone when nothing is bound', () => {
+  const names = { accent: '#5757ff' };
+  assert.deepStrictEqual(preferBoundNames(names, new Map()), names);
+  assert.deepStrictEqual(preferBoundNames(names, undefined), names);
+});
+
+test('the base unit is marked as derived, and the rule is not an order', () => {
+  const md = generateDesignMd({ fileName: 'T', date: '2026-08-21', pages: FIXTURE_PAGES });
+  assert.match(md, /_derived_: the greatest common divisor of \d+ distinct observed spacings/);
+  assert.doesNotMatch(md, /- Use the \d+px base unit for all spacing decisions/);
+  assert.match(md, /Observed spacings share a common divisor of \d+px/);
+});
+
+test('the states table says it was not read from the file', () => {
+  const md = generateDesignMd({ fileName: 'T', date: '2026-08-21', pages: FIXTURE_PAGES });
+  assert.match(md, /_Generic recommendations, not read from this file\._/);
+});
