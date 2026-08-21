@@ -146,4 +146,5 @@ merge instead of in every session.
 | `.claude/MEMORY.md`, `.claude/bugs-and-fixes.md`, `.claude/figma-plugin-api.md` | parser internals, past bugs with root causes, Plugin API notes |
 | `docs/ARCHITECTURE.md`, `docs/TECHNIQUES.md`, `docs/FIGJAM.md` | connection flow, techniques, FigJam |
 | `LEARNINGS.md` | project learnings and dead ends |
+| `FEEDBACK.md` | inbox from the panel — what figma-claude ran into using this CLI. Empty it with `/feedback-triage`; a `SessionStart` hook reports the open count |
 | `Sessions/<date>.md` | per-session decision logs (written by the `pre-compact` skill) |

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/FEEDBACK.md\"; [ -r \"$f\" ] || exit 0; n=$(awk '/^## Open$/{o=1;next} /^## /{o=0} o && /^- \\[ \\] /{n++} END{print n+0}' \"$f\"); [ \"$n\" -gt 0 ] || exit 0; case \"$n\" in 1) w=\"entry\";; *) w=\"entries\";; esac; printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"%s open feedback %s from the panel in FEEDBACK.md — run /feedback-triage to work through them.\"}}\\n' \"$n\" \"$w\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
