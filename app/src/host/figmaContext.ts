@@ -97,6 +97,7 @@ const SELECTION_CODE = `return JSON.stringify({
  */
 export class FigmaContextWatcher {
   private timer: NodeJS.Timeout | undefined;
+  private firstTick: Promise<void> | undefined;
   private active = false;
   private lastSerialized = '';
   private current: FigmaSnapshot = {
@@ -119,7 +120,23 @@ export class FigmaContextWatcher {
   start(): void {
     if (this.active) return;
     this.active = true;
-    void this.tick();
+    this.firstTick = this.tick();
+  }
+
+  /**
+   * Resolves once the first poll has landed, or after `maxWaitMs` — whichever is first.
+   *
+   * The first tab spawns right after `start()`, and its session name wants the Figma file.
+   * Against a live daemon `/health` answers in one or two milliseconds, so the wait is not
+   * felt; the cap is for the case where the daemon is gone, and then the working directory
+   * is the right name anyway.
+   */
+  async settled(maxWaitMs: number): Promise<void> {
+    if (!this.firstTick) return;
+    await Promise.race([
+      this.firstTick,
+      new Promise<void>((resolve) => setTimeout(resolve, maxWaitMs))
+    ]);
   }
 
   stop(): void {

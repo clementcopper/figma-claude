@@ -33,6 +33,7 @@ import {
   statusRows
 } from './lib/figma-status';
 import { RULES_FILE } from './lib/project-layout';
+import { panelSessionName } from './lib/session-name';
 import { resolveTheme, type ThemeSetting } from './lib/theme-choice';
 import { describePtyExit } from './lib/pty-exit';
 import {
@@ -58,6 +59,10 @@ const APP_ROOT = path.dirname(__dirname);
 
 /** Figma's debug port, the same env override the CLI honours. */
 const CDP_PORT = Number(process.env.FIGMA_PORT ?? 9222);
+
+// How long the first tab waits for the Figma file name before falling back to the folder name.
+// A live daemon answers in one or two milliseconds; this cap only bites when it is down.
+const FIRST_SNAPSHOT_WAIT_MS = 600;
 
 /**
  * Wraps text in the bracketed paste markers so a multi-line insert stays one input.
@@ -143,7 +148,11 @@ class PanelHost implements MessageHandlerContext {
       return;
     }
 
-    this.createTerminal();
+    // Wait for the first Figma poll before the tab spawns, so the session is named after the
+    // open file rather than the folder. `/health` on localhost answers in a millisecond or two.
+    void this.figmaWatcher.settled(FIRST_SNAPSHOT_WAIT_MS).then(() => {
+      this.createTerminal();
+    });
   }
 
   handleInput(id: string, data: string): void {
@@ -655,7 +664,10 @@ class PanelHost implements MessageHandlerContext {
   private spawnPty(terminalId: string, config: TerminalConfig, cwd: string | undefined): void {
     this.ptyStarted.set(terminalId, Date.now());
     this.ptySawOutput.delete(terminalId);
-    this.ptyManager.spawn(terminalId, config, this.lastCols, this.lastRows, cwd);
+    // The Figma file is the better half of the name, but the watchers first poll is still in
+    // flight when the first tab spawns — then the working directory names the session.
+    const sessionName = panelSessionName({ file: this.figmaWatcher.snapshot.file, cwd });
+    this.ptyManager.spawn(terminalId, config, this.lastCols, this.lastRows, cwd, sessionName);
   }
 
   private handlePtyData(terminalId: string, data: string): void {

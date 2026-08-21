@@ -58,6 +58,15 @@ export function loginShellPath(): string | null {
   return cachedLoginPath;
 }
 
+/**
+ * Whether this tab runs Claude Code. Flags the panel adds — `--settings`, `-n` — are Claude's
+ * own; `gemini`, `aider` and friends would choke on them and exit before printing anything.
+ */
+function runsClaude(config: TerminalConfig): boolean {
+  if (!config.command) return false;
+  return path.basename(config.command).replace(/\.(exe|cmd|bat)$/i, '') === 'claude';
+}
+
 export interface PtyEventCallbacks {
   onData: (terminalId: string, data: string) => void;
   onExit: (terminalId: string, exitCode: number) => void;
@@ -90,7 +99,9 @@ export class PtyManager {
     config: TerminalConfig,
     cols: number,
     rows: number,
-    cwd?: string
+    cwd?: string,
+    /** Display name for the Claude session in this tab — see `withSessionName`. */
+    sessionName?: string
   ): void {
     this.kill(terminalId);
 
@@ -98,7 +109,7 @@ export class PtyManager {
       this.ensureNodePtyLoaded();
       // The bundled status line producer is handed over per session, so nothing in the user's
       // ~/.claude/settings.json has to change.
-      const effectiveConfig = this.withStatusLineSettings(config);
+      const effectiveConfig = this.withSessionName(this.withStatusLineSettings(config), sessionName);
       const { shell, env, cwd: defaultCwd } = this.prepareSpawnOptions(config, terminalId);
       const workingDir = cwd ?? defaultCwd;
 
@@ -186,8 +197,7 @@ export class PtyManager {
     if (!config.statusLine || config.statusLineProvider !== 'bundled') {
       return config;
     }
-    // `gemini`, `aider` and friends would choke on an unknown flag
-    if (path.basename(config.command).replace(/\.(exe|cmd|bat)$/i, '') !== 'claude') {
+    if (!runsClaude(config)) {
       return config;
     }
 
@@ -196,6 +206,26 @@ export class PtyManager {
     });
 
     return { ...config, args: [...config.args, '--settings', settings] };
+  }
+
+  /**
+   * Gives the session a name Claude Code shows in the prompt box, the `/resume` picker and the
+   * terminal title. Without it a panel tab is indistinguishable from the Claude running in a
+   * normal terminal, which is the usual setup here.
+   *
+   * A `-n` the user put in `panel.json` wins — this only fills a gap.
+   */
+  private withSessionName(config: TerminalConfig, sessionName?: string): TerminalConfig {
+    // Only in direct mode: `handleAutoRun` joins the arguments into one shell command with
+    // spaces, and a file name like "Design System" would arrive as two arguments.
+    if (!sessionName || !config.directMode || !runsClaude(config)) {
+      return config;
+    }
+    if (config.args.some((arg) => arg === '-n' || arg === '--name')) {
+      return config;
+    }
+
+    return { ...config, args: [...config.args, '-n', sessionName] };
   }
 
   /**
@@ -277,6 +307,11 @@ export class PtyManager {
     if (this.pathPrefix) {
       env.PATH = pathWithShim(env.PATH ?? '', this.pathPrefix);
     }
+
+    // How an agent tells "I am running inside the panel" from "I am in a normal terminal".
+    // Set unconditionally: CLAUDE_PANEL_TAB_ID says the same thing but disappears with the
+    // status line, and workflows like `pre-compact` need the answer either way.
+    env.FIGMACLAUDE = '1';
 
     // The file the panel bound the daemon to. Without it a command from Claude's terminal talks
     // to whichever file the daemon happened to pick first, which is silently the wrong one when
