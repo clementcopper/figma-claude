@@ -1,0 +1,7 @@
+# FEEDBACK.md is an append-only inbox, written from every machine that runs the panel. Two
+# machines appending under `## Open` would otherwise conflict in a file nobody edits in place;
+# union keeps both sides. Two costs, both real: a triage run on two machines can leave the same
+# entry twice, and union works line by line — where two entries happen to share a line verbatim
+# ("**Repro:** x" in both), the merge keeps it once and one entry loses it. /feedback-triage
+# looks for duplicates and gutted entries before it starts.
+FEEDBACK.md merge=union

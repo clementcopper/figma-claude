@@ -7,6 +7,11 @@ it happened. **Filing:** figma-claude, in the moment of the friction — see
 An entry is an observation, not a diagnosis. figma-claude cannot see this repo's source; what it
 can see is the command it ran and what came back, and that is what belongs here.
 
+Written from every machine that runs the panel, so `.gitattributes` merges this file with
+`merge=union` — parallel entries survive instead of conflicting. A new machine needs
+`bin/fig-feedback-setup` once; the rule and the write permission live in `~/.claude`, which git
+does not carry.
+
 ## Format
 
 One `- [ ] ` per entry — a `SessionStart` hook counts that prefix to say how many are open, so it

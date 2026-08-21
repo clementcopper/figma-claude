@@ -108,6 +108,7 @@ It **hot-reloads `figma-client.js`** by copying it to a temp module when its mti
 | `fig-status` — Figma / CDP / daemon / active file at a glance | `bin/fig-status` |
 | Non-destructive `connect` — never quits a Figma that is already debuggable | `src/lib/connect-plan.js`, used in `src/commands/setup.js` |
 | Claude Panel — Claude Code in a floating window next to Figma | `app/` (Electron; own `package.json`, own `npm test`) |
+| `fig-feedback-setup` — installs the panel half of the feedback loop on a new machine | `bin/fig-feedback-setup`, `.gitattributes` |
 
 The `connect` fix is written to be upstreamable (pure function + unit test, no fork specifics). If it lands upstream, drop it here on the next pull.
 

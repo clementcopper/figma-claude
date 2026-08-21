@@ -12,6 +12,17 @@ diagnosis. Turning one into a fix, a documented behavior, or a considered "no" h
 A `SessionStart` hook (`.claude/settings.json`) counts the `- [ ] ` lines under `## Open` and
 reports the number. That count is the only reason the format is fixed.
 
+## Before the first entry: check what the merge left behind
+
+The file is written from more than one machine and merged with `merge=union` (`.gitattributes`),
+which resolves per line rather than per entry. Two things to look for after a merge landed:
+
+- **the same finding twice**, reported from both machines
+- **a gutted entry** — union keeps a line that both sides shared only once, so where two entries
+  had an identical `**Repro:**` line, one of them now has none
+
+Fix those first; triaging a half-entry wastes the reproduction step.
+
 ## Per entry, in this order
 
 ### 1. Reproduce it before deciding anything

@@ -1,0 +1,161 @@
+#!/bin/bash
+
+# fig-feedback-setup — install the panel half of the feedback loop on this machine.
+#
+# The CLI half travels with the repo: FEEDBACK.md, the SessionStart hook in .claude/settings.json,
+# and the /feedback-triage skill all work right after a clone. The panel half lives in ~/.claude,
+# which is not version controlled, so on a second machine figma-claude would never learn that
+# FEEDBACK.md exists — and would hit a permission prompt if it tried.
+#
+# Idempotent: running it twice changes nothing.
+
+set -u
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
+
+# The checkout this script sits in — never a hardcoded path. The whole point is that the repo may
+# live somewhere else, under a different user name, on the other machine.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+FEEDBACK="$REPO/FEEDBACK.md"
+
+CLAUDE_MD="$HOME/.claude/CLAUDE.md"
+SETTINGS="$HOME/.claude/settings.json"
+PRECOMPACT="$HOME/.claude/skills/pre-compact/SKILL.md"
+APP_ASAR="/Applications/FigmaClaude.app/Contents/Resources/app.asar"
+
+CLAUDE_MD_MARKER="## figma-cli Feedback"
+SWEEP_MARKER="Sweep for CLI feedback"
+
+ok()   { printf "  ${GREEN}✓${NC}  %s\n" "$1"; }
+skip() { printf "  ${DIM}○${NC}  %s\n" "$1"; }
+warn() { printf "  ${YELLOW}!${NC}  %s\n" "$1"; }
+fail() { printf "  ${RED}✗${NC}  %s\n" "$1"; }
+
+printf "\n${BOLD}Feedback loop — panel half${NC}\n"
+printf "  ${DIM}repo: %s${NC}\n\n" "$REPO"
+
+if [ ! -f "$FEEDBACK" ]; then
+    fail "No FEEDBACK.md in $REPO — wrong checkout, or the branch predates the feedback loop."
+    exit 1
+fi
+
+# --- 1. The rule, so a panel session knows the inbox exists ------------------------------------
+
+mkdir -p "$HOME/.claude"
+
+if [ -f "$CLAUDE_MD" ] && grep -qF "$CLAUDE_MD_MARKER" "$CLAUDE_MD"; then
+    skip "~/.claude/CLAUDE.md already carries the rule"
+else
+    [ -f "$CLAUDE_MD" ] && cp "$CLAUDE_MD" "$CLAUDE_MD.bak"
+    # A blank line first only when the file exists and does not already end in one.
+    if [ -s "$CLAUDE_MD" ] && [ -n "$(tail -c 2 "$CLAUDE_MD" | head -c 1)" ]; then
+        printf "\n" >> "$CLAUDE_MD"
+    fi
+    cat >> "$CLAUDE_MD" <<EOF
+$CLAUDE_MD_MARKER
+
+When \`\$FIGMACLAUDE\` is set, this session runs in FigmaClaude.app. Anything figma-cli or the
+panel got wrong — a command that failed, docs that lied, a workaround, a missing command —
+goes into \`$FEEDBACK\` under \`## Open\`, in the same session it happened. That file carries
+its own Format section; read it before writing the first entry. It is the only file in that
+repo a panel session may write. Applies in every project.
+EOF
+    ok "rule appended to ~/.claude/CLAUDE.md"
+    [ -f "$CLAUDE_MD.bak" ] && printf "     ${DIM}backup: %s${NC}\n" "$CLAUDE_MD.bak"
+fi
+
+# Daniel's own rule: a CLAUDE.md stays under 200 lines.
+LINES=$(wc -l < "$CLAUDE_MD" | tr -d ' ')
+if [ "$LINES" -gt 200 ]; then
+    warn "~/.claude/CLAUDE.md is now $LINES lines — over the 200-line rule, condense it"
+else
+    printf "     ${DIM}%s lines of 200${NC}\n" "$LINES"
+fi
+
+# --- 2. The permission, so writing an entry costs no prompt ------------------------------------
+
+# node, not jq: the CLI needs Node ≥18 anyway, and jq is not reliably installed here.
+node -e '
+const fs = require("fs");
+const [settings, feedback] = process.argv.slice(1);
+const rule = "Edit(/" + feedback + ")";
+let config = {};
+let existed = false;
+try {
+  config = JSON.parse(fs.readFileSync(settings, "utf8"));
+  existed = true;
+} catch (error) {
+  if (error.code !== "ENOENT") {
+    // A settings.json that does not parse must not be overwritten — every setting in it would
+    // be lost, and the file is the user\x27s, not ours.
+    console.log("PARSE_ERROR " + error.message);
+    process.exit(3);
+  }
+}
+config.permissions = config.permissions || {};
+config.permissions.allow = config.permissions.allow || [];
+if (config.permissions.allow.includes(rule)) {
+  console.log("PRESENT");
+  process.exit(0);
+}
+if (existed) fs.copyFileSync(settings, settings + ".bak");
+config.permissions.allow.unshift(rule);
+fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
+console.log(existed ? "ADDED" : "CREATED");
+' "$SETTINGS" "$FEEDBACK" > /tmp/fig-feedback-setup.$$ 2>&1
+NODE_STATUS=$?
+RESULT=$(cat /tmp/fig-feedback-setup.$$)
+rm -f /tmp/fig-feedback-setup.$$
+
+case "$RESULT" in
+    PRESENT) skip "~/.claude/settings.json already allows writing FEEDBACK.md" ;;
+    ADDED)   ok "permission added to ~/.claude/settings.json"
+             printf "     ${DIM}backup: %s${NC}\n" "$SETTINGS.bak" ;;
+    CREATED) ok "~/.claude/settings.json created with the permission" ;;
+    PARSE_ERROR*)
+             fail "~/.claude/settings.json does not parse — fix it, then run this again"
+             printf "     ${DIM}%s${NC}\n" "${RESULT#PARSE_ERROR }"
+             exit 1 ;;
+    *)       fail "could not write the permission into ~/.claude/settings.json"
+             printf "     ${DIM}node exited %s: %s${NC}\n" "$NODE_STATUS" "$RESULT"
+             exit 1 ;;
+esac
+
+# --- 3. The pre-compact sweep, if that skill is installed here ---------------------------------
+
+if [ ! -f "$PRECOMPACT" ]; then
+    skip "pre-compact skill not installed — sweep skipped"
+elif grep -qF "$SWEEP_MARKER" "$PRECOMPACT"; then
+    skip "pre-compact skill already carries the sweep"
+else
+    cp "$PRECOMPACT" "$PRECOMPACT.bak"
+    cat >> "$PRECOMPACT" <<EOF
+
+## Sweep for CLI feedback
+
+Before compacting a FigmaClaude session (\`\$FIGMACLAUDE\` set), go through it and ask what was
+figma-cli's or the panel's fault rather than the design's — a command that failed, docs that were
+wrong, a workaround that was needed, a missing command. Anything that never made it into
+\`$FEEDBACK\` in the moment goes there now, under \`## Open\`.
+EOF
+    ok "sweep appended to the pre-compact skill"
+    printf "     ${DIM}backup: %s${NC}\n" "$PRECOMPACT.bak"
+fi
+
+# --- 4. Does the installed app actually set the marker the rule keys on? -----------------------
+
+if [ ! -e "$APP_ASAR" ]; then
+    skip "FigmaClaude.app not installed in /Applications"
+elif grep -aq 'env.FIGMACLAUDE' "$APP_ASAR"; then
+    ok "installed FigmaClaude.app sets FIGMACLAUDE"
+else
+    warn "installed FigmaClaude.app predates the FIGMACLAUDE marker — the rule will never fire"
+    printf "     ${DIM}fix: cd %s/app && npm run install:app${NC}\n" "$REPO"
+fi
+
+printf "\n  ${DIM}Running this again changes nothing.${NC}\n\n"
