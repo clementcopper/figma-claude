@@ -117,13 +117,9 @@ The `connect` fix is written to be upstreamable (pure function + unit test, no f
 
 ### Pulling from upstream
 
-**The fork's default branch is `v2`, not `main`** — `origin/HEAD -> origin/v2`. Local work sits on `v2` tracking `origin/v2`; upstream's default is `main`.
-
-```bash
-git fetch upstream && git merge upstream/main
-```
-
-Expect conflicts only in `CLAUDE.md` (ours), `README.md` (two fork blocks: the note under the header, the FigmaClaude section before *For developers*), `CHANGELOG.md` (the `## Fork` section above `## Upstream`) and possibly `package.json` (`bin`/`files` entries for `bin/`). All fork additions sit at the top or at a section edge, so a conflict stays local.
+The branch layout, the four files that conflict and what must survive a pull live in the
+`upstream-merge` skill (`.claude/skills/upstream-merge/SKILL.md`) — it loads when you actually
+merge instead of in every session.
 
 ---
 
