@@ -13,6 +13,8 @@ import {
   smartPosCode,
   varLoadingCode
 } from '../lib/cli-core.js';
+import { evalArg } from '../lib/eval-arg.js';
+import { configRows } from '../lib/config-view.js';
 import { create } from './create.js';
 
 // ============ CONFIG ============
@@ -29,6 +31,23 @@ configCmd
     config[key] = value;
     saveConfig(config);
     console.log(chalk.green('✓ Config saved: ') + chalk.gray(key + ' = ' + value.substring(0, 10) + '...'));
+  });
+
+configCmd
+  .command('list')
+  .alias('ls')
+  .description('List every config key (credential values are never printed)')
+  .action(() => {
+    const rows = configRows(loadConfig());
+    if (!rows.length) {
+      console.log(chalk.gray('Config is empty.'));
+      return;
+    }
+    const width = Math.max(...rows.map((r) => r.key.length));
+    for (const row of rows) {
+      const value = row.secret ? chalk.gray(row.value) : chalk.white(row.value);
+      console.log('  ' + chalk.cyan(row.key.padEnd(width)) + '  ' + value);
+    }
   });
 
 configCmd
@@ -224,7 +243,7 @@ else if (sel.length === 1) {
   'Component created from ' + sel.length + ' elements: ' + comp.name;
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 create
@@ -243,7 +262,7 @@ else {
   'Grouped ' + sel.length + ' elements';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 create

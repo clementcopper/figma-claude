@@ -26,6 +26,37 @@ export function normalizeWeight(styleName) {
 }
 
 /**
+ * The weight a cut actually is, separated from what the font family calls it.
+ *
+ * Aeonik Pro names its cuts "Air Regular", "Text Medium", "Text SemiBold"; Söhne and Recoleta do
+ * the same. Comparing the whole string means `weight="medium"` never matches a 43px "Text Medium"
+ * style — reported from the panel, where the warning then named a 24px style as the nearest one.
+ *
+ * So the token is compared, not the label: the longest known weight word in the name, plus
+ * whether the cut is italic. Longest first, or "bold" would swallow "semibold". A name with no
+ * known word (a foundry's own vocabulary) falls back to the whole normalized string, which is the
+ * old behavior and still exact.
+ *
+ * @returns {string} e.g. `medium`, `semibold|italic`
+ */
+export function weightKey(styleName) {
+  var flat = normalizeWeight(styleName);
+  if (!flat) return '';
+  var italic = flat.indexOf('italic') >= 0 || flat.indexOf('oblique') >= 0;
+  var words = [
+    'extrablack', 'ultrablack', 'extrabold', 'ultrabold', 'semibold', 'demibold',
+    'extralight', 'ultralight', 'extrathin', 'hairline',
+    'black', 'heavy', 'bold', 'medium', 'regular', 'normal', 'book', 'light', 'thin'
+  ];
+  var found = '';
+  for (var i = 0; i < words.length; i++) {
+    if (flat.indexOf(words[i]) >= 0) { found = words[i]; break; }
+  }
+  if (!found) return flat;
+  return italic ? found + '|italic' : found;
+}
+
+/**
  * Name → style, plus a "tail" alias for slash-grouped names: `Heading/H1` is
  * also reachable as `H1`. Same rule the variable cache uses for `var:`, so
  * `textStyle="H1"` and `var:primary` behave alike. The full name always wins.
@@ -68,7 +99,7 @@ export function matchTextStyle(o) {
   var opts = o || {};
   var list = opts.styles || [];
   var size = Number(opts.size);
-  var wanted = normalizeWeight(opts.weightStyle);
+  var wanted = weightKey(opts.weightStyle);
   var family = String(opts.family || '').toLowerCase();
   var familyExplicit = !!opts.familyExplicit;
 
@@ -77,7 +108,7 @@ export function matchTextStyle(o) {
     var s = list[i];
     if (!s || !s.fontName) continue;
     if (Number(s.fontSize) !== size) continue;
-    if (normalizeWeight(s.fontName.style) !== wanted) continue;
+    if (weightKey(s.fontName.style) !== wanted) continue;
     if (familyExplicit && String(s.fontName.family).toLowerCase() !== family) continue;
     hits.push(s);
   }
@@ -97,7 +128,7 @@ export function matchTextStyle(o) {
     var c = list[k];
     if (!c || !c.fontName) continue;
     var delta = Math.abs(Number(c.fontSize) - size);
-    var sameWeight = normalizeWeight(c.fontName.style) === wanted;
+    var sameWeight = weightKey(c.fontName.style) === wanted;
     var score = delta + (sameWeight ? 0 : 1000);
     if (score < bestDelta) { bestDelta = score; nearest = c; }
   }

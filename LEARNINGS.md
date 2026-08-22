@@ -65,6 +65,32 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **A pure decision function is only as good as the probe feeding it.** `resolveConnectAction` had four unit tests and was correct; the bug sat in the boolean handed to it. When a tested decision misbehaves, instrument its inputs first — one `pgrep -f Figma` next to `pgrep -x Figma` named the cause in a single command.
 - **Grep the repo for the outlier before designing a fix.** Five places ask whether Figma runs; four used `-x`, one used `-f`. The odd one out was the bug, and the majority spelled out the fix.
 - **A fresh checkout fails `npm test` in a way that looks catastrophic.** Without `npm install`, 29 of 47 test files die on `Cannot find package 'ws' imported from src/figma-client.js`. Install first, then judge the suite.
+- **The reporter's observation is evidence; the reporter's cause is a guess.** All three code bugs
+  in the first panel-feedback round had a different cause than the entry proposed: the text style
+  miss was a font's weight naming (`Text Medium`), not two naming schemes; `duplicate` was not
+  refusing nested ids, it was timing out for every id; the "no instantiate command" wish already
+  had a command, just one that needs a DESIGN.md. Reproduce the command, never the diagnosis.
+- **Never flatten generated code onto one line.** The `figmaUse` callers did
+  (`.replace(/\n/g,' ')`), and a `//` comment then swallows the rest of the line. The daemon
+  reports a code error, `figmaEvalSync` reads that as a connection problem, falls back to its own
+  CDP connection and dies in its 60 s `execSync` timeout — visible only as
+  `Error: spawnSync /bin/sh ETIMEDOUT`, which looks like a broken connection and is a syntax
+  error. The flattening was never needed: `figmaUse` parses with the `s` flag.
+- **A 60-second silence is a story about the transport, and it is usually lying.** I recorded here
+  that the sync eval path does not work while the daemon runs. Measured, it answers in 17–273 ms;
+  what did not work was my own multi-line code. Time the cheap case before writing down that a
+  whole path is dead.
+- **`loadAllPagesAsync()` is not free.** On a file with 5235 instances it alone outlasts the 60 s a
+  sync command has. Load pages only when a lookup has already missed.
+- **Recognising a word in a payload is not knowing what ran.** The first version of the feedback
+  hook matched `figma-cli` and `⚠` against the whole PostToolUse payload, on the reasoning that
+  nothing had to be extracted. It fired on `tail -14 LEARNINGS.md` minutes after installation,
+  because that file documents earlier findings. Any `cat`, `grep` or `git diff` over notes would
+  have done it. The command belongs in a parser, and the failure markers belong to the response
+  only — which is why that decision now lives in `src/lib/feedback-trigger.js` with tests.
+- **A once-per-session latch must be spent on a hit, not on a firing.** The same false positive
+  consumed the one reminder that session had, so a real friction afterwards would have got
+  nothing. A silent miss is worse than a duplicate.
 - **Reproduce before recording a bug.** The `render` note above originally blamed `<Rectangle>`. A five-minute matrix — Rectangle with hex / `var:` / no fill / `w="fill"`, then the same on Frame and Text — cleared the element, pinned `w="fill"` as the trigger, and led to the real cause one layer down (the `catch` block). A symptom written down as a cause misleads every later session.
 
 ## Fork Decisions (clementcopper)

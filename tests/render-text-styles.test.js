@@ -101,6 +101,8 @@ describe('text style prelude', () => {
     assert.ok(/function matchTextStyle/.test(code), code);
     assert.ok(/function buildStyleIndex/.test(code), code);
     assert.ok(/function normalizeWeight/.test(code), code);
+    // matchTextStyle calls it, so a missing weightKey would only fail inside Figma.
+    assert.ok(/function weightKey/.test(code), code);
   });
 
   it('reports applied styles and warnings back to the caller', async () => {

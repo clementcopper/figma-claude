@@ -638,9 +638,17 @@ function figmaEvalSync(code) {
         throw new Error('Empty response from daemon');
       }
       const data = JSON.parse(result);
-      if (data.error) throw new Error(data.error);
+      // A daemon that answers with an error has done its job: the code is wrong. Falling through
+      // to the direct CDP connection then costs its full 60s timeout and reports
+      // `spawnSync /bin/sh ETIMEDOUT` — a syntax error dressed as a dead connection.
+      if (data.error) {
+        const codeError = new Error(data.error);
+        codeError.fromDaemon = true;
+        throw codeError;
+      }
       return data.result;
     } catch (e) {
+      if (e && e.fromDaemon) throw e;
       // Check if we're in Safe Mode (plugin only) - don't fall through to CDP
       try {
         const healthToken = getDaemonToken();

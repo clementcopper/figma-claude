@@ -8,7 +8,7 @@
 import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
-import { normalizeWeight, buildStyleIndex, matchTextStyle } from './lib/text-styles.js';
+import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle } from './lib/text-styles.js';
 
 /**
  * Visible fallback colors for shadcn semantic token names (Zinc light theme).
@@ -161,6 +161,7 @@ export const LAYOUT_WARN_PRELUDE = `
 export const TEXT_STYLE_PRELUDE = `
         {
           ${normalizeWeight.toString()}
+          ${weightKey.toString()}
           ${buildStyleIndex.toString()}
           ${matchTextStyle.toString()}
 

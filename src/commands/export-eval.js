@@ -11,6 +11,8 @@ import {
   isDaemonRunning,
   unescapeShell
 } from '../lib/cli-core.js';
+import { evalArg } from '../lib/eval-arg.js';
+import { evalSilenceHint } from '../lib/eval-output.js';
 
 // ============ EXPORT ============
 
@@ -108,7 +110,7 @@ const css = vars.map(v => {
 }).join('\\n');
 return ':root {\\n' + css + '\\n}';
 })()`;
-    const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+    const result = figmaUse(evalArg(code), { silent: true });
     console.log(result);
   });
 
@@ -134,7 +136,7 @@ colorVars.forEach(v => {
 });
 return JSON.stringify({ theme: { extend: { colors } } }, null, 2);
 })()`;
-    const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+    const result = figmaUse(evalArg(code), { silent: true });
     console.log(result);
   });
 
@@ -173,7 +175,7 @@ for (const v of vars) {
 }
 return JSON.stringify(tree, null, 2);
 })()`;
-    const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+    const result = figmaUse(evalArg(code), { silent: true });
     if (output) {
       writeFileSync(output, result.endsWith('\n') ? result : result + '\n');
       console.log(chalk.green('✓ Wrote DTCG tokens →'), output);
@@ -303,6 +305,7 @@ program
   .command('eval [code]')
   .description('Execute JavaScript in Figma plugin context')
   .option('-f, --file <path>', 'Run code from file instead of argument')
+  .option('--timeout <seconds>', 'How long to wait for the result (default 90)', '90')
   .action(async (code, options) => {
     checkConnection();
     let jsCode = code ? unescapeShell(code) : code;
@@ -321,12 +324,19 @@ program
       return;
     }
 
+    // A walk over every page can outlast the default; the ceiling is now the caller's to raise.
+    const seconds = Number(options.timeout);
+    const timeoutMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 90000;
+
     // Always prefer async daemon (more reliable, no shell timeout issues)
     if (isDaemonRunning()) {
       try {
-        const result = await daemonExec('eval', { code: jsCode });
+        const result = await daemonExec('eval', { code: jsCode }, timeoutMs);
         if (result !== undefined && result !== null) {
           console.log(typeof result === 'object' ? JSON.stringify(result, null, 2) : result);
+        } else {
+          // Silence used to be the answer here, which reads exactly like a dead connection.
+          console.log(chalk.gray('· ' + evalSilenceHint(jsCode, result)));
         }
         return;
       } catch (e) {

@@ -6,10 +6,12 @@ import {
   buildNodeSelector,
   checkConnection,
   daemonExec,
+  fastEval,
   figmaUse,
   handleEvalError,
   hexToRgb
 } from '../lib/cli-core.js';
+import { evalArg } from '../lib/eval-arg.js';
 
 // ============ CANVAS ============
 
@@ -44,7 +46,7 @@ if (children.length === 0) {
   }, null, 2);
 }
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 canvas
@@ -71,7 +73,7 @@ if (children.length === 0) {
   `}
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 // ============ BIND (Variables) ============
@@ -101,7 +103,7 @@ nodes.forEach(n => {
 });
 return 'Bound ' + v.name + ' to fill on ' + nodes.length + ' elements';
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 bind
@@ -126,7 +128,7 @@ nodes.forEach(n => {
 });
 return 'Bound ' + v.name + ' to stroke on ' + nodes.length + ' elements';
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 bind
@@ -147,7 +149,7 @@ nodes.forEach(n => {
 });
 return 'Bound ' + v.name + ' to radius on ' + nodes.length + ' elements';
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 bind
@@ -168,7 +170,7 @@ nodes.forEach(n => {
 });
 return 'Bound ' + v.name + ' to gap on ' + nodes.length + ' elements';
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 bind
@@ -194,7 +196,7 @@ nodes.forEach(n => {
 });
 return 'Bound ' + v.name + ' to padding on ' + nodes.length + ' elements';
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 bind
@@ -208,7 +210,7 @@ const vars = await figma.variables.getLocalVariablesAsync();
 const filtered = vars${options.type ? `.filter(v => v.resolvedType === ${JSON.stringify(options.type.toUpperCase())})` : ''};
 return filtered.map(v => v.resolvedType.padEnd(8) + ' ' + v.name).join('\\n') || 'No variables';
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 // ============ SIZING ============
@@ -235,7 +237,7 @@ else {
   'Set hug on ' + nodes.length + ' elements';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 sizing
@@ -255,7 +257,7 @@ else {
   'Set fill on ' + nodes.length + ' elements';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 sizing
@@ -276,7 +278,7 @@ else {
   'Set fixed ${width}x${h} on ' + nodes.length + ' elements';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 // ============ LAYOUT SHORTCUTS ============
@@ -304,7 +306,7 @@ else {
   'Set padding on ' + nodes.length + ' elements';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 program
@@ -320,7 +322,7 @@ else {
   'Set gap ${value} on ' + nodes.length + ' elements';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 program
@@ -341,7 +343,7 @@ else {
   'Aligned ' + nodes.length + ' elements to ${alignment}';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 // ============ SELECT ============
@@ -367,40 +369,91 @@ program
 const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
 if (node) { node.remove(); return 'Deleted: ${nodeId}'; } else { return 'Node not found: ${nodeId}'; }
 })()`;
-      figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+      figmaUse(evalArg(code), { silent: false });
     } else {
       let code = `
 const sel = figma.currentPage.selection;
 if (sel.length === 0) 'No selection';
 else { const count = sel.length; sel.forEach(n => n.remove()); 'Deleted ' + count + ' elements'; }
 `;
-      figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+      figmaUse(evalArg(code), { silent: false });
     }
   });
 
 // ============ DUPLICATE ============
+
+/**
+ * The code `duplicate <id>` runs inside Figma. Exported so the two decisions in it can be
+ * unit-tested without a Figma: which pages are searched, and where the clone lands.
+ *
+ * Two things a panel session ran into (FEEDBACK.md):
+ *
+ * - **Pages.** With dynamic-page loading, `getNodeByIdAsync` only sees pages that are loaded, so
+ *   an id copied from another page answered the bare "Node not found" — indistinguishable from a
+ *   typo or a stale id. The pages are loaded only when that first lookup comes back empty:
+ *   `loadAllPagesAsync()` up front cost more than the 60 s sync eval budget on a file with 5235
+ *   instances, and the command died with `spawnSync /bin/sh ETIMEDOUT` instead of duplicating.
+ * - **Nested instances.** `clone()` puts the copy next to the original, and for a node inside an
+ *   instance that is a place nobody can move it out of. It goes next to the OUTERMOST instance
+ *   instead, which is the sibling the reporter expected.
+ */
+export function duplicateByIdCode(nodeId, offset) {
+  const step = Number(offset);
+  const delta = Number.isFinite(step) ? step : 20;
+  return `(async () => {
+const id = ${JSON.stringify(nodeId)};
+let node = await figma.getNodeByIdAsync(id);
+if (!node) {
+  // Only now: on a large file this walk is expensive, and the common case is a loaded page.
+  await figma.loadAllPagesAsync();
+  node = await figma.getNodeByIdAsync(id);
+}
+if (!node) return 'Node not found — searched every page of this file. Wrong id, or from another file?';
+// The outermost instance the node sits in; the clone has to leave all of them to be usable.
+let outer = null, p = node.parent;
+while (p) { if (p.type === 'INSTANCE') outer = p; p = p.parent; }
+const clone = node.clone();
+if (outer && outer.parent) {
+  outer.parent.appendChild(clone);
+  clone.x = outer.x + ${delta};
+  clone.y = outer.y + ${delta};
+} else {
+  clone.x += ${delta};
+  clone.y += ${delta};
+}
+figma.currentPage.selection = clone.parent === figma.currentPage ? [clone] : [];
+return 'Duplicated: ' + clone.id + (outer ? ' (out of instance ' + outer.name + ')' : '');
+})()`;
+}
+
+/** Same, for the current selection. `clone()` already lands them as siblings, so only the offset. */
+export function duplicateSelectionCode(offset) {
+  const step = Number(offset);
+  const delta = Number.isFinite(step) ? step : 20;
+  return `(async () => {
+const sel = figma.currentPage.selection;
+if (sel.length === 0) return 'No selection';
+const clones = sel.map(n => { const c = n.clone(); c.x += ${delta}; c.y += ${delta}; return c; });
+figma.currentPage.selection = clones;
+return 'Duplicated ' + clones.length + ' element' + (clones.length === 1 ? '' : 's');
+})()`;
+}
 
 program
   .command('duplicate [nodeId]')
   .alias('dup')
   .description('Duplicate node by ID or current selection')
   .option('--offset <n>', 'Offset from original', '20')
-  .action((nodeId, options) => {
-    checkConnection();
-    if (nodeId) {
-      let code = `(async () => {
-const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-if (node) { const clone = node.clone(); clone.x += ${options.offset}; clone.y += ${options.offset}; figma.currentPage.selection = [clone]; return 'Duplicated: ' + clone.id; } else { return 'Node not found'; }
-})()`;
-      figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
-    } else {
-      let code = `
-const sel = figma.currentPage.selection;
-if (sel.length === 0) 'No selection';
-else { const clones = sel.map(n => { const c = n.clone(); c.x += ${options.offset}; c.y += ${options.offset}; return c; }); figma.currentPage.selection = clones; 'Duplicated ' + clones.length + ' elements'; }
-`;
-      figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
-    }
+  .action(async (nodeId, options) => {
+    // The daemon, not the sync fallback: with the daemon holding the CDP connection, the
+    // per-command direct path never attached and every `duplicate` died after 60 s with
+    // `spawnSync /bin/sh ETIMEDOUT` — a plain top-level frame included.
+    await checkConnection();
+    const code = nodeId
+      ? duplicateByIdCode(nodeId, options.offset)
+      : duplicateSelectionCode(options.offset);
+    const res = await fastEval(code);
+    console.log(typeof res === 'string' ? res : JSON.stringify(res));
   });
 
 // ============ SET ============
@@ -464,7 +517,7 @@ set
         __fillNodes.forEach(n => { if ('fills' in n) n.fills = [{ type: 'SOLID', color: { r: ${r}, g: ${g}, b: ${b} } }]; });
         return 'Fill set on ' + __fillNodes.length + ' elements';
       })()`;
-      figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+      figmaUse(evalArg(code), { silent: false });
     }
   });
 
@@ -511,7 +564,7 @@ set
         nodes.forEach(n => { if ('strokes' in n) { n.strokes = [{ type: 'SOLID', color: { r: ${r}, g: ${g}, b: ${b} } }]; n.strokeWeight = ${options.weight}; } });
         return 'Stroke set on ' + nodes.length + ' elements';
       })()`;
-      figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+      figmaUse(evalArg(code), { silent: false });
     }
   });
 
@@ -528,7 +581,7 @@ ${nodeSelector}
 if (nodes.length === 0) 'No node found';
 else { nodes.forEach(n => { if ('cornerRadius' in n) n.cornerRadius = ${value}; }); 'Radius set on ' + nodes.length + ' elements'; }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 set
@@ -544,7 +597,7 @@ ${nodeSelector}
 if (nodes.length === 0) 'No node found';
 else { nodes.forEach(n => { if ('resize' in n) n.resize(${width}, ${height}); }); 'Size set on ' + nodes.length + ' elements'; }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 set
@@ -615,7 +668,7 @@ ${nodeSelector}
 if (nodes.length === 0) 'No node found';
 else { nodes.forEach(n => { n.x = ${x}; n.y = ${y}; }); 'Position set on ' + nodes.length + ' elements'; }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 set
@@ -631,7 +684,7 @@ ${nodeSelector}
 if (nodes.length === 0) 'No node found';
 else { nodes.forEach(n => { if ('opacity' in n) n.opacity = ${value}; }); 'Opacity set on ' + nodes.length + ' elements'; }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 set
@@ -647,7 +700,7 @@ ${nodeSelector}
 if (nodes.length === 0) 'No node found';
 else { nodes.forEach(n => { n.name = ${JSON.stringify(name)}; }); 'Renamed ' + nodes.length + ' elements to ' + ${JSON.stringify(name)}; }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 set
@@ -1273,7 +1326,7 @@ else {
   'Arranged ' + frames.length + ' frames';
 }
 `;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 // ============ GET ============
@@ -1308,7 +1361,7 @@ return JSON.stringify({
   children: node.children?.length
 }, null, 2);
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 // ============ FIND ============
@@ -1334,6 +1387,6 @@ function search(node) {
 search(figma.currentPage);
 return results.length === 0 ? 'No nodes found matching "${name}"' : results.slice(0, ${options.limit}).map(r => r.id + ' [' + r.type + '] ' + r.name).join('\\n');
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 

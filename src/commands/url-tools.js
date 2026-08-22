@@ -12,6 +12,7 @@ import {
   figmaUse,
   loadConfig
 } from '../lib/cli-core.js';
+import { evalArg } from '../lib/eval-arg.js';
 
 // ============ SCREENSHOT URL ============
 
@@ -84,7 +85,7 @@ program
 })()
 `;
 
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed('Screenshot imported into Figma');
       if (result) console.log(chalk.gray(result.trim()));
 
@@ -656,7 +657,7 @@ program
 })()
 `;
 
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
 
       if (result && result.includes('Error:')) {
         spinner.fail(result.trim());

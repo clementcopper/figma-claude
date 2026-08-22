@@ -145,14 +145,33 @@ node src/index.js arrange -g 100               # Arrange frames
 node src/index.js arrange -g 100 -c 3          # 3 columns
 ```
 
+## Instantiate an existing component
+
+```bash
+node src/index.js instantiate "Button"                  # by name, from DESIGN.md
+node src/index.js instantiate 15121:131077              # by node id, no DESIGN.md needed
+node src/index.js instantiate 15121:131077 --count 20 --gap 8
+```
+
+The name route reads the reuse handle out of an extracted `DESIGN.md`. An id needs no file — it
+already names the component, which is the route a session has when it read the id off the live
+file. An id pointing at an *instance* resolves to its main component, and `--count` places a row
+instead of a pile.
+
 ## Duplicate & Delete
 
 ```bash
 node src/index.js duplicate                    # Duplicate selection
 node src/index.js dup "1:234" --offset 50      # With offset
+node src/index.js dup "I2058:20351;2054:20325" # Nested instance id: the copy lands outside it
 node src/index.js delete                       # Delete selection
 node src/index.js delete "1:234"               # Delete by ID
 ```
+
+A nested id names a node inside an instance, where a copy would be stuck. The clone is placed
+next to the **outermost** instance instead. Ids from a page that is not loaded resolve too — the
+other pages are loaded only when the first lookup misses, because loading them up front costs
+more than the command's own budget on a large file.
 
 ## Node Operations
 
@@ -334,6 +353,22 @@ node src/index.js sizes --gap 60              # Custom gap
 node src/index.js eval "figma.currentPage.name"
 node src/index.js eval --file /tmp/script.js
 node src/index.js run /tmp/script.js
+node src/index.js eval --timeout 300 "…"       # Longer than the default 90s
+```
+
+**Only the value is printed.** `console.log` writes to Figma's own console, which a terminal
+never sees — a script that ends in a log used to print nothing at all and exit 0. It now says so;
+return the value instead (`return JSON.stringify(x)`).
+
+A walk over every page can outlast the default budget. `--timeout <seconds>` raises it; there is
+no partial output, so a long walk either answers or is killed.
+
+## Configuration
+
+```bash
+node src/index.js config list                  # Every key; credentials shown as "set, N characters"
+node src/index.js config get <key>
+node src/index.js config set <key> <value>
 ```
 
 ## Render JSX Syntax

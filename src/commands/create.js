@@ -12,6 +12,7 @@ import {
   smartPosCode,
   varLoadingCode
 } from '../lib/cli-core.js';
+import { evalArg } from '../lib/eval-arg.js';
 
 // ============ CREATE ============
 
@@ -201,7 +202,7 @@ create
 `;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed('Image created from URL');
       if (result) console.log(chalk.gray(result.trim()));
     } catch (e) {

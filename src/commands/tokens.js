@@ -13,6 +13,7 @@ import {
   handleEvalError,
   hexToRgb
 } from '../lib/cli-core.js';
+import { evalArg } from '../lib/eval-arg.js';
 
 // ============ COLLECTIONS ============
 
@@ -109,7 +110,7 @@ return 'Created ' + count + ' color variables in ' + ${JSON.stringify(options.co
 })()`;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created Tailwind palette');
     } catch (error) {
       spinner.fail('Failed to create palette');
@@ -413,7 +414,7 @@ return 'Created ' + count + ' shadcn color variables in ' + ${JSON.stringify(opt
 })()`;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created shadcn primitives (231 colors)');
     } catch (error) {
       spinner.fail('Failed to create shadcn colors');
@@ -457,7 +458,7 @@ return 'Created ' + count + ' spacing variables';
 })()`;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created spacing scale');
     } catch (error) {
       spinner.fail('Failed to create spacing scale');
@@ -498,7 +499,7 @@ return 'Created ' + count + ' radius variables';
 `;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created border radii');
     } catch (error) {
       spinner.fail('Failed to create radii');
@@ -603,7 +604,7 @@ return 'Imported ' + count + ' tokens into ' + collectionName;
 })()`;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Tokens imported');
     } catch (error) {
       spinner.fail('Failed to import tokens');
@@ -928,7 +929,7 @@ for (const [colorName, shades] of Object.entries(colors)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(`eval "${primitivesCode.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(primitivesCode), { silent: true });
       spinner.succeed(`Color - Primitives (${result?.trim() || '33'} variables)`);
     } catch { spinner.fail('Color - Primitives failed'); }
 
@@ -957,7 +958,7 @@ for (const [name, hex] of Object.entries(colors)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(`eval "${semanticCode.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(semanticCode), { silent: true });
       spinner.succeed(`Color - Semantic (${result?.trim() || '13'} variables)`);
     } catch { spinner.fail('Color - Semantic failed'); }
 
@@ -982,7 +983,7 @@ for (const [name, value] of Object.entries(spacings)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(`eval "${spacingCode.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(spacingCode), { silent: true });
       spinner.succeed(`Spacing (${result?.trim() || '7'} variables)`);
     } catch { spinner.fail('Spacing failed'); }
 
@@ -1007,7 +1008,7 @@ for (const [name, value] of Object.entries(typography)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(`eval "${typographyCode.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(typographyCode), { silent: true });
       spinner.succeed(`Typography (${result?.trim() || '12'} variables)`);
     } catch { spinner.fail('Typography failed'); }
 
@@ -1032,7 +1033,7 @@ for (const [name, value] of Object.entries(radii)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(`eval "${radiiCode.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(radiiCode), { silent: true });
       spinner.succeed(`Border Radii (${result?.trim() || '6'} variables)`);
     } catch { spinner.fail('Border Radii failed'); }
 
@@ -1086,7 +1087,7 @@ figma.currentPage.children.forEach(n => {
 removed
 `;
     try {
-      const removed = figmaUse(`eval "${cleanupCode.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const removed = figmaUse(evalArg(cleanupCode), { silent: true });
       spinner.succeed(`Cleaned up ${removed?.trim() || '0'} old elements`);
     } catch { spinner.succeed('Ready'); }
 
@@ -1156,7 +1157,7 @@ if (f) {
 }
 `;
       try {
-        figmaUse(`eval "${convertSingle.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+        figmaUse(evalArg(convertSingle), { silent: true });
         if (comp.row === 0) row0X += comp.width + gap;
         else row1X += comp.width + 24;
       } catch {}
@@ -1215,7 +1216,7 @@ return 'Created ' + type.toLowerCase() + ' token: ${name}';
 })()`;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaUse(evalArg(code), { silent: true });
       console.log(chalk.green(result?.trim() || `✓ Created token: ${name}`));
     } catch (error) {
       console.log(chalk.red(`✗ Failed to create token: ${name}`));

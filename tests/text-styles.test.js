@@ -53,6 +53,44 @@ describe('buildStyleIndex', () => {
   });
 });
 
+// Aeonik Pro names its cuts with a family prefix — "Text Medium", not "Medium". Reported from
+// the panel (FEEDBACK.md): a 43px Medium text found no style although `Website/H3` is exactly
+// 43px "Text Medium", and the warning then named a 24px style as the nearest one.
+const PREFIXED = [
+  s('Website/H3', 'Aeonik Pro', 'Text Medium', 43),
+  s('Website/H3 Italic', 'Aeonik Pro', 'Text Medium Italic', 43),
+  s('tex/xl/medium', 'Aeonik Pro', 'Medium', 24),
+];
+
+describe('matchTextStyle with family-prefixed weight names', () => {
+  it('matches a prefixed cut against the plain weight', () => {
+    const r = matchTextStyle({ styles: PREFIXED, size: 43, weightStyle: 'medium' });
+    assert.strictEqual(r.match && r.match.name, 'Website/H3');
+  });
+
+  it('still matches when the caller spells the prefix out', () => {
+    const r = matchTextStyle({ styles: PREFIXED, size: 43, weightStyle: 'Text Medium' });
+    assert.strictEqual(r.match && r.match.name, 'Website/H3');
+  });
+
+  it('does not confuse italic with upright', () => {
+    // Both cuts are 43px Medium; only the italic flag separates them.
+    const upright = matchTextStyle({ styles: PREFIXED, size: 43, weightStyle: 'medium' });
+    assert.strictEqual(upright.match.name, 'Website/H3');
+    const italic = matchTextStyle({ styles: PREFIXED, size: 43, weightStyle: 'medium italic' });
+    assert.strictEqual(italic.match.name, 'Website/H3 Italic');
+  });
+
+  it('keeps semibold and bold apart', () => {
+    const styles = [
+      s('a', 'Aeonik Pro', 'Text SemiBold', 20),
+      s('b', 'Aeonik Pro', 'Text Bold', 20),
+    ];
+    assert.strictEqual(matchTextStyle({ styles, size: 20, weightStyle: 'bold' }).match.name, 'b');
+    assert.strictEqual(matchTextStyle({ styles, size: 20, weightStyle: 'semi bold' }).match.name, 'a');
+  });
+});
+
 describe('matchTextStyle', () => {
   it('matches on size + weight', () => {
     const r = matchTextStyle({ styles: STYLES, size: 36, weightStyle: 'Bold' });

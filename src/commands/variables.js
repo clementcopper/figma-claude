@@ -12,6 +12,7 @@ import {
   handleEvalError,
   hexToRgb
 } from '../lib/cli-core.js';
+import { evalArg } from '../lib/eval-arg.js';
 
 // ============ VARIABLES ============
 
@@ -62,7 +63,7 @@ v.setValueForMode(modeId, figmaValue);
 ` : ''}
 return 'Created ${type.toLowerCase()} variable: ${name}';
 })()`;
-    figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: false });
+    figmaUse(evalArg(code), { silent: false });
   });
 
 variables
