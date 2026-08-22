@@ -91,6 +91,12 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/zoom-factor.ts')],
+    outfile: join(ROOT, 'dist/lib/zoom-factor.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'media/main.ts')],
     outfile: join(ROOT, 'media/main.js'),
     platform: 'browser',

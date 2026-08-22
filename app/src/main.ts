@@ -35,6 +35,7 @@ import {
 import { RULES_FILE } from './lib/project-layout';
 import { panelSessionName } from './lib/session-name';
 import { resolveTheme, type ThemeSetting } from './lib/theme-choice';
+import { resolveZoomFactor } from './lib/zoom-factor';
 import { describePtyExit } from './lib/pty-exit';
 import {
   buildUndoEval,
@@ -623,6 +624,11 @@ class PanelHost implements MessageHandlerContext {
     });
   }
 
+  /** Scale for the window, from `zoom` in panel.json. Read when the window is built. */
+  currentZoom(): number {
+    return resolveZoomFactor(this.configManager.getConfig().zoom);
+  }
+
   sendTheme(): void {
     this.postMessage({
       type: 'panelTheme',
@@ -883,6 +889,16 @@ function createWindow(): BrowserWindowType {
     }
   });
 
+  // `webPreferences.zoomFactor` is accepted by the types and does nothing — measured: identical
+  // wrapper height and row count with 1.0 and 1.2. The zoom belongs to the webContents, and it
+  // has to be set once the page is there. The UI's ResizeObserver then refits xterm, because the
+  // CSS viewport really did change size.
+  // Set unconditionally: Chromium remembers a zoom per origin, so skipping the call for 1.0
+  // would leave a factor from an earlier run in place and `"zoom": 1` would not undo it.
+  window.webContents.on('did-finish-load', () => {
+    window.webContents.setZoomFactor(host.currentZoom());
+  });
+
   // macOS hides the traffic lights in full screen, which leaves 62 px of reserved space with
   // nothing in it. The bar is told, so it can give that space back.
   const sendWindowState = () => {
@@ -940,11 +956,18 @@ function createWindow(): BrowserWindowType {
               .getPropertyValue('--vscode-terminal-foreground').trim(),
             ansiBrightYellow: getComputedStyle(document.documentElement)
               .getPropertyValue('--vscode-terminal-ansiBrightYellow').trim(),
-            title: document.title
+            title: document.title,
+            // CSS pixels available to the page — this is what the zoom factor divides
+            viewport: window.innerWidth + 'x' + window.innerHeight
           };
         })()`)
         .then((metrics) => {
-          console.log('[metrics]', JSON.stringify(metrics));
+          // The zoom comes from the host side: inside the page a zoomed CSS pixel still measures
+          // 1, so no DOM value proves whether the factor landed.
+          console.log(
+            '[metrics]',
+            JSON.stringify({ ...metrics, zoomFactor: window.webContents.getZoomFactor() })
+          );
         });
     }, 8000);
 

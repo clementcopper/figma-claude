@@ -66,9 +66,16 @@ resume session, continue last session, restart — and on the left the working d
   "directMode": true,
   "statusLine": true,
   "statusLineProvider": "bundled",
-  "statusLineCompactBudget": 5
+  "statusLineCompactBudget": 5,
+  "zoom": 1.2
 }
 ```
+
+`zoom` scales the whole window — status line, terminal, tabs — and is the factor itself, not VS
+Code's level: `1.2`, not `1`. It exists because the extension never needed it. VS Code scales its
+webviews with `window.zoomLevel`, so anyone running level 1 sees this same CSS 1.2× larger in the
+editor than a window at the default 1.0 would show it. Read when the window is built, so a change
+takes a restart; nonsense values fall back to 1.0.
 
 `cwd` is what the folder button in the top bar writes. Claude Code stores its session history
 per directory, so this is the setting that decides which conversations `--resume` offers. With

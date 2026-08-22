@@ -28,7 +28,8 @@ const DEFAULTS: TerminalConfig = {
   figmaCli: '',
   figmaFile: '',
   figmaMode: 'yolo',
-  theme: 'system'
+  theme: 'system',
+  zoom: 1
 };
 
 export class ConfigManager {

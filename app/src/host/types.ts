@@ -71,6 +71,12 @@ export interface TerminalConfig {
   figmaMode?: 'yolo' | 'safe' | 'browser';
   /** Window appearance. `system` follows macOS, which is the default. */
   theme?: 'system' | 'light' | 'dark';
+  /**
+   * Scale for the whole window — the factor itself, not VS Code's level: `1.2`, not `1`. VS Code
+   * scaled the extension's webview with `window.zoomLevel`, which is why the same CSS reads
+   * larger there. Clamped in `../lib/zoom-factor`; read once when the window is built.
+   */
+  zoom?: number;
 }
 
 /**
