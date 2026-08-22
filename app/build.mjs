@@ -97,6 +97,12 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/about-panel.ts')],
+    outfile: join(ROOT, 'dist/lib/about-panel.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'media/main.ts')],
     outfile: join(ROOT, 'media/main.js'),
     platform: 'browser',

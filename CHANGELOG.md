@@ -8,6 +8,13 @@
 
 ### New
 
+- **FigmaClaude is 1.0.0, and says so.** The app carried `0.1.0` from its first day, through the
+  Figma menu, the status line, the feedback loop, the panel re-sync and the window zoom — and it
+  said the number nowhere. The menu bar's *About FigmaClaude* now names the app's version and the
+  figma-cli the panel is driving, which with a checkout path is the half that explains why the
+  panel and the terminal can disagree. No CLI found, or its version unreadable: the row says
+  `figma-cli —` rather than hiding, because "the panel looked and found nothing" is the state
+  worth seeing.
 - **The Figma menu in FigmaClaude.** The panel was built to keep the terminal for Claude, but
   everything the CLI does for the *user* still had to be typed — and the one shortcut it had wrote
   a command into Claude's prompt. The indicator now opens a menu instead: connect (in Yolo, Safe or

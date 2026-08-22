@@ -36,6 +36,7 @@ import { RULES_FILE } from './lib/project-layout';
 import { panelSessionName } from './lib/session-name';
 import { resolveTheme, type ThemeSetting } from './lib/theme-choice';
 import { resolveZoomFactor } from './lib/zoom-factor';
+import { aboutCredits, parseCliVersion } from './lib/about-panel';
 import { describePtyExit } from './lib/pty-exit';
 import {
   buildUndoEval,
@@ -100,6 +101,8 @@ class PanelHost implements MessageHandlerContext {
   private readonly ptyStarted = new Map<string, number>();
   private readonly ptySawOutput = new Set<string>();
   private cliCache: CliInvocation | undefined;
+  /** Version of the CLI, asked once: it cannot change while the app runs. */
+  private cliVersion: string | null = null;
 
   constructor() {
     const callbacks: PtyEventCallbacks = {
@@ -453,6 +456,48 @@ class PanelHost implements MessageHandlerContext {
       this.ptyManager.pathPrefix = ensureShim(this.cliCache);
     }
     return this.cliCache;
+  }
+
+  /**
+   * Fills the native About panel: the app's version, and the figma-cli this panel drives.
+   *
+   * Set twice on purpose. The CLI's version costs a child process, and the menu bar item is
+   * available from the first second — so the dialog is complete right away, with an em dash
+   * where the CLI version will be, and gets the number as soon as it arrives. A failure leaves
+   * the dash: the app's own version is the part that must always be right.
+   */
+  async describeVersions(): Promise<void> {
+    app.setAboutPanelOptions({
+      applicationName: 'FigmaClaude',
+      applicationVersion: app.getVersion(),
+      credits: aboutCredits(this.cliVersion)
+    });
+
+    if (this.cliVersion !== null) {
+      return;
+    }
+
+    const result = await runCli(this.cli(), ['--version'], { timeoutMs: 5_000 });
+    const version = result.ok ? parseCliVersion(result.stdout) : null;
+    if (!version) {
+      if (process.env.PANEL_DEBUG) {
+        console.log('[about]', JSON.stringify({ version: app.getVersion(), credits: aboutCredits(null) }));
+      }
+      return;
+    }
+
+    this.cliVersion = version;
+    const credits = aboutCredits(version);
+    app.setAboutPanelOptions({
+      applicationName: 'FigmaClaude',
+      applicationVersion: app.getVersion(),
+      credits
+    });
+
+    // The panel is a native window, so no screenshot of ours can prove what it says.
+    if (process.env.PANEL_DEBUG) {
+      console.log('[about]', JSON.stringify({ version: app.getVersion(), credits }));
+    }
   }
 
   /**
@@ -1008,6 +1053,10 @@ app.whenReady().then(() => {
 
   const window = createWindow();
   host.attach(window);
+
+  // Menu bar → FigmaClaude → About. Not awaited: the dialog is complete without the CLI's
+  // version, and nothing else waits on it.
+  void host.describeVersions();
 
   // The page carries its own <title>; without this it would rename the window — which is how
   // "Claude Panel" ended up in the full-screen title bar.

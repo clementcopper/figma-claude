@@ -1,8 +1,8 @@
 {
   "name": "figmaclaude",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Claude Code in a window next to Figma \u2014 a port of clementcopper/claude-terminal-panel",
+  "description": "Claude Code in a window next to Figma — a port of clementcopper/claude-terminal-panel",
   "license": "MIT",
   "type": "module",
   "main": "dist/main.cjs",
