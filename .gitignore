@@ -5,6 +5,7 @@ node_modules/
 .figma-client-*.mjs
 screenshot.png
 docs/figma-api/
+*.code-workspace
 
 # Local DESIGN.md extraction examples (Primer test) — never commit
 Primer-Web/
