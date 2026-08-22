@@ -188,3 +188,25 @@ Append new entries at the end of **Open**; never rewrite one that is already the
     false positive can no longer spend it, and the message no longer claims to be the only one
     you get. Verified live: the same `grep` over this file left no reminder, a failing
     `figma-cli` call right after it delivered one
+
+
+- [x] `cli` · **Every run leaves a `figma-snap-*` directory in `$TMPDIR` behind**
+  **Repro:** a day of ordinary use in one session — `eval` (many), `verify --save`, `render`,
+  `render-batch`, `duplicate`, `status`, `files`, `config`
+  **Observed:** `ls -d "$TMPDIR"/figma-snap-* | wc -l` → **60**, of which **45** carry today's
+  date. Each is a directory holding a single 10-byte `design.json`. Oldest are from 2026-08-19, so
+  nothing removes them later either. `$TMPDIR` is now at 1179 entries, which is what made them
+  visible at all — I was looking for something else.
+  **Expected:** a scratch directory is removed when the command that made it finishes, or it is
+  reused rather than created per call. Which command creates them I cannot say from here; those are
+  the commands the session ran.
+  **Context:** 2.1.2 at `90ffb67`, daemon on 3456, file m2trust, session in
+  /Users/danielmartin/Website
+  → fixed, and the cause is not a command: `tests/snapshot-cmd.test.js` created five
+    `mkdtempSync(…'figma-snap-')` per run and removed none. The 45 from today are my nine suite
+    runs while triaging your entries; the ones from 2026-08-19 are older runs. A `scratchDir(t)`
+    helper now registers `t.after(…rmSync…)`, measured across a full suite: 60 before, 60 after.
+    Your restraint about the cause was right — none of the commands you listed does this.
+    Found alongside: one `figma-payload-*` leaked whenever the daemon curl in `figmaEvalSync`
+    threw, because the unlink sat after the call rather than in a `finally`. Also fixed. The 60
+    directories and the stray payload are deleted; $TMPDIR is down from 1179 to 1119 entries

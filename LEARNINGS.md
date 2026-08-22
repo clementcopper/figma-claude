@@ -91,6 +91,10 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **A once-per-session latch must be spent on a hit, not on a firing.** The same false positive
   consumed the one reminder that session had, so a real friction afterwards would have got
   nothing. A silent miss is worse than a duplicate.
+- **A test that litters is a bug in the test.** `tests/snapshot-cmd.test.js` made five temp
+  directories per run and removed none; nine suite runs in one day left 45 of them, and it was
+  noticed from the panel because `$TMPDIR` had grown to 1179 entries. `mkdtempSync` in a test needs
+  its `t.after(() => rmSync(...))` in the same breath.
 - **Reproduce before recording a bug.** The `render` note above originally blamed `<Rectangle>`. A five-minute matrix — Rectangle with hex / `var:` / no fill / `w="fill"`, then the same on Frame and Text — cleared the element, pinned `w="fill"` as the trigger, and led to the real cause one layer down (the `catch` block). A symptom written down as a cause misleads every later session.
 
 ## Fork Decisions (clementcopper)

@@ -6,7 +6,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,21 @@ import { scopeLabelForTest } from '../src/commands/snapshot.js';
 
 // import.meta.dirname only exists from Node 20.11 on; package.json says >=18.
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '../src/index.js');
+
+/**
+ * A scratch directory that removes itself when the test ends.
+ *
+ * Five bare `mkdtempSync` calls used to stay behind, one per test, and nine suite runs in a day
+ * left 45 of them — spotted from the panel, in a $TMPDIR that had grown to 1179 entries. A test
+ * that litters the machine it runs on is a bug in the test.
+ */
+function scratchDir(t) {
+  const dir = mkdtempSync(join(tmpdir(), 'figma-snap-'));
+  t.after(() => {
+    try { rmSync(dir, { recursive: true, force: true }); } catch {}
+  });
+  return dir;
+}
 
 /** Run the CLI, returning { status, out }. Never throws on a non-zero exit. */
 function runCli(args, cwd) {
@@ -47,8 +62,8 @@ describe('snapshot file roundtrip through disk', () => {
   // JSON.stringify silently DROPS undefined values, so a snapshot that compares
   // equal in memory could still differ after a write/read cycle. The contract is
   // only worth anything if the written file is what gets compared.
-  test('written then re-read compares equal to the in-memory snapshot', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'figma-snap-'));
+  test('written then re-read compares equal to the in-memory snapshot', (t) => {
+    const dir = scratchDir(t);
     const snap = buildSnapshot(fixture(), { scope: { pages: 'Components' } });
     const file = join(dir, 'design.json');
     writeFileSync(file, stableStringify(snap));
@@ -72,24 +87,24 @@ describe('snapshot file roundtrip through disk', () => {
 });
 
 describe('check — guards that run before connecting to Figma', () => {
-  test('missing contract exits 1 and points at `snapshot`', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'figma-snap-'));
+  test('missing contract exits 1 and points at `snapshot`', (t) => {
+    const dir = scratchDir(t);
     const { status, out } = runCli(['check'], dir);
     assert.equal(status, 1);
     assert.match(out, /No design\.json found/);
     assert.match(out, /figma-cli snapshot/);
   });
 
-  test('unreadable contract exits 1 with the parse error, not a stack trace', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'figma-snap-'));
+  test('unreadable contract exits 1 with the parse error, not a stack trace', (t) => {
+    const dir = scratchDir(t);
     writeFileSync(join(dir, 'design.json'), '{ not json');
     const { status, out } = runCli(['check'], dir);
     assert.equal(status, 1);
     assert.match(out, /not readable JSON/);
   });
 
-  test('a contract from an older format asks for a regenerate instead of faking drift', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'figma-snap-'));
+  test('a contract from an older format asks for a regenerate instead of faking drift', (t) => {
+    const dir = scratchDir(t);
     const old = buildSnapshot(fixture());
     old.version = SNAPSHOT_VERSION - 1;
     writeFileSync(join(dir, 'design.json'), stableStringify(old));
@@ -99,8 +114,8 @@ describe('check — guards that run before connecting to Figma', () => {
     assert.match(out, /Regenerate it/);
   });
 
-  test('honours an explicit file argument', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'figma-snap-'));
+  test('honours an explicit file argument', (t) => {
+    const dir = scratchDir(t);
     const { status, out } = runCli(['check', 'contract.json'], dir);
     assert.equal(status, 1);
     assert.match(out, /No contract\.json found/);

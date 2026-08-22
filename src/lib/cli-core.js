@@ -629,11 +629,17 @@ function figmaEvalSync(code) {
       writeFileSync(payloadFile, payload);
       const daemonToken = getDaemonToken();
       const tokenHeader = daemonToken ? ` -H "X-Daemon-Token: ${daemonToken}"` : '';
-      const result = execSync(
-        `curl -s -X POST http://127.0.0.1:${DAEMON_PORT}/exec -H "Content-Type: application/json"${tokenHeader} -d @"${payloadFile}"`,
-        { encoding: 'utf8', timeout: 60000 }
-      );
-      try { unlinkSync(payloadFile); } catch {}
+      // `finally`, because the unlink used to sit after the call: a curl that threw left the
+      // payload behind, and those files accumulate in $TMPDIR unnoticed.
+      let result;
+      try {
+        result = execSync(
+          `curl -s -X POST http://127.0.0.1:${DAEMON_PORT}/exec -H "Content-Type: application/json"${tokenHeader} -d @"${payloadFile}"`,
+          { encoding: 'utf8', timeout: 60000 }
+        );
+      } finally {
+        try { unlinkSync(payloadFile); } catch {}
+      }
       if (!result || result.trim() === '') {
         throw new Error('Empty response from daemon');
       }
