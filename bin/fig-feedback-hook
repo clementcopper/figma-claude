@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# fig-feedback-hook — the second trigger of the feedback loop.
+#
+# The other one is the sweep in the pre-compact skill, and it only fires before a /compact. A panel
+# session that runs all day without one files nothing: seven frictions, zero entries, reported only
+# when someone asked. Reported by figma-claude itself.
+#
+# This runs as a PostToolUse hook on Bash and reminds once per session, right after a figma-cli
+# call fails or warns. The output is scanned, not just the exit code: `render` warns with ⚠ and
+# exits 0, and that is where the text-style bug hid for a whole day.
+#
+# Three gates, cheapest first, because this runs after every Bash call in a panel session:
+#   1. is this a panel session at all
+#   2. does the payload even mention the CLI  (over-matches on purpose; step 3 decides)
+#   3. node, with the command and the response kept apart — see src/lib/feedback-trigger.js
+#
+# Step 2 used to BE the decision, and it fired on `tail LEARNINGS.md` because that file documents
+# earlier findings. Recognising a word in a payload is not the same as knowing what ran.
+
+set -u
+
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+STATE_DIR="$HOME/.figma-ds-cli"
+
+# Panel sessions only; the rule this points at is scoped to them. The force file exists so the
+# wiring can be proven from an ordinary terminal.
+if [ -z "${FIGMACLAUDE:-}" ] && [ ! -f "$STATE_DIR/.feedback-hook-force" ]; then
+    exit 0
+fi
+
+payload=$(cat)
+
+[ -n "${FIG_HOOK_DUMP:-}" ] && printf '%s\n' "$payload" >> "$FIG_HOOK_DUMP"
+
+# Cheap pre-filter: no mention anywhere, no reason to start node.
+case "$payload" in
+    *figma-cli*|*figma-ds-cli*|*index.js*|*fig-status*|*fig-start*) ;;
+    *) exit 0 ;;
+esac
+
+printf '%s' "$payload" | node "$REPO/bin/fig-feedback-decide.mjs" 2>/dev/null || exit 0

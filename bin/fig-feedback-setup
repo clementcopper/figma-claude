@@ -29,6 +29,10 @@ PRECOMPACT="$HOME/.claude/skills/pre-compact/SKILL.md"
 APP_ASAR="/Applications/FigmaClaude.app/Contents/Resources/app.asar"
 
 CLAUDE_MD_MARKER="## figma-cli Feedback"
+# The sentence that was missing in the first version of the rule. Its own marker, because an
+# install from back then has the section but not the sentence — and a panel session that files
+# its findings in a project's LEARNINGS.md instead is exactly what happened without it.
+BOTH_TARGETS_MARKER="A project's own LEARNINGS.md does not replace it"
 SWEEP_MARKER="Sweep for CLI feedback"
 
 ok()   { printf "  ${GREEN}✓${NC}  %s\n" "$1"; }
@@ -49,7 +53,19 @@ fi
 mkdir -p "$HOME/.claude"
 
 if [ -f "$CLAUDE_MD" ] && grep -qF "$CLAUDE_MD_MARKER" "$CLAUDE_MD"; then
-    skip "~/.claude/CLAUDE.md already carries the rule"
+    if grep -qF "$BOTH_TARGETS_MARKER" "$CLAUDE_MD"; then
+        skip "~/.claude/CLAUDE.md already carries the rule"
+    else
+        # The section is there but predates the sentence about the competing target.
+        cp "$CLAUDE_MD" "$CLAUDE_MD.bak"
+        cat >> "$CLAUDE_MD" <<EOF
+
+$BOTH_TARGETS_MARKER: a figma-cli friction goes to \`$FEEDBACK\` even when the same finding is
+also worth a line where you are working. (Amends the \`$CLAUDE_MD_MARKER\` rule above.)
+EOF
+        ok "rule amended: LEARNINGS.md does not replace FEEDBACK.md"
+        printf "     ${DIM}backup: %s${NC}\n" "$CLAUDE_MD.bak"
+    fi
 else
     [ -f "$CLAUDE_MD" ] && cp "$CLAUDE_MD" "$CLAUDE_MD.bak"
     # A blank line first only when the file exists and does not already end in one.
@@ -64,6 +80,9 @@ panel got wrong — a command that failed, docs that lied, a workaround, a missi
 goes into \`$FEEDBACK\` under \`## Open\`, in the same session it happened. That file carries
 its own Format section; read it before writing the first entry. It is the only file in that
 repo a panel session may write. Applies in every project.
+
+A project's own LEARNINGS.md does not replace it: a figma-cli friction goes to \`$FEEDBACK\`
+even when the same finding is also worth a line where you are working.
 EOF
     ok "rule appended to ~/.claude/CLAUDE.md"
     [ -f "$CLAUDE_MD.bak" ] && printf "     ${DIM}backup: %s${NC}\n" "$CLAUDE_MD.bak"
@@ -126,7 +145,75 @@ case "$RESULT" in
              exit 1 ;;
 esac
 
-# --- 3. The pre-compact sweep, if that skill is installed here ---------------------------------
+# --- 3. The in-the-moment trigger, so a long session does not lose its findings ----------------
+#
+# The sweep below only fires before a /compact. A panel session that runs all day without one
+# files nothing — that is how seven frictions ended up reported by hand instead. This hook reminds
+# once per session, right after a figma-cli call fails or warns.
+
+HOOK="$REPO/bin/fig-feedback-hook"
+DECIDER="$REPO/bin/fig-feedback-decide.mjs"
+
+# Both halves: the shell gate and the node decision it pipes into. Without the second one the hook
+# is a no-op — the version that decided in shell alone fired on `tail LEARNINGS.md`.
+if [ ! -x "$HOOK" ] || [ ! -f "$DECIDER" ]; then
+    warn "bin/fig-feedback-hook or bin/fig-feedback-decide.mjs missing — trigger skipped"
+else
+    node -e '
+const fs = require("fs");
+const [settings, hook] = process.argv.slice(1);
+let config = {};
+let existed = false;
+try {
+  config = JSON.parse(fs.readFileSync(settings, "utf8"));
+  existed = true;
+} catch (error) {
+  if (error.code !== "ENOENT") { console.log("PARSE_ERROR " + error.message); process.exit(3); }
+}
+config.hooks = config.hooks || {};
+const list = (config.hooks.PostToolUse = config.hooks.PostToolUse || []);
+// One entry per matcher, and the command is matched by NAME: the repo may have moved since the
+// last run, and a stale absolute path would leave the hook silently dead.
+const mine = (h) => typeof h?.command === "string" && h.command.includes("fig-feedback-hook");
+for (const group of list) {
+  const hooks = group.hooks || [];
+  const found = hooks.find(mine);
+  if (!found) continue;
+  if (found.command === hook) { console.log("PRESENT"); process.exit(0); }
+  if (existed) fs.copyFileSync(settings, settings + ".bak");
+  found.command = hook;
+  fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
+  console.log("REPATHED");
+  process.exit(0);
+}
+const bash = list.find((g) => g.matcher === "Bash");
+const entry = { type: "command", command: hook, timeout: 5 };
+if (bash) (bash.hooks = bash.hooks || []).push(entry);
+else list.push({ matcher: "Bash", hooks: [entry] });
+if (existed) fs.copyFileSync(settings, settings + ".bak");
+fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
+console.log(existed ? "ADDED" : "CREATED");
+' "$SETTINGS" "$HOOK" > /tmp/fig-feedback-hook.$$ 2>&1
+    HOOK_STATUS=$?
+    HOOK_RESULT=$(cat /tmp/fig-feedback-hook.$$)
+    rm -f /tmp/fig-feedback-hook.$$
+
+    case "$HOOK_RESULT" in
+        PRESENT)  skip "PostToolUse hook already installed" ;;
+        REPATHED) ok "PostToolUse hook re-pointed at this checkout" ;;
+        ADDED)    ok "PostToolUse hook added to ~/.claude/settings.json" ;;
+        CREATED)  ok "~/.claude/settings.json created with the hook" ;;
+        PARSE_ERROR*)
+                  fail "~/.claude/settings.json does not parse — fix it, then run this again"
+                  exit 1 ;;
+        *)        fail "could not write the hook into ~/.claude/settings.json"
+                  printf "     ${DIM}node exited %s: %s${NC}\n" "$HOOK_STATUS" "$HOOK_RESULT"
+                  exit 1 ;;
+    esac
+    printf "     ${DIM}reminds once per session, panel sessions only${NC}\n"
+fi
+
+# --- 4. The pre-compact sweep, if that skill is installed here ---------------------------------
 
 if [ ! -f "$PRECOMPACT" ]; then
     skip "pre-compact skill not installed — sweep skipped"
@@ -147,7 +234,7 @@ EOF
     printf "     ${DIM}backup: %s${NC}\n" "$PRECOMPACT.bak"
 fi
 
-# --- 4. Does the installed app actually set the marker the rule keys on? -----------------------
+# --- 5. Does the installed app actually set the marker the rule keys on? -----------------------
 
 if [ ! -e "$APP_ASAR" ]; then
     skip "FigmaClaude.app not installed in /Applications"
