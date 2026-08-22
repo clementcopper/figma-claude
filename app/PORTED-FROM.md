@@ -11,9 +11,10 @@ app/                                   FigmaClaude
 Original: [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel)
 — on the Marketplace as `0ly.claude-terminal-panel`.
 Taken from: [`clementcopper/claude-terminal-panel`](https://github.com/clementcopper/claude-terminal-panel)
-Commit: `61415dd` (2026-08-21) — re-synced from `b89760a` (2026-08-15), which brought the
-extension's own terminal-spacing fix (`cdfcd2c`) and a limits row whose countdown keeps ticking
-while Claude is not rendering (`6dfc2eb`).
+Commit: `783cbdc` (2026-08-22) — re-synced from `61415dd` (2026-08-21), which brought an idle
+tab picking up a newer session percentage from whichever tab last saw one. The sync before that
+came from `b89760a` (2026-08-15): the extension's own terminal-spacing fix (`cdfcd2c`) and a
+limits row whose countdown keeps ticking while Claude is not rendering (`6dfc2eb`).
 
 The licence is nolikzero's and ships alongside as `LICENSE-claude-terminal-panel`. This is that
 VS Code panel running next to Figma instead of inside an editor, so the UI is not reimplemented
@@ -37,7 +38,7 @@ VS Code panel running next to Figma instead of inside an editor, so the UI is no
 
 | File | Change |
 |---|---|
-| `src/host/statusLineWatcher.ts` | snapshot directory renamed to `figma-claude-panel` so the two panels cannot read each other's tabs |
+| `src/host/statusLineWatcher.ts` | snapshot directory renamed to `figma-claude-panel` so the two panels cannot read each other's tabs; the limits broadcast from `783cbdc` decides in `src/lib/limit-broadcast.ts` instead of inline, so the comparisons have unit tests |
 | `src/host/ptyManager.ts` | no `vscode.workspace.workspaceFolders`, no QuickPick for the folder, app directory instead of `extensionUri`, and `ELECTRON_RUN_AS_NODE` deleted from the PTY environment |
 | `src/host/config.ts` | was `configManager.ts`: same keys and defaults, read from `~/.figma-ds-cli/panel.json` instead of VS Code settings |
 | `src/main.ts` | was `ClaudeTerminalViewProvider.ts` + `extension.ts`: same logic, Electron window instead of a webview view |

@@ -162,6 +162,14 @@ passes its own producer per session via `claude --settings`. **Your `~/.claude/s
 not touched**, and your own status line keeps running: the producer calls it and prints its
 output unchanged.
 
+The rate limits are shared between tabs and windows through `limits.json` under the snapshot
+directory, and not only as a starting value: a tab whose Claude is idle would otherwise keep
+showing a percentage another tab has long superseded. That number exists only in Claude's
+payload, so unlike the reset countdown it cannot be recomputed from the clock. The panel watches
+that file and polls it every 30 s, and hands newer limits to every tab whose own snapshot
+predates them — the tab's timestamp stays as it was, since its model and context really are old
+and the limits row is exempt from the stale dimming.
+
 ## Development
 
 `PANEL_CAPTURE=<file>` writes a PNG of the window once it has drawn (`PANEL_CAPTURE_DELAY=<ms>`

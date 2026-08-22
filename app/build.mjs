@@ -85,6 +85,12 @@ const targets = [
     format: 'esm'
   },
   {
+    entryPoints: [join(ROOT, 'src/lib/limit-broadcast.ts')],
+    outfile: join(ROOT, 'dist/lib/limit-broadcast.mjs'),
+    platform: 'node',
+    format: 'esm'
+  },
+  {
     entryPoints: [join(ROOT, 'media/main.ts')],
     outfile: join(ROOT, 'media/main.js'),
     platform: 'browser',

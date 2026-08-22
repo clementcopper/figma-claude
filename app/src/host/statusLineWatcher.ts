@@ -4,6 +4,12 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import type { StatusLineSnapshot } from './types';
 import { applyResetWindow } from '../lib/limit-window';
+import { planLimitsBroadcast } from '../lib/limit-broadcast';
+
+/** Shared file holding the account's rate limits, written by whichever tab last saw them. */
+const LIMITS_FILE = 'limits.json';
+/** Upper bound on how long a tab shows a limit another tab has already superseded. */
+const LIMITS_POLL_MS = 30_000;
 
 /**
  * Directory the statusLine script writes its per-tab snapshots into.
@@ -50,6 +56,15 @@ export class StatusLineWatcher {
    */
   private readonly lastDir = path.join(getStatusLineDir(), 'last');
   private watcher: fs.FSWatcher | undefined;
+  /**
+   * Second watcher, on `last/`. The rate limits belong to the account, so a tab that renders
+   * nothing itself can still learn a fresher percentage from one that does — in this window or
+   * another. `fs.watch` is not recursive, so the directory above does not report this.
+   */
+  private limitsWatcher: fs.FSWatcher | undefined;
+  private limitsPoll: NodeJS.Timeout | undefined;
+  /** Guards against re-sending the same file: `updatedAt` of what was last broadcast. */
+  private lastBroadcastLimitsAt: number | undefined;
   private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
   private readonly latest = new Map<string, StatusLineSnapshot>();
   private disposed = false;
@@ -144,7 +159,7 @@ export class StatusLineWatcher {
 
   private readLimits(): Partial<StatusLineSnapshot> | undefined {
     try {
-      const raw = fs.readFileSync(path.join(this.lastDir, 'limits.json'), 'utf8');
+      const raw = fs.readFileSync(path.join(this.lastDir, LIMITS_FILE), 'utf8');
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed !== 'object' || parsed === null) {
         return undefined;
@@ -155,7 +170,10 @@ export class StatusLineWatcher {
         sessionResetsAt: numberOrUndefined(value.sessionResetsAt),
         sessionResetsInMin: numberOrUndefined(value.sessionResetsInMin),
         weekPercent: numberOrUndefined(value.weekPercent),
-        weekResetsAt: typeof value.weekResetsAt === 'string' ? value.weekResetsAt : undefined
+        weekResetsAt: typeof value.weekResetsAt === 'string' ? value.weekResetsAt : undefined,
+        // Only meaningful for the broadcast below: whether this file is newer than a tab's own
+        // snapshot. `withRememberedLimits` never overwrites a defined field, so it stays put.
+        updatedAt: numberOrUndefined(value.updatedAt)
       };
     } catch {
       return undefined;
@@ -166,7 +184,7 @@ export class StatusLineWatcher {
     if (snapshot.sessionPercent === undefined && snapshot.weekPercent === undefined) {
       return;
     }
-    this.writeAtomically('limits.json', {
+    this.writeAtomically(LIMITS_FILE, {
       sessionPercent: snapshot.sessionPercent,
       sessionResetsAt: snapshot.sessionResetsAt,
       sessionResetsInMin: snapshot.sessionResetsInMin,
@@ -219,6 +237,12 @@ export class StatusLineWatcher {
     this.disposed = true;
     this.watcher?.close();
     this.watcher = undefined;
+    this.limitsWatcher?.close();
+    this.limitsWatcher = undefined;
+    if (this.limitsPoll) {
+      clearInterval(this.limitsPoll);
+      this.limitsPoll = undefined;
+    }
     for (const terminalId of [...this.latest.keys()]) {
       this.removeTerminal(terminalId);
     }
@@ -247,6 +271,73 @@ export class StatusLineWatcher {
       });
     } catch (error) {
       console.warn('[Claude Terminal] cannot watch the status line directory', error);
+    }
+
+    this.startLimitsWatch();
+  }
+
+  /**
+   * Keeps the rate limits current in tabs that render nothing themselves. The percentage cannot be
+   * recomputed the way the countdown can — it exists only in Claude's payload — but it is an
+   * account-wide number, so whichever tab last saw one shares it through `last/limits.json`.
+   *
+   * Both a watch and a poll: the watch reacts at once, the interval is the guarantee, because
+   * `fs.watch` is platform-dependent and an atomic rename can slip past it.
+   */
+  private startLimitsWatch(): void {
+    try {
+      fs.mkdirSync(this.lastDir, { recursive: true, mode: 0o700 });
+      this.limitsWatcher = fs.watch(this.lastDir, { persistent: false }, (_event, filename) => {
+        if (filename === LIMITS_FILE) {
+          this.scheduleLimitsBroadcast();
+        }
+      });
+    } catch (error) {
+      console.warn('[Claude Terminal] cannot watch the remembered limits', error);
+    }
+
+    this.limitsPoll = setInterval(() => {
+      this.broadcastLimits();
+    }, LIMITS_POLL_MS);
+    // Never hold the app open for a status row
+    this.limitsPoll.unref();
+  }
+
+  /** The file is written through a temp file plus rename, so one update fires several events. */
+  private scheduleLimitsBroadcast(): void {
+    if (this.disposed) return;
+
+    const existing = this.debounceTimers.get(LIMITS_FILE);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    this.debounceTimers.set(
+      LIMITS_FILE,
+      setTimeout(() => {
+        this.debounceTimers.delete(LIMITS_FILE);
+        this.broadcastLimits();
+      }, this.debounceMs)
+    );
+  }
+
+  /** Hands newer limits to every tab whose own snapshot predates them. Rules in `limit-broadcast`. */
+  private broadcastLimits(): void {
+    if (this.disposed) return;
+
+    const plan = planLimitsBroadcast(
+      this.readLimits(),
+      this.lastBroadcastLimitsAt,
+      this.latest,
+      Date.now()
+    );
+    if (!plan) {
+      return;
+    }
+
+    this.lastBroadcastLimitsAt = plan.limitsAt;
+    for (const [terminalId, merged] of plan.updates) {
+      this.latest.set(terminalId, merged);
+      this.onSnapshot(terminalId, merged);
     }
   }
 
