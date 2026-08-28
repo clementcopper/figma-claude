@@ -42,6 +42,18 @@ Append new entries at the end of **Open**; never rewrite one that is already the
 
 <!-- new entries go here -->
 
+- [ ] `docs` · **`run` liefert nichts zurück, wenn das Skript mit `console.log` arbeitet statt mit `return`**
+  **Repro:** `figma-cli run dump.js`, wobei `dump.js` seine Ausgabe per `console.log(...)` schreibt
+  **Observed:** Kommando endet ohne Ausgabe und ohne Fehler — nicht unterscheidbar von „Skript hat geworfen"
+  **Expected:** `docs/FIGMA-USAGE.md` erwähnt nirgends, dass der Rückgabewert der Ausgabekanal ist. Der Abschnitt zu `eval`/`run` sagt nur etwas zu `isSlot`. Ein Satz „Ausgabe kommt über `return`, nicht über `console.log`; leere Ausgabe heißt geworfen — in try/catch mit `e.stack` wrappen" hätte zwei Fehlversuche gespart
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone
+
+- [ ] `app` · **`spawnSync /bin/sh ETIMEDOUT` nennt keinen Weg zurück, der im Panel gangbar ist**
+  **Repro:** Mitten in einer Panel-Sitzung nach längerer Inaktivität ein beliebiges `figma-cli run <datei>`
+  **Observed:** `✗ spawnSync /bin/sh ETIMEDOUT`, sonst nichts. Der dokumentierte Weg (`daemon restart` + `connect`) ist für Panel-Sitzungen ausdrücklich gesperrt — die Projektregel sagt, Claude soll die Verbindung nicht selbst herstellen, sondern Daniel bitten
+  **Expected:** Die Meldung sollte im Panel-Kontext auf den Verbinden-Button zeigen statt auf CLI-Befehle, die dort niemand ausführen soll. Aktuell muss Claude aus der Fehlermeldung selbst schließen, dass Handarbeit nötig ist
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone
+
 ## Done
 
 <!-- triaged entries, each with a → line naming where it went -->
