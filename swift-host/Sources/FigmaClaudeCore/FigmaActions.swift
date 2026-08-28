@@ -46,7 +46,8 @@ public func resolveCli(appRoot: String, configured: String? = nil) -> CliInvocat
 /// a Figma file name with a quote in it must not become a shell injection.
 @discardableResult
 public func runCli(_ cli: CliInvocation, _ arguments: [String],
-                   cwd: String? = nil, timeout: TimeInterval = 60) -> CliResult {
+                   cwd: String? = nil, env extra: [String: String]? = nil,
+                   timeout: TimeInterval = 60) -> CliResult {
     guard cli.isUsable else {
         return CliResult(ok: false, output: "figma-cli not found — install it or set figmaCli in panel.json")
     }
@@ -60,6 +61,9 @@ public func runCli(_ cli: CliInvocation, _ arguments: [String],
     if let cwd { process.currentDirectoryURL = URL(fileURLWithPath: cwd) }
     var environment = ProcessInfo.processInfo.environment
     environment["PATH"] = path
+    // `daemon restart` is pinned to one open file this way — the CLI reads FIGMA_FILE, there is
+    // no flag for it.
+    if let extra { for (key, value) in extra { environment[key] = value } }
     process.environment = environment
 
     let pipe = Pipe()
@@ -81,6 +85,28 @@ public func runCli(_ cli: CliInvocation, _ arguments: [String],
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
     return CliResult(ok: process.terminationStatus == 0, output: output)
+}
+
+/// Quits Figma, so `connect` takes its start-fresh path and brings it back with the debug flag.
+///
+/// The CLI deliberately never does this — only the user knows whether it is safe — so the panel
+/// asks first and does the quitting itself. Port of `quitFigma` in `app/src/host/figmaActions.ts`.
+public func quitFigma() {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+    process.arguments = ["-x", "Figma"]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    try? process.run()
+    process.waitUntilExit()
+}
+
+/// Has `init-agent` run in this directory? The file Claude Code actually loads decides, not the
+/// folder's existence — port of `hasAgentRules` in `app/src/host/figmaActions.ts:220`.
+public func hasAgentRules(cwd: String) -> Bool {
+    guard !cwd.isEmpty else { return false }
+    let file = (cwd as NSString).appendingPathComponent(rulesFile)
+    return rulesInstalled(try? String(contentsOfFile: file, encoding: .utf8))
 }
 
 /// Undoes the last render over the daemon's `/exec` route, so the button works on a machine

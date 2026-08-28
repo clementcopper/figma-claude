@@ -5,12 +5,52 @@ import FigmaClaudeCore
 /// `pty-exit.test.js`, `render-undo.test.js` and `project-layout.test.js`.
 enum PanelPiecesTests {
     static func run() {
+        toolbarFit()
         theme()
         bounds()
         limits()
         ptyExit()
         renderUndo()
         aboutAndLayout()
+    }
+
+    /// How the top bar gives way. The buttons keep their places; the text inside them is what
+    /// adapts, and in a fixed order.
+    static func toolbarFit() {
+        // Room for both: nothing is shortened.
+        Checks.expect(toolbarLabelBudgets(available: 200, cwdWanted: 50, figmaWanted: 90,
+                                          cwdGap: 5, figmaGap: 5),
+                      LabelBudgets(cwd: 50, figma: 90))
+
+        // Tight: the Figma name gives way first — the lights beside it already carry the state.
+        Checks.expect(toolbarLabelBudgets(available: 110, cwdWanted: 50, figmaWanted: 90,
+                                          cwdGap: 5, figmaGap: 5),
+                      LabelBudgets(cwd: 50, figma: 50))
+
+        // Below the floor it is dropped rather than left as a letter and an ellipsis — and its gap
+        // comes back to the folder name, which is why this is one function and not two.
+        Checks.expect(toolbarLabelBudgets(available: 85, cwdWanted: 50, figmaWanted: 90,
+                                          cwdGap: 5, figmaGap: 5),
+                      LabelBudgets(cwd: 50, figma: 0))
+        Checks.expect(toolbarLabelBudgets(available: 45, cwdWanted: 50, figmaWanted: 90,
+                                          cwdGap: 5, figmaGap: 5),
+                      LabelBudgets(cwd: 40, figma: 0))
+
+        // Symbols only: the last state, and the one a 320-point window has to survive.
+        Checks.expect(toolbarLabelBudgets(available: 34, cwdWanted: 50, figmaWanted: 90,
+                                          cwdGap: 5, figmaGap: 5),
+                      LabelBudgets(cwd: 0, figma: 0))
+        Checks.expect(toolbarLabelBudgets(available: -20, cwdWanted: 50, figmaWanted: 90),
+                      LabelBudgets(cwd: 0, figma: 0))
+
+        // Exactly at the floor the label stays; one point under it goes.
+        Checks.expect(toolbarLabelBudgets(available: minimumLabelWidth, cwdWanted: 50,
+                                          figmaWanted: 90).cwd, minimumLabelWidth)
+        Checks.expect(toolbarLabelBudgets(available: minimumLabelWidth - 1, cwdWanted: 50,
+                                          figmaWanted: 90).cwd, 0)
+        // A label never gets more than it asked for, however much room there is.
+        Checks.expect(toolbarLabelBudgets(available: 4000, cwdWanted: 50, figmaWanted: 90),
+                      LabelBudgets(cwd: 50, figma: 90))
     }
 
     static func theme() {

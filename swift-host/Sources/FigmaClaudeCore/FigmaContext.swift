@@ -15,9 +15,27 @@ public struct FigmaSnapshot: Equatable {
     public var file: String
     public var page: String
     public var selection: [SelectedNode]
+    /// The two states the daemon cannot report about itself. They used to be asked only when the
+    /// menu opened, which is why the toolbar could not show what the menu's three rows showed.
+    public var figmaRunning: Bool = false
+    public var cdpOk: Bool = false
 
     public static let empty = FigmaSnapshot(
         status: toStatusView(nil), health: nil, file: "", page: "", selection: [])
+}
+
+/// What a poll asks about the world outside the daemon. Injectable because the cheap answer needs
+/// AppKit — `NSWorkspace` knows which applications run without starting a process — and this
+/// module deliberately has none.
+public struct FigmaProbes {
+    public var figmaRunning: () -> Bool
+    public var cdpReachable: (Int) -> Bool
+
+    public init(figmaRunning: @escaping () -> Bool = { isFigmaRunning() },
+                cdpReachable: @escaping (Int) -> Bool = { isCdpReachable(port: $0) }) {
+        self.figmaRunning = figmaRunning
+        self.cdpReachable = cdpReachable
+    }
 }
 
 private func readToken() -> String? {
@@ -92,7 +110,8 @@ private struct SelectionPayload: Decodable {
 /// The daemon's title is the fallback for the file name: it survives an `eval` that times out
 /// mid-render, which is exactly when the panel would otherwise go blank.
 public func pollFigma(healthTimeout: TimeInterval = 1.5,
-                      evalTimeout: TimeInterval = 4) -> FigmaSnapshot {
+                      evalTimeout: TimeInterval = 4,
+                      probes: FigmaProbes = FigmaProbes()) -> FigmaSnapshot {
     let health = daemonHealth(timeout: healthTimeout)
     let status = toStatusView(health)
 
@@ -109,12 +128,15 @@ public func pollFigma(healthTimeout: TimeInterval = 1.5,
         selection = parsed.selection ?? []
     }
 
-    return FigmaSnapshot(status: status, health: health, file: file, page: page, selection: selection)
+    return FigmaSnapshot(status: status, health: health, file: file, page: page,
+                         selection: selection,
+                         figmaRunning: probes.figmaRunning(), cdpOk: probes.cdpReachable(cdpPort))
 }
 
 /// Polls on a timer and reports what changed, like `FigmaContextWatcher` does.
 public final class FigmaWatcher {
     private let interval: TimeInterval
+    private let probes: FigmaProbes
     private let onChange: (FigmaSnapshot) -> Void
     private let queue = DispatchQueue(label: "de.designdone.figmaclaude.figma-poll")
     private var timer: DispatchSourceTimer?
@@ -122,8 +144,10 @@ public final class FigmaWatcher {
 
     public private(set) var snapshot: FigmaSnapshot = .empty
 
-    public init(interval: TimeInterval = 2.5, onChange: @escaping (FigmaSnapshot) -> Void) {
+    public init(interval: TimeInterval = 2.5, probes: FigmaProbes = FigmaProbes(),
+                onChange: @escaping (FigmaSnapshot) -> Void) {
         self.interval = interval
+        self.probes = probes
         self.onChange = onChange
     }
 
@@ -136,7 +160,7 @@ public final class FigmaWatcher {
         timer.schedule(deadline: .now(), repeating: interval)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
-            let next = pollFigma()
+            let next = pollFigma(probes: self.probes)
             let changed = next != self.snapshot
             self.snapshot = next
             gate.signal()
@@ -151,6 +175,21 @@ public final class FigmaWatcher {
     public func stop() {
         timer?.cancel()
         timer = nil
+    }
+
+    /// One poll right now, outside the timer's rhythm.
+    ///
+    /// Every menu action changes the connection underneath — waiting up to 2.5 s for the dot and
+    /// the label to catch up reads as "nothing happened". Port of the `refresh()` the Electron
+    /// host calls after each action (`app/src/main.ts:549`).
+    public func refresh() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let next = pollFigma(probes: self.probes)
+            let changed = next != self.snapshot
+            self.snapshot = next
+            if changed { DispatchQueue.main.async { self.onChange(next) } }
+        }
     }
 
     /// Waits for the first poll to land, capped.

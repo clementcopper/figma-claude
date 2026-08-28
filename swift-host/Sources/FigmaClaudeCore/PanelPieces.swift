@@ -19,6 +19,35 @@ public func resolveTheme(setting: ThemeSetting?, systemPrefersDark: Bool) -> The
     }
 }
 
+/// The three appearance rows, in the order they are shown. One list, so the Figma menu and the
+/// menu bar cannot end up offering different words for the same setting.
+public let appearanceChoices: [(setting: ThemeSetting, label: String)] = [
+    (.system, "System — follow macOS"), (.light, "Light"), (.dark, "Dark")
+]
+
+// MARK: - Which connection mode the CLI is driven in
+
+public enum FigmaMode: String, CaseIterable { case yolo, safe, browser }
+
+/// What each mode is, in the words the menu shows.
+public func modeLabel(_ mode: FigmaMode) -> String {
+    switch mode {
+    case .yolo: return "Yolo — patched app, CDP"
+    case .safe: return "Safe — plugin, no patching"
+    case .browser: return "Browser — Chromium profile"
+    }
+}
+
+/// `connect`, with the flag the mode needs. Yolo is the CLI's default and takes none — port of
+/// `app/src/main.ts:564`.
+public func connectArguments(mode: FigmaMode?) -> [String] {
+    switch mode ?? .yolo {
+    case .yolo: return ["connect"]
+    case .safe: return ["connect", "--safe"]
+    case .browser: return ["connect", "--browser"]
+    }
+}
+
 // MARK: - Keeping the five-hour limit row honest (limit-window.ts)
 
 public struct LimitFields: Equatable {

@@ -17,10 +17,47 @@ public struct PanelConfig: Decodable {
     /// An explicit command or a path to a checkout, when the CLI is not on the PATH.
     public var figmaCli: String = ""
     public var theme: String = "system"
+    /// Which connection mode `connect` runs in — `yolo`, `safe` or `browser`.
+    public var figmaMode: String = "yolo"
 
     /// Synthesised memberwise init is internal, and `Decodable` suppresses the empty one — the
     /// defaults above are only reachable from outside with this.
     public init() {}
+
+    /// Every key optional, defaults for the rest.
+    ///
+    /// The synthesised `init(from:)` fails the whole decode when one key is missing, and the file
+    /// is shared: the Electron host writes keys this one does not know, and this one writes keys
+    /// an older config does not have. `figmaMode` alone would have made every existing panel.json
+    /// unreadable — and an unreadable config silently falls back to defaults, which loses the
+    /// working directory. The Electron host merges over its defaults for the same reason
+    /// (`app/src/host/config.ts:41`).
+    private enum CodingKeys: String, CodingKey {
+        case command, args, shell, env, directMode, cwd, statusLine, figmaFile, figmaCli
+        case theme, figmaMode
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        func string(_ key: CodingKeys, _ fallback: String) -> String {
+            (try? container.decodeIfPresent(String.self, forKey: key)) .flatMap { $0 } ?? fallback
+        }
+        func flag(_ key: CodingKeys, _ fallback: Bool) -> Bool {
+            (try? container.decodeIfPresent(Bool.self, forKey: key)).flatMap { $0 } ?? fallback
+        }
+
+        command = string(.command, "claude")
+        args = (try? container.decodeIfPresent([String].self, forKey: .args)).flatMap { $0 } ?? []
+        shell = string(.shell, "")
+        env = (try? container.decodeIfPresent([String: String].self, forKey: .env)).flatMap { $0 } ?? [:]
+        directMode = flag(.directMode, true)
+        cwd = string(.cwd, "")
+        statusLine = flag(.statusLine, true)
+        figmaFile = string(.figmaFile, "")
+        figmaCli = string(.figmaCli, "")
+        theme = string(.theme, "system")
+        figmaMode = string(.figmaMode, "yolo")
+    }
 
     public static let path = NSHomeDirectory() + "/.figma-ds-cli/panel.json"
 
@@ -44,6 +81,43 @@ public struct PanelConfig: Decodable {
               isDirectory.boolValue else { return nil }
         return expanded
     }
+}
+
+/// Writes a handful of keys back into `panel.json` without touching anything else in it.
+///
+/// The file is shared with the Electron host, which knows keys this one has never heard of
+/// (`zoom`, `autoRun`, `statusLineProvider`, …). Decoding into `PanelConfig` and encoding it back
+/// would drop every one of them, so the merge happens on the raw dictionary.
+///
+/// A file that exists but does not parse is left alone and reported as a failure: it is the
+/// user's file, and overwriting it would take away the only copy of whatever they were editing.
+@discardableResult
+public func updatePanelConfig(_ patch: [String: Any], path: String = PanelConfig.path) -> Bool {
+    var object: [String: Any] = [:]
+    if let data = FileManager.default.contents(atPath: path) {
+        guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        object = parsed
+    }
+
+    for (key, value) in patch { object[key] = value }
+
+    guard let out = try? JSONSerialization.data(withJSONObject: object,
+                                                options: [.prettyPrinted, .sortedKeys])
+    else { return false }
+
+    let directory = (path as NSString).deletingLastPathComponent
+    try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    do {
+        try out.write(to: URL(fileURLWithPath: path))
+    } catch {
+        return false
+    }
+    // Same 0600 the Electron host writes with: the file carries the working directory and the
+    // bound Figma file, and nothing else on the machine needs to read it.
+    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+    return true
 }
 
 /// Where FigmaClaude writes the `figma-cli` launcher when the CLI is a checkout rather than an

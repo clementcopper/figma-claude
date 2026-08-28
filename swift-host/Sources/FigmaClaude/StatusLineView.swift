@@ -148,9 +148,25 @@ final class StatusLineView: NSView {
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
     }
 
+    /// Where the band ends up against what it needs — the number behind "squeezed".
+    func measureBands() -> String {
+        String(format: "height %.1f | fitting %.1f | selection %@",
+               bounds.height, fittingSize.height, selectionRow.isHidden ? "hidden" : "shown")
+    }
+
+    /// The band's height comes from `fittingSize`, and that is read in `PanelContentView.layout()`
+    /// — which nothing schedules on its own. Without this the row keeps the height it had before
+    /// the content changed and the text is squeezed into it: visible the moment a Figma selection
+    /// adds its band, and just as true when the limit row appears or goes.
+    private func invalidateLayout() {
+        needsLayout = true
+        superview?.needsLayout = true
+    }
+
     /// A tab Claude has not rendered in yet carries no numbers — the row stays empty rather than
     /// showing a full bar reading `0 / 0`.
     func render(_ snapshot: StatusLineSnapshot?) {
+        defer { invalidateLayout() }
         guard let snapshot, !snapshot.isEmpty else {
             for label in [modelLabel, percentLabel, tokensLabel,
                           limitLeft, compactedLabel, limitRight, cwdLabel] {
@@ -205,6 +221,7 @@ final class StatusLineView: NSView {
     /// The Figma selection gets a band of its own above the separator — and the band disappears
     /// entirely when nothing is selected, rather than leaving an empty line where it was.
     func renderSelection(_ nodes: [SelectedNode]) {
+        defer { invalidateLayout() }
         let empty = nodes.isEmpty
         selectionRow.isHidden = empty
         separator.isHidden = empty

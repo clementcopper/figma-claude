@@ -71,5 +71,52 @@ enum FigmaStatusTests {
             Checks.expect(figmaButtonLabel(daemon: .ok, figma: .ok, file: "D", page: "Landing"), "D/Landing")
             Checks.expect(figmaButtonLabel(daemon: .ok, figma: .ok, file: "D", page: ""), "D")
         }
+
+        // The three lights the toolbar draws are the menu's three rows — one function for both,
+        // so a light and the row above it cannot say different things.
+        do {
+            let connected = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222,
+                                       health: Health(mode: "yolo", cdp: true))
+            Checks.expect(connected.map(\.state), [.ok, .ok, .ok])
+
+            // Daemon stopped: Figma is still open and the port still answers — only the third
+            // light goes out. Two red circles for this state was the fault worth fixing.
+            let daemonGone = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222, health: nil)
+            Checks.expect(daemonGone.map(\.state), [.ok, .ok, .off])
+            Checks.expect(daemonGone[2].value, "not running")
+
+            // Figma closed: it is not running, the port is gone with it, the daemon reaches nothing.
+            let figmaGone = statusRows(figmaRunning: false, cdpOk: false, cdpPort: 9222,
+                                       health: Health(mode: "yolo", cdp: false))
+            Checks.expect(figmaGone.map(\.state), [.warn, .off, .warn])
+
+            // Safe Mode: the port is unused rather than broken.
+            let safeMode = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,
+                                      health: Health(mode: "safe", plugin: true))
+            Checks.expect(safeMode.map(\.state), [.ok, .warn, .ok])
+            Checks.expect(safeMode[1].value, "unused (plugin)")
+        }
+
+        // A change in either of the two probes has to reach the window, so it has to count as a
+        // different snapshot — the watcher only reports what changed.
+        do {
+            var a = FigmaSnapshot.empty
+            var b = FigmaSnapshot.empty
+            b.figmaRunning = true
+            Checks.expect(a == b, false)
+            a.figmaRunning = true
+            Checks.expect(a == b, true)
+            b.cdpOk = true
+            Checks.expect(a == b, false)
+        }
+
+        // The poll carries both probes into the snapshot rather than answering for the daemon only.
+        do {
+            let snapshot = pollFigma(healthTimeout: 0.05, evalTimeout: 0.05,
+                                     probes: FigmaProbes(figmaRunning: { true },
+                                                         cdpReachable: { _ in true }))
+            Checks.expect(snapshot.figmaRunning, true)
+            Checks.expect(snapshot.cdpOk, true)
+        }
     }
 }

@@ -18,9 +18,16 @@ final class ToolbarView: NSView {
     static let barHeight: CGFloat = 40
 
     private let cwdButton = IconLabelButton(symbol: "folder")
-    private let figmaButton = HoverButton()
-    private let statusDot = DotView()
+    /// Three lights inside the button, not beside it — the same three the menu lists: Figma, the
+    /// debug port, the daemon. One source for both (`statusRows`), so a light and the row above it
+    /// can never say different things. Outside the button, the hover field ended where the state
+    /// began.
+    private let figmaButton = IconLabelButton(icons: [nil, nil, nil], spacing: 5, padding: 7)
+    /// The label the last poll produced, restored when a toast expires.
+    private var lastLabel = "offline"
     private var resumeButton = HoverButton()
+    /// While a toast is up, the poll must not paint the file name back over it.
+    private var toastUntil: Date?
     private var continueButton = HoverButton()
     private var restartButton = HoverButton()
 
@@ -32,17 +39,11 @@ final class ToolbarView: NSView {
         cwdButton.action = #selector(pickDirectory)
         cwdButton.setContentCompressionResistancePriority(.init(250), for: .horizontal)
 
-        figmaButton.bezelStyle = .inline
-        figmaButton.isBordered = false
-        figmaButton.font = .systemFont(ofSize: 11)
         figmaButton.target = self
         figmaButton.action = #selector(showFigmaMenu)
-        figmaButton.lineBreakMode = .byTruncatingMiddle
-        figmaButton.horizontalPadding = 7
-        figmaButton.minimumHeight = 26
         // The file and page names are whatever Figma has open; they must never decide how wide
         // the window is.
-        figmaButton.setContentCompressionResistancePriority(.init(300), for: .horizontal)
+        figmaButton.setContentCompressionResistancePriority(.init(200), for: .horizontal)
 
         // The three the extension's view/title group had, in that order. SF Symbols rather than
         // the panel's redrawn codicons: they carry the system's own weight and colour, which is
@@ -61,7 +62,7 @@ final class ToolbarView: NSView {
         //
         // "New Tab" is deliberately absent: the strip on the right already carries a `+` that
         // does the same thing, and two identical buttons are not two features.
-        let rightGroup = NSStackView(views: [statusDot, figmaButton,
+        let rightGroup = NSStackView(views: [figmaButton,
                                              resumeButton, continueButton, restartButton])
         rightGroup.orientation = .horizontal
         rightGroup.spacing = 8
@@ -80,9 +81,7 @@ final class ToolbarView: NSView {
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
             row.trailingAnchor.constraint(equalTo: trailingAnchor),
             row.topAnchor.constraint(equalTo: topAnchor),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor),
-            statusDot.widthAnchor.constraint(equalToConstant: 7),
-            statusDot.heightAnchor.constraint(equalToConstant: 7)
+            row.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
     }
 
@@ -120,6 +119,36 @@ final class ToolbarView: NSView {
         return view
     }
 
+    /// Who gives way, and by how much.
+    ///
+    /// Not left to the priorities: they decide *which* view is compressed, not what it does with
+    /// the loss, and a text field handed too little space squeezes rather than shortens. Here the
+    /// two labels are given an explicit width out of what the row has left over — the rule itself
+    /// is `toolbarLabelBudgets`, so it can be checked without a window.
+    override func layout() {
+        super.layout()
+
+        let icons = 3 * 26 + 2 * 8            // resume, continue, restart and the gaps between them
+        // Both label gaps are taken off the top, even though a dropped label gives its own back:
+        // counted the other way round the row came out ten points too wide at 340 — measured, the
+        // icon group ran past the tab strip.
+        // Five gaps of eight, not four: the row is [folder | spacer | right group], so the spacer
+        // has one on each side, and the right group has one more between the Figma button and the
+        // icons. Counting four put the row exactly eight points too wide at 360 — the trailing
+        // inset vanished and the icons touched the tab strip.
+        let fixed = 8 + cwdButton.minimumWidth
+            + 8 + 8 + figmaButton.minimumWidth
+            + 8 + CGFloat(icons) + 8
+        let budgets = toolbarLabelBudgets(available: Double(bounds.width - fixed),
+                                          cwdWanted: Double(cwdButton.labelWanted),
+                                          figmaWanted: Double(figmaButton.labelWanted),
+                                          cwdGap: Double(cwdButton.labelGap),
+                                          figmaGap: Double(figmaButton.labelGap))
+        cwdButton.setLabelBudget(CGFloat(budgets.cwd))
+        figmaButton.setLabelBudget(CGFloat(budgets.figma))
+        super.layout()
+    }
+
     override func updateLayer() {
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
     }
@@ -127,14 +156,36 @@ final class ToolbarView: NSView {
     /// Draws one snapshot. The label comes from the same pure function the Electron host uses, so
     /// a difference between the two is a difference in the data, never in how it was phrased.
     func render(_ snapshot: FigmaSnapshot) {
-        let connected = snapshot.status.figma == .ok
-        statusDot.color = connected ? .systemGreen
-            : (snapshot.status.daemon == .ok ? .systemOrange : .systemRed)
+        // Built from the menu's own rows, in the menu's order: Figma, CDP, Daemon.
+        let rows = statusRows(figmaRunning: snapshot.figmaRunning, cdpOk: snapshot.cdpOk,
+                              cdpPort: cdpPort, health: snapshot.health)
+        figmaButton.setIcons(rows.map { statusIcon($0.state) })
 
-        figmaButton.title = figmaButtonLabel(daemon: snapshot.status.daemon,
-                                             figma: snapshot.status.figma,
-                                             file: snapshot.file, page: snapshot.page)
-        figmaButton.toolTip = snapshot.status.tooltip
+        lastLabel = figmaButtonLabel(daemon: snapshot.status.daemon,
+                                     figma: snapshot.status.figma,
+                                     file: snapshot.file, page: snapshot.page)
+        // The three rows in words, so the state is readable without opening the menu.
+        figmaButton.toolTip = rows.map { "\($0.label): \($0.value)" }.joined(separator: " · ")
+        // A poll lands every 2.5 s; without this it would wipe a message after a fraction of the
+        // time it is meant to be readable.
+        guard toastUntil == nil else { return }
+        figmaButton.text = lastLabel
+    }
+
+    /// What an action did, where the file name usually is.
+    ///
+    /// The menu closes on the click that started the action, so a finished `Restart daemon` has
+    /// nowhere else to report itself. Port of `panelToast` (`app/src/main.ts:697`), same 2.6 s.
+    func toast(_ text: String) {
+        let line = text.split(separator: "\n").last.map(String.init) ?? text
+        figmaButton.text = line
+        let until = Date().addingTimeInterval(2.6)
+        toastUntil = until
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { [weak self] in
+            guard let self, self.toastUntil == until else { return }
+            self.toastUntil = nil
+            self.figmaButton.text = self.lastLabel
+        }
     }
 
     /// The folder name alone. The full path stays in the tooltip: it answers "which Business",
@@ -158,7 +209,7 @@ final class ToolbarView: NSView {
     /// Every gap in the row, measured after layout. Judging spacing by eye on a screenshot is
     /// guessing; these are the numbers.
     func measureRow() -> String {
-        let items: [(String, NSView)] = [("cwd", cwdButton), ("dot", statusDot),
+        let items: [(String, NSView)] = [("cwd", cwdButton),
                                          ("figma", figmaButton), ("resume", resumeButton),
                                          ("continue", continueButton), ("restart", restartButton)]
         var parts: [String] = []
@@ -171,6 +222,10 @@ final class ToolbarView: NSView {
                 parts.append(String(format: "[gap %.1f]", gap))
             }
         }
+        // Whether the two labels are still there — "symbols only" has to be readable from the
+        // measurement, not guessed at from the picture.
+        parts.append("| labels cwd=\(cwdButton.hasLabel ? "on" : "off") "
+                     + "figma=\(figmaButton.hasLabel ? "on" : "off")")
         return parts.joined(separator: " ")
     }
 
@@ -179,16 +234,4 @@ final class ToolbarView: NSView {
     @objc private func resumeSession() { onResume?() }
     @objc private func continueSession() { onContinue?() }
     @objc private func restartSession() { onRestart?() }
-}
-
-
-/// The connection light. A drawn circle rather than a `●` glyph: a text field carries an
-/// alignment inset that would make the gap beside it differ from every other gap in the row.
-private final class DotView: NSView {
-    var color: NSColor = .systemGray { didSet { needsDisplay = true } }
-
-    override func draw(_ dirtyRect: NSRect) {
-        color.setFill()
-        NSBezierPath(ovalIn: bounds).fill()
-    }
 }

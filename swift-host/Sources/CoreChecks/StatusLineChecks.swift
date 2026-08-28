@@ -12,6 +12,144 @@ enum StatusLineTests {
         secondRow()
         emptiness()
         roundTrip()
+        remembered()
+        watcherRemembers()
+    }
+
+    /// The whole path through the file system, because that is where the fault was: a tab whose
+    /// second snapshot has no rate limits must keep the ones the first one brought.
+    static func watcherRemembers() {
+        let dir = NSTemporaryDirectory() + "figmaclaude-watcher-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        let watcher = StatusLineWatcher(dir: dir, interval: 0.05) { _, _ in }
+        watcher.start()
+        defer { watcher.stop() }
+
+        // What a session that has made a request reports.
+        var full = StatusLineSnapshot()
+        full.model = "Opus 5"
+        full.cwd = "~/Business"
+        full.totalTokens = 1_000_000
+        full.usedTokens = 63_723
+        full.usedPercent = 6.4
+        full.sessionPercent = 68
+        full.sessionResetsAt = Date().timeIntervalSince1970 + 3600
+        full.weekPercent = 87
+        full.weekResetsAt = "01:00"
+        full.updatedAt = Date().timeIntervalSince1970
+        try? writeSnapshot(full, dir: dir, tabId: "tab-1")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        Checks.expect(watcher.snapshot(for: "tab-1")?.sessionPercent, 68)
+
+        // What Claude Code writes right after `--continue`: no rate limits at all, no window size.
+        var thin = StatusLineSnapshot()
+        thin.model = "Opus 5"
+        thin.cwd = "~/Business"
+        thin.updatedAt = Date().timeIntervalSince1970 + 1
+        try? writeSnapshot(thin, dir: dir, tabId: "tab-1")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        let merged = watcher.snapshot(for: "tab-1")
+        Checks.expect(merged?.sessionPercent, 68)
+        Checks.expect(merged?.weekPercent, 87)
+        // The scale comes back too, so the bar keeps a length — the usage stays what was reported.
+        Checks.expect(merged?.totalTokens, 1_000_000)
+        Checks.expect(merged?.usedTokens, 0)
+
+        // Remembering never goes backwards. The first scan reads the whole directory in whatever
+        // order the file system hands it over, and an older file must not win.
+        var older = full
+        older.sessionPercent = 12
+        older.updatedAt = full.updatedAt - 3600
+        try? writeSnapshot(older, dir: dir, tabId: "tab-2")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        try? writeSnapshot(thin, dir: dir, tabId: "tab-3")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        Checks.expect(watcher.snapshot(for: "tab-3")?.sessionPercent, 68)
+
+        // A tab that has never rendered starts from the directory's remembered state.
+        let seeded = watcher.initialSnapshot(cwd: "~/Business")
+        Checks.expect(seeded?.totalTokens, 1_000_000)
+        Checks.expect(seeded?.sessionPercent, 68)
+        // An unknown directory still names itself rather than answering nothing.
+        Checks.expect(watcher.initialSnapshot(cwd: "/tmp/never-seen")?.cwd, "/tmp/never-seen")
+        Checks.expectNil(watcher.initialSnapshot(cwd: ""))
+    }
+
+    /// What keeps the Session and Week row standing when Claude Code sends a payload without any
+    /// rate limits — which is every render after `--continue` until the first request.
+    static func remembered() {
+        let now = Date().timeIntervalSince1970 * 1000
+        var limits = RememberedLimits()
+        limits.sessionPercent = 68
+        limits.sessionResetsAt = now / 1000 + 3600
+        limits.sessionResetsInMin = 60
+        limits.weekPercent = 87
+        limits.weekResetsAt = "01:00"
+
+        // A thin snapshot gets them all.
+        var thin = StatusLineSnapshot()
+        thin.model = "Opus 5"
+        let filled = applyingLimits(limits, to: thin, now: now)
+        Checks.expect(filled.sessionPercent, 68)
+        Checks.expect(filled.weekPercent, 87)
+        Checks.expect(filled.weekResetsAt, "01:00")
+        // Recomputed from the absolute point, not copied: the remembered minutes may be old.
+        Checks.expect(filled.sessionResetsInMin, 60)
+
+        // A live value always wins over a remembered one.
+        var live = StatusLineSnapshot()
+        live.sessionPercent = 12
+        live.weekPercent = 3
+        let kept = applyingLimits(limits, to: live, now: now)
+        Checks.expect(kept.sessionPercent, 12)
+        Checks.expect(kept.weekPercent, 3)
+
+        // A window that has already reset takes the percentage with it rather than showing a
+        // spent limit that is over.
+        var expired = RememberedLimits()
+        expired.sessionPercent = 100
+        expired.sessionResetsAt = now / 1000 - 60
+        let gone = applyingLimits(expired, to: StatusLineSnapshot(), now: now)
+        Checks.expectNil(gone.sessionPercent)
+        Checks.expectNil(gone.sessionResetsInMin)
+        // And the point itself is not carried over either: a row that says "Limit reset" is about
+        // a live limit running out, not about a window that closed hours ago.
+        Checks.expectNil(gone.sessionResetsAt)
+        Checks.expectNil(secondaryRowText(gone).map { $0.left }.flatMap { $0.isEmpty ? nil : $0 })
+
+        // Nothing remembered leaves the snapshot exactly as it was.
+        Checks.expect(applyingLimits(nil, to: live, now: now), live)
+        // A snapshot with no limits of its own is not worth remembering.
+        Checks.expectNil(limitFields(of: thin))
+        Checks.expect(limitFields(of: filled)?.weekPercent, 87)
+
+        // The scale may come from memory, the usage never: a fresh session really is at zero.
+        var remembered = StatusLineSnapshot()
+        remembered.totalTokens = 1_000_000
+        remembered.usedTokens = 63_723
+        var fresh = StatusLineSnapshot()
+        fresh.usedTokens = 47_524
+        let scaled = applyingWindowSize(fresh, remembered: remembered)
+        Checks.expect(scaled.totalTokens, 1_000_000)
+        Checks.expect(scaled.usedTokens, 47_524)
+        Checks.expect(scaled.usedPercent, 4.8)
+        // A payload that brought its own window size is left alone.
+        var own = StatusLineSnapshot()
+        own.totalTokens = 200_000
+        own.usedTokens = 10_000
+        own.usedPercent = 5
+        Checks.expect(applyingWindowSize(own, remembered: remembered).totalTokens, 200_000)
+        Checks.expect(applyingWindowSize(fresh, remembered: nil).totalTokens, 0)
+
+        // One key for the same directory written two ways, and never a path separator in it.
+        let home = "/Users/x"
+        Checks.expect(cwdKey("/Users/x/p", home: home), cwdKey("~/p", home: home))
+        Checks.expect(cwdKey("/Users/x/p", home: home).contains("/"), false)
+        Checks.expect(cwdKey("/Users/x/p", home: home).count, 16)
+        Checks.expect(cwdKey("/Users/x/p", home: home) == cwdKey("/Users/x/q", home: home), false)
     }
 
     static func percentages() {

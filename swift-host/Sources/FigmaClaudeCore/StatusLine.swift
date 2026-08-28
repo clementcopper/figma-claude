@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Claude Code's own status line: model, context, and the two rate limits.
@@ -238,6 +239,117 @@ public func secondaryRowText(_ snapshot: StatusLineSnapshot,
 
     if left.isEmpty && compactedText.isEmpty && weekText.isEmpty { return nil }
     return (left, compactedText, weekText)
+}
+
+// MARK: - What is remembered between sessions
+
+/// The account's rate limits, which belong to no single tab.
+///
+/// Claude Code leaves `rate_limits` out of its status line payload until a request has been made
+/// in that process, so the first snapshot after `--continue` carries no Session and no Week — and
+/// it overwrites the tab's previous one. These fields are what puts the row back.
+public struct RememberedLimits: Codable, Equatable {
+    public var sessionPercent: Double?
+    public var sessionResetsAt: Double?
+    public var sessionResetsInMin: Int?
+    public var weekPercent: Double?
+    public var weekResetsAt: String?
+    public var updatedAt: Double = 0
+
+    public init() {}
+}
+
+/// The limit fields worth keeping, or nil when the snapshot has none — a snapshot without them
+/// must never erase what another one already knew.
+public func limitFields(of snapshot: StatusLineSnapshot) -> RememberedLimits? {
+    guard snapshot.sessionPercent != nil || snapshot.weekPercent != nil else { return nil }
+    var limits = RememberedLimits()
+    limits.sessionPercent = snapshot.sessionPercent
+    limits.sessionResetsAt = snapshot.sessionResetsAt
+    limits.sessionResetsInMin = snapshot.sessionResetsInMin
+    limits.weekPercent = snapshot.weekPercent
+    limits.weekResetsAt = snapshot.weekResetsAt
+    limits.updatedAt = snapshot.updatedAt
+    return limits
+}
+
+/// Fills only the fields the snapshot does not have — a live value always beats a remembered one.
+///
+/// `applyResetWindow` runs afterwards, because a remembered "resets in 84 min" is a lie an hour
+/// later and the rule for that lives in one tested place.
+public func applyingLimits(_ limits: RememberedLimits?, to snapshot: StatusLineSnapshot,
+                           now: Double = Date().timeIntervalSince1970 * 1000) -> StatusLineSnapshot {
+    guard let limits else { return snapshot }
+    var merged = snapshot
+
+    // A remembered window that has already passed is old news, not news. Filling it in would put
+    // "Limit reset" in the row — which is meant for the moment a *live* percentage runs out, not
+    // for a five-hour window that ended yesterday.
+    let sessionAlive = (limits.sessionResetsAt ?? 0) * 1000 > now
+    if sessionAlive {
+        if merged.sessionPercent == nil { merged.sessionPercent = limits.sessionPercent }
+        if merged.sessionResetsAt == nil { merged.sessionResetsAt = limits.sessionResetsAt }
+        if merged.sessionResetsInMin == nil { merged.sessionResetsInMin = limits.sessionResetsInMin }
+    }
+    if merged.weekPercent == nil { merged.weekPercent = limits.weekPercent }
+    if merged.weekResetsAt == nil { merged.weekResetsAt = limits.weekResetsAt }
+
+    let windowed = applyResetWindow(
+        LimitFields(sessionPercent: merged.sessionPercent,
+                    sessionResetsAt: merged.sessionResetsAt,
+                    sessionResetsInMin: merged.sessionResetsInMin), now: now)
+    merged.sessionPercent = windowed.sessionPercent
+    merged.sessionResetsAt = windowed.sessionResetsAt
+    merged.sessionResetsInMin = windowed.sessionResetsInMin
+    return merged
+}
+
+/// Gives the bar a scale before Claude reports one. The **usage** is never taken from memory: a
+/// fresh session really is at zero, and the previous session's tokens would be a lie rather than
+/// a placeholder.
+public func applyingWindowSize(_ snapshot: StatusLineSnapshot,
+                               remembered: StatusLineSnapshot?) -> StatusLineSnapshot {
+    guard snapshot.totalTokens <= 0, let remembered, remembered.totalTokens > 0
+    else { return snapshot }
+    var filled = snapshot
+    filled.totalTokens = remembered.totalTokens
+    filled.usedPercent = (Double(snapshot.usedTokens) / Double(remembered.totalTokens) * 1000)
+        .rounded() / 10
+    return filled
+}
+
+/// File name for a directory's remembered snapshot. Hashed rather than escaped, so a path with
+/// separators in it cannot climb out of the directory; collapsed first, so `/Users/x/p` and `~/p`
+/// are one key. Port of `hashCwd` in `app/src/host/statusLineWatcher.ts:38`.
+public func cwdKey(_ cwd: String, home: String = NSHomeDirectory()) -> String {
+    let digest = Insecure.SHA1.hash(data: Data(collapseHome(cwd, home: home).utf8))
+    return String(digest.map { String(format: "%02x", $0) }.joined().prefix(16))
+}
+
+/// Where the remembered files live, beside the per-tab snapshots.
+public func rememberedDir(_ dir: String = statusLineDir()) -> String { dir + "/last" }
+
+/// The account's remembered limits, or nil when nothing has been written yet.
+public func readRememberedLimits(dir: String = statusLineDir()) -> RememberedLimits? {
+    guard let data = FileManager.default.contents(atPath: rememberedDir(dir) + "/limits.json")
+    else { return nil }
+    return try? JSONDecoder().decode(RememberedLimits.self, from: data)
+}
+
+/// The last snapshot seen for a working directory.
+public func readRememberedSnapshot(cwd: String?, dir: String = statusLineDir()) -> StatusLineSnapshot? {
+    guard let cwd, !cwd.isEmpty,
+          let data = FileManager.default.contents(atPath: "\(rememberedDir(dir))/\(cwdKey(cwd)).json")
+    else { return nil }
+    return try? JSONDecoder().decode(StatusLineSnapshot.self, from: data)
+}
+
+/// What the window draws for a tab: what the producer wrote, plus what it could not know.
+public func resolvedSnapshot(_ written: StatusLineSnapshot,
+                             dir: String = statusLineDir()) -> StatusLineSnapshot {
+    applyingLimits(readRememberedLimits(dir: dir),
+                   to: applyingWindowSize(written,
+                                          remembered: readRememberedSnapshot(cwd: written.cwd, dir: dir)))
 }
 
 // MARK: - Writing and reading the snapshot file

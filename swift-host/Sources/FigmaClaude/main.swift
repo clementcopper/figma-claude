@@ -261,6 +261,8 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     private var prompts: PromptDetector!
     /// Tabs whose process is being replaced on purpose — their exit is not worth reporting.
     private var respawning: Set<String> = []
+    /// An action that touches the daemon or Figma is running; the menu is read-only until it ends.
+    private var figmaBusy = false
     private lazy var cli = resolveCli(appRoot: Bundle.main.bundlePath, configured: PanelConfig.load().figmaCli)
     private let container = TerminalColumn()
     /// What the terminal column should be. The window has no other opinion about its width.
@@ -288,7 +290,14 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
                           styleMask: [.titled, .closable, .resizable, .miniaturizable],
                           backing: .buffered, defer: false)
         var render: ((FigmaSnapshot) -> Void)?
-        watcher = FigmaWatcher { snapshot in render?(snapshot) }
+        // `NSWorkspace` answers "is Figma running" from a list the system already keeps — no
+        // process start every 2.5 seconds, which is what `pgrep -x Figma` would cost now that the
+        // toolbar wants this on every poll rather than only when the menu opens.
+        watcher = FigmaWatcher(probes: FigmaProbes(figmaRunning: {
+            NSWorkspace.shared.runningApplications.contains {
+                $0.bundleIdentifier == "com.figma.Desktop"
+            }
+        })) { snapshot in render?(snapshot) }
         super.init()
         render = { [weak self] snapshot in
             self?.toolbar.render(snapshot)
@@ -297,9 +306,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         watcher.start()
 
         let config = PanelConfig.load()
-        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let theme = resolveTheme(setting: ThemeSetting(rawValue: config.theme), systemPrefersDark: dark)
-        window.appearance = NSAppearance(named: theme == .dark ? .darkAqua : .aqua)
+        applyTheme(ThemeSetting(rawValue: config.theme) ?? .system)
         window.title = "FigmaClaude"
         window.delegate = self
         // An explicit floor, so the answer to "how narrow may this be" is a decision rather than
@@ -434,7 +441,11 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         window.makeFirstResponder(tab.view)
         // Here rather than at each call site: three places bring a tab to the front, and a row
         // that is only redrawn in one of them shows the previous tab's numbers in the other two.
-        statusLine.render(statusWatcher.snapshot(for: tab.id))
+        //
+        // The fallback is what a respawned tab lives on: Claude Code writes no snapshot until it
+        // renders, and after `--continue` its first one carries no rate limits at all.
+        statusLine.render(statusWatcher.snapshot(for: tab.id)
+            ?? statusWatcher.initialSnapshot(cwd: tab.cwd))
     }
 
     func activate(_ index: Int) {
@@ -495,8 +506,82 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
     /// Connecting is the panel's job, never Claude's — the project rules say so, and the CLI's
     /// own `connect` is the one command that can quit a running Figma if it gets it wrong.
+    ///
+    /// The CLI never quits a running Figma, so when the debug port is missing the panel asks and
+    /// does the quitting itself; `connect` then takes its start-fresh path and brings Figma back
+    /// with the flag set. Port of `runConnect` (`app/src/main.ts:561`).
     private func connect() {
-        runInBackground(title: "Connect") { runCli(self.cli, ["connect"]) }
+        let mode = FigmaMode(rawValue: PanelConfig.load().figmaMode) ?? .yolo
+        var restartFigma = false
+
+        if mode == .yolo, !isCdpReachable(port: cdpPort), isFigmaRunning() {
+            let ask = NSAlert()
+            ask.messageText = "Restart Figma to open the debug port?"
+            ask.informativeText =
+                "Figma is running without --remote-debugging-port, which is what the CLI talks to. "
+                + "Save your work first: Figma will be quit and started again."
+            ask.addButton(withTitle: "Restart Figma")
+            ask.addButton(withTitle: "Cancel")
+            guard ask.runModal() == .alertFirstButtonReturn else { return }
+            restartFigma = true
+        }
+
+        runInBackground(title: "Connect") {
+            if restartFigma {
+                quitFigma()
+                // Figma takes a moment to let go of its window and its lock file; `connect`
+                // arriving before that finds a half-dead app.
+                Thread.sleep(forTimeInterval: 2)
+            }
+            return runCli(self.cli, connectArguments(mode: mode), timeout: 120)
+        }
+    }
+
+    /// Restarts the daemon, pinned to the bound file when there is one. `FIGMA_FILE` is the only
+    /// way to say which — the CLI has no flag for it.
+    private func restartDaemon() {
+        let pin = PanelConfig.load().figmaFile
+        runInBackground(title: "Restart daemon") {
+            let result = runCli(self.cli, ["daemon", "restart"],
+                                env: pin.isEmpty ? nil : ["FIGMA_FILE": pin], timeout: 30)
+            // /health needs a moment before it answers; without the wait the menu reads stale.
+            Thread.sleep(forTimeInterval: 1.5)
+            guard result.ok else { return result }
+            return CliResult(ok: true, output: pin.isEmpty ? "Daemon restarted" : "Daemon bound to \(pin)")
+        }
+    }
+
+    private func stopDaemon() {
+        runInBackground(title: "Stop daemon") {
+            let result = runCli(self.cli, ["daemon", "stop"], timeout: 15)
+            return result.ok ? CliResult(ok: true, output: "Daemon stopped") : result
+        }
+    }
+
+    /// Binds the daemon to one open file and keeps Claude's terminals on the same one.
+    private func bindFile(_ title: String) {
+        guard updatePanelConfig(["figmaFile": title]) else { return reportConfigWriteFailed() }
+        restartDaemon()
+    }
+
+    /// A mode is only real once the connection has been made in it, so this connects afterwards —
+    /// same order as `setFigmaMode` (`app/src/main.ts:618`).
+    private func setMode(_ mode: FigmaMode) {
+        guard updatePanelConfig(["figmaMode": mode.rawValue]) else { return reportConfigWriteFailed() }
+        connect()
+    }
+
+    /// `init-agent` in the directory Claude actually runs in — the active tab's, not the repo's.
+    private func prepareWorkingDirectory() {
+        guard let cwd = state.active?.cwd, !cwd.isEmpty else { return pickDirectory() }
+        runInBackground(title: "Prepare this folder") {
+            // `claude`, not `both`: Claude Code reads .claude/rules/, never AGENTS.md.
+            // `--no-setup` drops the "run connect once per session" line — connecting is a
+            // menu item here.
+            let result = runCli(self.cli, ["init-agent", "--tool", "claude", "--no-setup"],
+                                cwd: cwd, timeout: 15)
+            return result.ok ? CliResult(ok: true, output: "Rules written to \(rulesFile)") : result
+        }
     }
 
     /// Writes the selection into the active terminal's input without a newline: sending it stays
@@ -515,6 +600,44 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         runInBackground(title: "Undo last render") { CliResult(ok: true, output: undoLastRender()) }
     }
 
+    /// Which palette the window wears, and the setting written back for the other host.
+    func setTheme(_ setting: ThemeSetting) {
+        guard updatePanelConfig(["theme": setting.rawValue]) else { return reportConfigWriteFailed() }
+        applyTheme(setting)
+    }
+
+    /// `system` deliberately assigns *nothing*.
+    ///
+    /// A window with no appearance of its own follows macOS, so the "follow the system" case is
+    /// handled by AppKit rather than by an observer this app would have to keep in step — and
+    /// switching Light/Dark in System Settings arrives without a single line of code here.
+    private func applyTheme(_ setting: ThemeSetting) {
+        switch setting {
+        case .system: window.appearance = nil
+        case .light: window.appearance = NSAppearance(named: .aqua)
+        case .dark: window.appearance = NSAppearance(named: .darkAqua)
+        }
+
+        // Only the terminal in the hierarchy hears `viewDidChangeEffectiveAppearance`; the other
+        // tabs' views are out of it while they are not shown, and SwiftTerm freezes the colour it
+        // was last handed. Without this a background tab comes back white on a dark window.
+        for tab in state.tabs {
+            TerminalColumn.matchBackground(tab.view, in: container)
+        }
+        container.needsDisplay = true
+    }
+
+    /// The one failure the actions share: panel.json exists but is not JSON, so nothing was
+    /// written. Saying so beats a menu that silently ignores the click.
+    private func reportConfigWriteFailed() {
+        let alert = NSAlert()
+        alert.messageText = "Could not write panel.json"
+        alert.informativeText =
+            "\(PanelConfig.path) is not valid JSON, so it was left untouched. Fix or delete it."
+        alert.alertStyle = .warning
+        alert.beginSheetModal(for: window)
+    }
+
     /// Claude Code keeps its session history per directory, so moving a tab means restarting it —
     /// the process cannot be moved, only replaced.
     private func pickDirectory() {
@@ -530,7 +653,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         }
         guard panel.runModal() == .OK, let chosen = panel.url?.path else { return }
 
-        writeConfiguredCwd(chosen)
+        guard updatePanelConfig(["cwd": chosen]) else { return reportConfigWriteFailed() }
         toolbar.setDirectory(chosen)
         // Replace the active tab so the new directory actually applies.
         if let index = state.activeIndex {
@@ -539,33 +662,49 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         newTab()
     }
 
-    /// panel.json is shared with the Electron host, so only the one key is rewritten — anything
-    /// else in the file belongs to whoever put it there.
-    private func writeConfiguredCwd(_ path: String) {
-        let file = PanelConfig.path
-        var object: [String: Any] = [:]
-        if let data = FileManager.default.contents(atPath: file),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            object = parsed
-        }
-        object["cwd"] = path
-        guard let out = try? JSONSerialization.data(withJSONObject: object,
-                                                    options: [.prettyPrinted, .sortedKeys]) else { return }
-        try? out.write(to: URL(fileURLWithPath: file))
-    }
 
-    /// Runs a CLI action off the main thread and reports it in a sheet. `connect` can take
-    /// seconds — doing it inline would freeze the terminal it exists to serve.
+    /// Runs a CLI action off the main thread and reports it. `connect` can take seconds — doing it
+    /// inline would freeze the terminal the panel exists to serve.
+    ///
+    /// One action at a time, like `withBusy` (`app/src/main.ts:539`): each of them restarts the
+    /// daemon or Figma underneath, and two at once fight each other.
+    ///
+    /// Success lands as a toast in the toolbar, failure as a sheet. The menu closes on the click,
+    /// so there is nowhere else for either to go — and a dialog for every "Daemon restarted" is
+    /// one dismissal too many, while a message that only flashes for a failure is one too few.
     private func runInBackground(title: String, _ work: @escaping () -> CliResult) {
+        guard !figmaBusy else { return }
+        figmaBusy = true
         DispatchQueue.global(qos: .userInitiated).async {
             let result = work()
             DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = title
-                alert.informativeText = result.output.isEmpty ? "Done." : result.output
-                alert.alertStyle = result.ok ? .informational : .warning
-                alert.beginSheetModal(for: self.window)
+                self.figmaBusy = false
+                self.watcher.refresh()
+                guard result.ok else { return self.reportFailure(title: title, result.output) }
+                self.toolbar.toast(result.output.isEmpty ? "\(title) — done" : result.output)
             }
+        }
+    }
+
+    /// Patching Figma needs macOS's "App Management" right, and the CLI can only report that as a
+    /// line of text. The sheet turns it into the one thing that helps: the settings pane itself.
+    private func reportFailure(title: String, _ output: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = output.isEmpty ? "Failed." : output
+        alert.alertStyle = .warning
+
+        let permission = output.range(of: "App Management|permission", options: [.regularExpression,
+                                                                                .caseInsensitive])
+        if permission != nil {
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "OK")
+        }
+        alert.beginSheetModal(for: window) { response in
+            guard permission != nil, response == .alertFirstButtonReturn,
+                  let url = URL(string: "x-apple.systempreferences:com.apple.preference.security"
+                                + "?Privacy_AppBundles") else { return }
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -615,44 +754,104 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     }
 
     /// The status readout and the actions behind it, as a menu rather than the popover the web
-    /// UI builds. The rows are what `bin/fig-status` prints, so the two cannot drift apart.
+    /// UI builds. The rows are what `bin/fig-status` prints, so the two cannot drift apart; every
+    /// section below them comes from `figmaMenuSections`, which is where the rules are checked.
     private func showFigmaMenu(from button: NSButton) {
         let snapshot = watcher.snapshot
+        let config = PanelConfig.load()
+        let cwd = state.active?.cwd ?? ""
         let menu = NSMenu()
+        // AppKit would otherwise ask a validator whether each item is enabled and grey out every
+        // one of them — the model has already decided.
+        menu.autoenablesItems = false
 
-        for row in statusRows(figmaRunning: isFigmaRunning(), cdpOk: isCdpReachable(port: 9222),
-                              cdpPort: 9222, health: snapshot.health) {
-            let mark: String
-            switch row.state {
-            case .ok: mark = "●"
-            case .warn: mark = "◐"
-            case .off: mark = "○"
-            }
-            let item = menu.addItem(withTitle: "\(mark)  \(row.label): \(row.value)",
-                                    action: nil, keyEquivalent: "")
-            item.isEnabled = false
+        // From the poll, not asked again here: the toolbar already draws these three, and two
+        // probes at the moment the menu opens are two chances for it to differ from the button.
+        let cdpOk = snapshot.cdpOk
+        for row in statusRows(figmaRunning: snapshot.figmaRunning, cdpOk: cdpOk,
+                              cdpPort: cdpPort, health: snapshot.health) {
+            // A view of its own rather than a title: these three report, they do not act, so they
+            // must neither grey out nor light up under the pointer. See `MenuStatusRowView`.
+            let item = menu.addItem(withTitle: "", action: nil, keyEquivalent: "")
+            let view = MenuStatusRowView(row)
+            view.frame = NSRect(origin: .zero, size: view.intrinsicContentSize)
+            item.view = view
         }
 
-        menu.addItem(.separator())
+        let input = FigmaMenuInput(
+            figma: snapshot.status.figma,
+            figmaRunning: snapshot.figmaRunning,
+            cdpOk: cdpOk,
+            // Over CDP directly, not `figma-cli files`: a menu is built while the user waits for
+            // it to open, and a Node start there is a visible pause. Asked only when the port
+            // answers — in Safe Mode there is none, and the request would be a dead wait.
+            files: cdpOk ? listOpenFiles() : [],
+            configuredFile: config.figmaFile,
+            snapshotFile: snapshot.file,
+            mode: FigmaMode(rawValue: config.figmaMode) ?? .yolo,
+            theme: ThemeSetting(rawValue: config.theme) ?? .system,
+            undoNodes: parseLastRender(try? String(contentsOfFile: lastRenderFile, encoding: .utf8)),
+            cwd: cwd,
+            agentsReady: hasAgentRules(cwd: cwd),
+            cliFound: cli.isUsable,
+            busy: figmaBusy)
 
-        let connect = menu.addItem(withTitle: "Connect", action: #selector(menuConnect),
-                                   keyEquivalent: "")
-        connect.target = self
-        // Never while it is already connected — the CLI's own `connect` can quit a running Figma.
-        connect.isEnabled = snapshot.status.figma != .ok
+        for section in figmaMenuSections(input) {
+            menu.addItem(.separator())
+            menu.addItem(heading(section.heading))
+            for model in section.items { menu.addItem(menuItem(model)) }
+        }
 
-        let nodes = parseLastRender(try? String(contentsOfFile: lastRenderFile, encoding: .utf8))
-        let undo = menu.addItem(withTitle: undoLabel(nodes), action: #selector(menuUndo),
-                                keyEquivalent: "")
-        undo.target = self
-        undo.isEnabled = !nodes.isEmpty
+        if let note = missingCliNote(cliFound: cli.isUsable) {
+            menu.addItem(.separator())
+            let item = menu.addItem(withTitle: note, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+        }
 
         menu.popUp(positioning: nil,
                    at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
     }
 
-    @objc private func menuConnect() { connect() }
-    @objc private func menuUndo() { undoRender() }
+    /// A section title: the same small capitals the Electron popover uses.
+    private func heading(_ text: String) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.attributedTitle = NSAttributedString(
+            string: text.uppercased(),
+            attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .semibold),
+                         .foregroundColor: NSColor.secondaryLabelColor,
+                         .kern: 0.6])
+        item.isEnabled = false
+        return item
+    }
+
+    private func menuItem(_ model: MenuItem) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.title = model.title
+        item.isEnabled = model.enabled
+        item.toolTip = model.hint
+        // The system's own tick, which is what a Mac menu uses for "this setting is on".
+        item.state = model.marker == .check ? .on : .off
+        if let action = model.action, model.enabled {
+            item.action = #selector(menuAction(_:))
+            item.target = self
+            item.representedObject = action
+        }
+        return item
+    }
+
+    @objc private func menuAction(_ sender: NSMenuItem) {
+        guard let action = sender.representedObject as? MenuAction else { return }
+        switch action {
+        case .connect: connect()
+        case .daemonRestart: restartDaemon()
+        case .daemonStop: stopDaemon()
+        case .bindFile(let title): bindFile(title)
+        case .undo: undoRender()
+        case .initAgent: prepareWorkingDirectory()
+        case .setMode(let mode): setMode(mode)
+        case .setTheme(let setting): setTheme(setting)
+        }
+    }
 
     // MARK: - LocalProcessTerminalViewDelegate
 
@@ -721,7 +920,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var controller: PanelWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -739,7 +938,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About FigmaClaude", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About Figma Claude", action: #selector(showAbout), keyEquivalent: "")
             .target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -760,7 +959,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tabItem.submenu = tabMenu
         main.addItem(tabItem)
 
+        // The same switch as in the Figma menu, reachable without opening it — and where a Mac
+        // user looks for a window setting first.
+        let viewItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+        let appearance = NSMenu(title: "Appearance")
+        appearance.delegate = self
+        for choice in appearanceChoices {
+            let item = appearance.addItem(withTitle: choice.label,
+                                          action: #selector(pickAppearance(_:)), keyEquivalent: "")
+            item.representedObject = choice.setting
+            item.target = self
+        }
+        let appearanceItem = viewMenu.addItem(withTitle: "Appearance", action: nil, keyEquivalent: "")
+        appearanceItem.submenu = appearance
+        viewItem.submenu = viewMenu
+        main.addItem(viewItem)
+
         NSApp.mainMenu = main
+    }
+
+    /// The tick is read from the config each time the submenu opens: the Figma menu writes the
+    /// same key, and a state cached at build time would show the setting from launch.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        let current = ThemeSetting(rawValue: PanelConfig.load().theme) ?? .system
+        for item in menu.items {
+            item.state = (item.representedObject as? ThemeSetting) == current ? .on : .off
+        }
+    }
+
+    @objc private func pickAppearance(_ sender: NSMenuItem) {
+        guard let setting = sender.representedObject as? ThemeSetting else { return }
+        controller?.setTheme(setting)
     }
 
     @objc private func newTab() { controller?.newTab() }
@@ -770,7 +1000,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "FigmaClaude"
+        alert.messageText = "Figma Claude"
         alert.informativeText = aboutCredits(cliVersion: cliVersion())
         alert.runModal()
     }
@@ -803,18 +1033,138 @@ if CommandLine.arguments.contains("--statusline") {
     exit(0)
 }
 
+/// `--appearance light|dark` forces the palette the probes draw in.
+///
+/// A shell run inherits whatever the system is set to, so "it looks right in dark mode" could
+/// only ever be checked by switching System Settings by hand. With this both PNGs come out of
+/// one command and the two can be compared.
+func applyProbeAppearance() {
+    guard let index = CommandLine.arguments.firstIndex(of: "--appearance"),
+          CommandLine.arguments.count > index + 1 else { return }
+    switch CommandLine.arguments[index + 1] {
+    case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+    case "light": NSApp.appearance = NSAppearance(named: .aqua)
+    default: break
+    }
+}
+
+// What the status row would draw for a tab, and what it was built from — the raw snapshot, the
+// remembered pieces, and the two lines as text. `--print-statusline [tabId]`, newest tab if none.
+if let index = CommandLine.arguments.firstIndex(of: "--print-statusline") {
+    let dir = statusLineDir()
+    let named = CommandLine.arguments.count > index + 1
+        && !CommandLine.arguments[index + 1].hasPrefix("--")
+        ? CommandLine.arguments[index + 1] : nil
+    let files = (try? FileManager.default.contentsOfDirectory(atPath: dir))?
+        .filter { $0.hasSuffix(".json") } ?? []
+    let newest = files.max { left, right in
+        let date: (String) -> Date = { name in
+            ((try? FileManager.default.attributesOfItem(atPath: "\(dir)/\(name)"))?[.modificationDate]
+                as? Date) ?? .distantPast
+        }
+        return date(left) < date(right)
+    }
+    guard let tabId = named ?? newest.map({ String($0.dropLast(5)) }),
+          let written = readSnapshot(dir: dir, tabId: tabId) else {
+        print("no snapshot in \(dir)")
+        exit(1)
+    }
+
+    let merged = resolvedSnapshot(written, dir: dir)
+    print("tab \(tabId)")
+    print("written  session=\(written.sessionPercent.map { "\($0)" } ?? "—") "
+          + "resetsAt=\(written.sessionResetsAt.map { "\($0)" } ?? "—") "
+          + "week=\(written.weekPercent.map { "\($0)" } ?? "—") total=\(written.totalTokens)")
+    if let limits = readRememberedLimits(dir: dir) {
+        print("remembered session=\(limits.sessionPercent.map { "\($0)" } ?? "—") "
+              + "resetsAt=\(limits.sessionResetsAt.map { "\($0)" } ?? "—") "
+              + "week=\(limits.weekPercent.map { "\($0)" } ?? "—")")
+    } else {
+        print("remembered —")
+    }
+    print("merged   session=\(merged.sessionPercent.map { "\($0)" } ?? "—") "
+          + "inMin=\(merged.sessionResetsInMin.map { "\($0)" } ?? "—") "
+          + "resetsAt=\(merged.sessionResetsAt.map { "\($0)" } ?? "—")")
+    if let rows = secondaryRowText(merged) {
+        print("row      \"\(rows.left)\"  \"\(rows.compacted)\"  \"\(rows.week)\"")
+    } else {
+        print("row      —")
+    }
+    exit(0)
+}
+
+// Does the status band make room for a Figma selection? Needs a real window, so it cannot live
+// with the offscreen probes.
+if CommandLine.arguments.contains("--probe-selection") {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    RenderProbe.selectionGrowth()
+    exit(0)
+}
+
+// The menu as text, for a shell that cannot open one. It asks the same sources the window does —
+// the debug port, the daemon, panel.json — so a wrong row here is a wrong row there.
+if CommandLine.arguments.contains("--print-menu") {
+    _ = NSApplication.shared
+    let config = PanelConfig.load()
+    let cli = resolveCli(appRoot: Bundle.main.bundlePath, configured: config.figmaCli)
+    let snapshot = pollFigma()
+    let cdpOk = snapshot.cdpOk
+    for row in statusRows(figmaRunning: snapshot.figmaRunning, cdpOk: cdpOk, cdpPort: cdpPort,
+                          health: snapshot.health) {
+        print("\(row.state.rawValue.uppercased())  \(row.label): \(row.value)")
+    }
+    let cwd = config.resolvedCwd() ?? ""
+    let sections = figmaMenuSections(FigmaMenuInput(
+        figma: snapshot.status.figma,
+        figmaRunning: snapshot.figmaRunning,
+        cdpOk: cdpOk,
+        files: cdpOk ? listOpenFiles() : [],
+        configuredFile: config.figmaFile,
+        snapshotFile: snapshot.file,
+        mode: FigmaMode(rawValue: config.figmaMode) ?? .yolo,
+        theme: ThemeSetting(rawValue: config.theme) ?? .system,
+        undoNodes: parseLastRender(try? String(contentsOfFile: lastRenderFile, encoding: .utf8)),
+        cwd: cwd,
+        agentsReady: hasAgentRules(cwd: cwd),
+        cliFound: cli.isUsable))
+    for section in sections {
+        print("\n\(section.heading.uppercased())")
+        for item in section.items {
+            let mark = item.marker == .check ? "✓" : " "
+            print("  \(mark) \(item.enabled ? " " : "·")\(item.title)")
+        }
+    }
+    if let note = missingCliNote(cliFound: cli.isUsable) { print("\n\(note)") }
+    exit(0)
+}
+
 // Draw the status line into a PNG and exit — the only way to look at the layout from a shell
 // that has no Screen Recording permission.
 if let index = CommandLine.arguments.firstIndex(of: "--render-chrome") {
     _ = NSApplication.shared
+    applyProbeAppearance()
     let tabs = CommandLine.arguments.count > index + 1
         ? Int(CommandLine.arguments[index + 1]) ?? 4 : 4
-    RenderProbe.chrome(width: 546, tabs: tabs, to: "/tmp/chrome.png")
+    // `--width` so the row can be measured across the range the window actually has, instead of
+    // dragging the real one and guessing at what happened.
+    let width = CommandLine.arguments.firstIndex(of: "--width")
+        .flatMap { CommandLine.arguments.count > $0 + 1 ? Double(CommandLine.arguments[$0 + 1]) : nil }
+        ?? 546
+    RenderProbe.chrome(width: width, tabs: tabs, to: "/tmp/chrome.png")
+    exit(0)
+}
+
+if CommandLine.arguments.contains("--render-menurows") {
+    _ = NSApplication.shared
+    applyProbeAppearance()
+    RenderProbe.menuRows(to: "/tmp/menurows.png")
     exit(0)
 }
 
 if let index = CommandLine.arguments.firstIndex(of: "--render-statusline") {
     _ = NSApplication.shared
+    applyProbeAppearance()
     let width = CommandLine.arguments.count > index + 1
         ? Double(CommandLine.arguments[index + 1]) ?? 546 : 546
     RenderProbe.run(width: width, to: "/tmp/statusline.png",

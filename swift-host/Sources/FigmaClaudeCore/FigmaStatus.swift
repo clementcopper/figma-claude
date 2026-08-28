@@ -110,6 +110,12 @@ public struct StatusRow: Equatable {
     public var label: String
     public var state: State
     public var value: String
+
+    public init(label: String, state: State, value: String) {
+        self.label = label
+        self.state = state
+        self.value = value
+    }
 }
 
 /// The three rows of the status block — the same readout `bin/fig-status` prints, so the panel
