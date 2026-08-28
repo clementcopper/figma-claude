@@ -103,6 +103,19 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **Kept from the fork:** `bin/fig-start`, `bin/fig-status`, and the non-destructive `connect`. Dropped as redundant: the 60-minute daemon idle timeout (upstream had the identical value), the README workflow section, and the pre-2.x `CLAUDE.md`.
 - **`docs/FIGMA-USAGE.md` is upstream's `CLAUDE.md`, moved byte-identical.** Rename detection then carries upstream edits into it on future merges. Editing it there would trade a short `CLAUDE.md` for a permanent conflict on every pull.
 
+## Swift host (`swift-host/`, AppKit + SwiftTerm)
+
+- **The window sizes itself from the layout.** Pinning the bands to the content view's edges makes AppKit run `_changeWindowFrameFromConstraintsIfNecessary`, which resolves to the *smallest* legal size — 272 points for a saved 380, 117 without a floor. `contentMinSize`, a low-priority width, an `==` constraint, an intrinsic width and re-asserting the size after the first pass were all measured and all failed. The cure is to position the top-level bands by frame and leave Auto Layout to the inside of each band.
+- **Save the content rect, not the window frame.** `NSWindow(contentRect:)` takes content, `window.frame` includes the title bar — a round trip through the saved bounds grew the window 28 points on every launch. It looked like it settled only because it hit the top of the screen.
+- **`NSStackView` spaces by alignment rects, not frames.** `NSTextField` and `NSButton` both report an inset there, so one spacing produced 6, 8, 6 and 4 points in the same row, and two icons constrained to the same width came out 18.0 and 18.5. Subclass with `alignmentRectInsets = NSEdgeInsets()` wherever spacing has to be uniform.
+- **`NSButtonCell` cannot be talked into padding.** It puts an image flush against the leading edge, ignores extra width there, and its image-to-title spacing is not settable; shifting its rects fixes one edge and breaks the other. A button that needs icon *and* label with real padding lays them out itself in a stack.
+- **A view that implements `draw(_:)` never gets `updateLayer`.** A background set there silently stops appearing — which is how the active tab lost its field the moment a close mark was added.
+- **`NSColor.textBackgroundColor.cgColor` freezes the appearance** at the moment it is read, and SwiftTerm converts an assigned colour immediately (`nativeBackgroundColor` calls `getTerminalColor()`). Dynamic colours have to be resolved inside `effectiveAppearance.performAsCurrentDrawingAppearance`.
+- **SwiftTerm's key handling is closed.** `keyDown`, `flagsChanged` and `doCommand` are `public override`, not `open` — nothing about it can be corrected from outside the module. `send(source:data:)` *is* `open` and is where every keystroke leaves for the PTY.
+- **A terminal exiting must not close the app.** The Electron host writes `describePtyExit` into the tab and leaves it standing (`app/src/main.ts:738`); closing the tab instead took the whole window down whenever Claude Code ended.
+- **Two SF Symbols the panel wants need macOS 15** (`arrow.trianglehead.*`). `NSImage(systemSymbolName:)` returns nil for an unknown symbol — no icon at all — so every name is asked for with a fallback.
+- **XCTest needs full Xcode.** With only the Command Line Tools `swift test` stops at "XCTest not available"; the ported cases run as a plain executable target instead.
+
 ## Dead Ends
 
 - **`figma-use` as the transport.** Broken on Node 20+, hardcoded port, failed on FigJam, and `render` delegating to it was one of three disagreeing layout implementations. Upstream dropped the dependency in 2.1.1; `figmaUse()` in `src/lib/cli-core.js` is now just a native shim that kept the name. Do not reintroduce the package.

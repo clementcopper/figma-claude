@@ -1,0 +1,10 @@
+// Runs the ported checks. `swift run CoreChecks` — exits non-zero on the first failing case.
+SessionNameTests.run()
+ShellPathTests.run()
+FigmaStatusTests.run()
+PanelConfigTests.run()
+PanelPiecesTests.run()
+TabStateTests.run()
+StatusLineTests.run()
+PromptDetectorTests.run()
+Checks.report()
