@@ -24,8 +24,8 @@ import {
 
 // ---- shared render UX helpers ----
 
-// Warn about unknown JSX props before rendering (typos and CSS-style names
-// are otherwise silently ignored and the result just looks wrong).
+// Warn before rendering about props that are silently ignored — a typo or a CSS-style
+// name (nothing happens), and a correct `items=` that auto-FILLed text makes ineffective.
 function warnUnknownProps(jsxStrings) {
   try {
     const client = new FigmaClient();
@@ -34,6 +34,13 @@ function warnUnknownProps(jsxStrings) {
         console.log(chalk.yellow(
           `\u26a0 Unknown prop "${w.prop}" on <${w.tag}>` +
           (w.suggestion ? ` — did you mean "${w.suggestion}"?` : ' (ignored)')
+        ));
+      }
+      // Not a typo but the same class of silence: the prop is right, and the layout ignores it.
+      for (const a of client.validateTextAlignment(j)) {
+        console.log(chalk.yellow(
+          `\u26a0 <Text> "${a.text}" fills "${a.frame}" — items="${a.items}" has no effect on it. ` +
+          `Use align="${a.suggest}" on the <Text>.`
         ));
       }
     }

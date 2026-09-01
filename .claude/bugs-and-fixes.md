@@ -67,3 +67,61 @@
 **Fix**: the flattening is unnecessary — `figmaUse` parses with `/^eval\s+"(.+)"$/s`, and the `s` flag lets `.` match newlines. `evalArg()` in `src/lib/eval-arg.js` builds the argument without it, and `figmaEvalSync` now rethrows a daemon-reported code error instead of falling through, so the next mistake of this shape costs a message rather than a minute.
 **Location**: `src/lib/eval-arg.js`, `src/lib/cli-core.js` (`figmaEvalSync`), the `figmaUse` call sites in `src/commands/*.js`; tests in `tests/eval-arg.test.js`
 **Also**: `duplicate` was moved to `fastEval` while this was misdiagnosed. That stands — no string round-trip, no flattening — and it grew two real improvements on the way: other pages are loaded only when the first lookup misses (`loadAllPagesAsync()` up front outlasts the budget on a file with 5235 instances), and the clone of a node inside an instance is re-parented next to the outermost instance. Tests in `tests/duplicate-cmd.test.js`.
+
+## `run` Never Got the Silence Hint `eval` Got (2026-09-01, from FEEDBACK.md)
+
+**Symptom:** `figma-cli run dump.js`, where the script writes with `console.log`, ends with no
+output and no error — indistinguishable from a throw or a dead connection. Reported from the
+panel, six weeks after the identical `eval` report was closed.
+
+**Cause:** two commands, one decision, two copies. `eval` (`src/commands/export-eval.js`) was
+given `evalSilenceHint` in August; `run`, twenty lines below it, kept its own `if` and never
+imported the helper. `REFERENCE.md` documented the behavior under a heading that names both
+commands and claimed "It now says so" — true for one of them. `run` had also missed `--timeout`
+and still hand-rolled the `eval "…"` argument that `src/lib/eval-arg.js` exists to build, and it
+tested `result !== undefined` where `eval` tested for `null` too, so a `null` return printed the
+bare word `null`.
+
+**Fix:** `formatEvalOutput(code, result)` in `src/lib/eval-output.js` — one decision both
+commands call, plus `evalTimeoutMs`/`printEvalResult`/`printEvalError` shared in the command
+module. `run` gained `--timeout` and uses `evalArg`. Verified live against a connected Figma: the
+logging script now prints the hint, the returning script prints the file name.
+
+## `spawnSync /bin/sh ETIMEDOUT` Named a Shell, Not a State (2026-09-01, from FEEDBACK.md)
+
+**Symptom:** in a panel session after a long pause, any `figma-cli run <file>` printed
+`✗ spawnSync /bin/sh ETIMEDOUT` and nothing else. The only advice the CLI has ever printed names
+`figma-ds-cli connect` — the legacy alias, and a command a panel session is told not to run.
+
+**Cause:** the 60 s `execSync` ceilings inside `figmaEvalSync` surface their errno verbatim, and
+the two `Not connected to Figma` blocks in `src/lib/cli-core.js` were hardcoded strings written
+before the panel existed.
+
+**Fix:** `src/lib/connection-help.js` — `connectAdvice({ panel })` and
+`explainEvalError(message, { panel })`, pure, with `inPanel()` reading the `FIGMACLAUDE=1` the
+panel already exports. In the panel the advice names the toolbar's Figma menu → Connect; in a
+terminal it names `status`, `daemon restart` and `connect`. An error that is not about the
+connection passes through untouched.
+
+**Found while fixing it, and it changed the wording:** the daemon answered `/health` with
+`cdp:false` while a fresh `FigmaClient` connected to the same Figma in the same second — a
+daemon holds one CDP link, fixed at startup, and outlives it. So `fetch failed` cannot tell a
+stopped daemon from a wedged one, and the message says "The request never reached Figma" rather
+than claiming Figma is gone.
+
+## `items="end"` on a Column Cannot Move Text (2026-09-01, from FEEDBACK.md)
+
+**Symptom:** `<Frame flex="col" items="end" w="fill"><Text>…</Text></Frame>` measures
+`counterAxisAlignItems=MAX` and the text still stands left. Two rebuilds of a status bar were
+spent on it.
+
+**Cause:** not a bug — `generateChildrenCode` (`src/figma-client.js`) sets
+`layoutSizingHorizontal='FILL'` on any `<Text>` with no width of its own inside a sized column,
+deliberately, so Safe Mode wraps it. A FILLed child spans the column, so the column's cross-axis
+alignment has nothing left to move. `align="right"` on the `<Text>` works and was reachable only
+through the unknown-prop warning: `docs jsx-syntax` never showed the prop.
+
+**Fix:** documented in `docs/FIGMA-USAGE.md`, and `render` now warns. `autoFillDefeatsAlign`
+(`src/lib/text-autofill.js`, pure) + `FigmaClient.validateTextAlignment`, printed next to the
+unknown-prop warnings in `src/commands/render.js`. The layout is unchanged — FILL is load-bearing
+for wrapping — so no parity run was needed.

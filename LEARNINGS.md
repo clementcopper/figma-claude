@@ -15,6 +15,7 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - Component property names carry a `#uniqueId` suffix (`ButtonText#0:1`); never match on the bare name.
 - `frame.isSlot = true` via `eval` does nothing — only `slot convert` produces a real slot.
 - Load fonts with `figma.loadFontAsync` before setting `characters`.
+- **`arcData` ends are always flat.** An arc/ring made from an EllipseNode is a filled wedge, so `strokeCap` has nothing to act on and no prop gives it round ends. Round caps need a real vector path: `figma.createNodeFromSvg` with `stroke-linecap="round"`. The track colour of that SVG ring still binds afterwards with `setBoundVariableForPaint`.
 - `componentPropertyDefinitions` throws on a **variant** component — read it from the ComponentSet instead.
 - `instance.setProperties({'Text#…': …})` only changes text whose node carries `componentPropertyReferences.characters`. Where a design system sets its texts as plain overrides, the property exists but does nothing — write `instance.children[…].characters` directly.
 
@@ -32,6 +33,8 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 
 ## Claude Panel (`app/`, Electron)
 
+- **`FIGMACLAUDE=1` is the marker the CLI can read.** The panel exports it into every session (`swift-host/…/PanelConfig.swift`), so any CLI message that would otherwise name a command a panel session must not run can branch on it — see `src/lib/connection-help.js`. Advice that names `figma-cli connect` is wrong inside the panel, where connecting is a button and explicitly Daniel's job.
+- **`fetch failed` from the daemon does not mean Figma is gone.** Seen while fixing the entry above: the daemon answered `/health` with `cdp:false` while a fresh `FigmaClient` connected to the same Figma in the same second. A daemon holds ONE CDP link, fixed at startup, and outlives it. `daemon restart` fixed it. Never phrase that error as "Figma is not connected" — say the request did not get through and name `status` / `daemon restart`.
 - **`ELECTRON_RUN_AS_NODE=1` wird vererbt.** Jedes Terminal, das eine Electron-App gestartet hat (VS Code, Claude Code), gibt die Variable weiter — die Electron-Binary läuft dann als reines Node, und `require('electron')` scheitert mit „Cannot find module 'electron'". Sieht aus wie eine kaputte Installation, ist eine Umgebungsvariable. Deshalb wird sie in `run-electron.mjs` **und** in der PTY-Umgebung gelöscht.
 - **`"type": "module"` frisst jede kopierte CommonJS-Datei.** Zweimal dieselbe Ursache, zweimal ein anderes Symptom: das Preload lud nicht (`ERR_REQUIRE_ESM`, Fenster blieb leer), und der Statusline-Producer starb mit `ReferenceError: require is not defined` — **lautlos**, weil Claude Code nie zeigt, was sein `statusLine`-Kommando auf stderr schreibt. Beim Portieren aus einem CommonJS-Paket: jede übernommene `.js`-Datei, die `require` benutzt, auf `.cjs` umbenennen.
 - **`claude --settings` nimmt Inline-JSON.** Der Fehler „Settings file not found: {…" heißt nur, dass der String kein gültiges JSON war — Claude probiert erst Datei, dann JSON. Beinahe hätte ich daraus geschlossen, der ganze Weg funktioniere nicht.
@@ -58,6 +61,9 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **electron-builder benennt das Ausgabeverzeichnis nach der Architektur** — `release/mac` auf x64, `release/mac-arm64` auf Apple Silicon. `install:app` suchte hart in `release/mac` und meldete „Nothing built" Sekunden nach einem erfolgreichen Build.
 
 ## Process
+
+- **A fix that lands on one of two twin commands is not a fix.** `eval` learned to name an empty result in August; `run` — its own copy of the same three decisions — did not, and `REFERENCE.md` documented the behavior as if it covered both. The same friction was reported from the panel a second time, six weeks later, against a doc line that was already there and already wrong. When two commands share a decision, give them one function, not two copies that pass review separately.
+- **`docs <topic>` is what a panel session reads; `REFERENCE.md` is not.** Three of four entries in this round asked for something REFERENCE.md either said or did not need to say. Documentation that only exists there does not reach the reader who files the report.
 
 - **Numbers beat screenshots for layout bugs.** The upstream parity harness (`tests/live/parity-harness.mjs`) found that 9 of 10 cases rendered differently between `render` and `render-batch` — invisible in a screenshot, obvious in a node-tree diff. Any "auto-layout behaves weirdly" report is a measurement task, not an eyeballing task.
 - **A silent no-op is worse than an error.** `minW`/`maxW`/`minH`/`maxH` were documented and accepted but never emitted; the same for `stretch`. Nothing failed, the output was just wrong. When adding a JSX prop, add the assertion that it reaches the node.

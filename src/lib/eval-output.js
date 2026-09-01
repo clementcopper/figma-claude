@@ -27,3 +27,22 @@ export function evalSilenceHint(code, result) {
 
   return 'no value returned — console output goes to Figma\'s own console, not here. Return the value instead: `return JSON.stringify(x)`';
 }
+
+/**
+ * The whole "print the result, or explain the silence" decision, in one place.
+ *
+ * `eval` and `run` each carried their own copy of this `if`, and they drifted: `run` never got
+ * the silence hint at all, so a `console.log` script stayed indistinguishable from a dead daemon
+ * there long after `eval` was fixed — reported from the panel a second time. `run` also treated
+ * `null` as a value and printed the bare word `null`.
+ *
+ * @param {string} code the user's code
+ * @param {unknown} result what it evaluated to
+ * @returns {{ text: string, dim: boolean }} `dim` marks the hint, which is not output but a note
+ */
+export function formatEvalOutput(code, result) {
+  if (result !== undefined && result !== null) {
+    return { text: typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result), dim: false };
+  }
+  return { text: '· ' + evalSilenceHint(code, result), dim: true };
+}

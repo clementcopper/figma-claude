@@ -42,18 +42,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
 
 <!-- new entries go here -->
 
-- [ ] `docs` · **`run` liefert nichts zurück, wenn das Skript mit `console.log` arbeitet statt mit `return`**
-  **Repro:** `figma-cli run dump.js`, wobei `dump.js` seine Ausgabe per `console.log(...)` schreibt
-  **Observed:** Kommando endet ohne Ausgabe und ohne Fehler — nicht unterscheidbar von „Skript hat geworfen"
-  **Expected:** `docs/FIGMA-USAGE.md` erwähnt nirgends, dass der Rückgabewert der Ausgabekanal ist. Der Abschnitt zu `eval`/`run` sagt nur etwas zu `isSlot`. Ein Satz „Ausgabe kommt über `return`, nicht über `console.log`; leere Ausgabe heißt geworfen — in try/catch mit `e.stack` wrappen" hätte zwei Fehlversuche gespart
-  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone
-
-- [ ] `app` · **`spawnSync /bin/sh ETIMEDOUT` nennt keinen Weg zurück, der im Panel gangbar ist**
-  **Repro:** Mitten in einer Panel-Sitzung nach längerer Inaktivität ein beliebiges `figma-cli run <datei>`
-  **Observed:** `✗ spawnSync /bin/sh ETIMEDOUT`, sonst nichts. Der dokumentierte Weg (`daemon restart` + `connect`) ist für Panel-Sitzungen ausdrücklich gesperrt — die Projektregel sagt, Claude soll die Verbindung nicht selbst herstellen, sondern Daniel bitten
-  **Expected:** Die Meldung sollte im Panel-Kontext auf den Verbinden-Button zeigen statt auf CLI-Befehle, die dort niemand ausführen soll. Aktuell muss Claude aus der Fehlermeldung selbst schließen, dass Handarbeit nötig ist
-  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone
-
 ## Done
 
 <!-- triaged entries, each with a → line naming where it went -->
@@ -222,3 +210,54 @@ Append new entries at the end of **Open**; never rewrite one that is already the
     Found alongside: one `figma-payload-*` leaked whenever the daemon curl in `figmaEvalSync`
     threw, because the unlink sat after the call rather than in a `finally`. Also fixed. The 60
     directories and the stray payload are deleted; $TMPDIR is down from 1179 to 1119 entries
+
+- [x] `docs` · **`run` liefert nichts zurück, wenn das Skript mit `console.log` arbeitet statt mit `return`**
+  **Repro:** `figma-cli run dump.js`, wobei `dump.js` seine Ausgabe per `console.log(...)` schreibt
+  **Observed:** Kommando endet ohne Ausgabe und ohne Fehler — nicht unterscheidbar von „Skript hat geworfen"
+  **Expected:** `docs/FIGMA-USAGE.md` erwähnt nirgends, dass der Rückgabewert der Ausgabekanal ist. Der Abschnitt zu `eval`/`run` sagt nur etwas zu `isSlot`. Ein Satz „Ausgabe kommt über `return`, nicht über `console.log`; leere Ausgabe heißt geworfen — in try/catch mit `e.stack` wrappen" hätte zwei Fehlversuche gespart
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone
+  → real bug, and not the docs gap it looked like: `REFERENCE.md` already documented this and
+    claimed "It now says so" — true for `eval`, false for `run`, which never got the August fix.
+    Both commands now share `formatEvalOutput` (`src/lib/eval-output.js`,
+    `tests/eval-output.test.js`); `run` also gained `--timeout` and stopped printing the bare word
+    `null`. The sentence you asked for is in `docs key-rules`, where a panel session reads it —
+    `REFERENCE.md` is not a file you ever open. Verified live: your logging script now prints the
+    hint, the same script with `return` prints the file name
+
+- [x] `app` · **`spawnSync /bin/sh ETIMEDOUT` nennt keinen Weg zurück, der im Panel gangbar ist**
+  **Repro:** Mitten in einer Panel-Sitzung nach längerer Inaktivität ein beliebiges `figma-cli run <datei>`
+  **Observed:** `✗ spawnSync /bin/sh ETIMEDOUT`, sonst nichts. Der dokumentierte Weg (`daemon restart` + `connect`) ist für Panel-Sitzungen ausdrücklich gesperrt — die Projektregel sagt, Claude soll die Verbindung nicht selbst herstellen, sondern Daniel bitten
+  **Expected:** Die Meldung sollte im Panel-Kontext auf den Verbinden-Button zeigen statt auf CLI-Befehle, die dort niemand ausführen soll. Aktuell muss Claude aus der Fehlermeldung selbst schließen, dass Handarbeit nötig ist
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone
+  → fixed as you designed it, message-side only. `src/lib/connection-help.js` +
+    `tests/connection-help.test.js`: the panel already exports `FIGMACLAUDE=1`, so the advice now
+    names the toolbar's Figma menu → Connect there and `status` / `daemon restart` / `connect` in
+    a terminal. The raw errno is gone. The old text also named `figma-ds-cli`, an alias nobody
+    types. One thing your report could not see and it changed the wording: while fixing this the
+    daemon answered `/health` with `cdp:false` while a fresh client reached the same Figma in the
+    same second — so the message says the request did not get through rather than claiming Figma
+    is gone, and `daemon restart` is the first thing it names
+
+- [x] `docs` · **`<Ellipse arc>` kann keine runden Bogenenden — die Ring-Doku sagt nicht, dass die Enden immer flach sind**
+  **Repro:** `figma-cli render '<Ellipse w={36} h={36} arc={290} arcStart={125} innerRadius={0.82} bg="#0e70c0" />'`
+  **Observed:** Bogen mit flach abgeschnittenen Enden. Kein Prop in `docs jsx-syntax` (`arc`, `arcStart`, `innerRadius`) und keins in den Appearance-Props setzt einen runden Abschluss; `strokeCap` greift nicht, weil der Bogen eine Fläche ist, keine Linie
+  **Expected:** Der Abschnitt „Ellipse / Circle — rings, spinners, donut & pie" verkauft die Ellipse als Weg zu Ringen und Spinnern. Ein Satz „Enden sind immer flach; runde Kappen brauchen einen Vektor-Pfad mit `stroke-linecap: round`, z. B. über `figma.createNodeFromSvg`" hätte den Umweg gespart. Umgesetzt habe ich es am Ende per `eval` mit `createNodeFromSvg` und `stroke-linecap="round"` — das funktioniert, und die Track-Farbe lässt sich danach mit `setBoundVariableForPaint` binden
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone, Statusbar-Ringe
+  → works as designed, now documented: `arcData` is a filled wedge, so no prop can round its
+    ends and `strokeCap` has nothing to act on. Your line is in the Ellipse block of
+    `docs jsx-syntax`, with your workaround — `createNodeFromSvg` + `stroke-linecap="round"` — and
+    the `setBoundVariableForPaint` note, which is the part that would have cost the next session
+    another detour. Also in `LEARNINGS.md`
+
+- [x] `docs` · **`items="end"` richtet Text nicht rechts aus — `render` gibt jedem `<Text>` automatisch `w=fill`**
+  **Repro:** `figma-cli render '<Frame flex="col" w={300} p={10}><Frame flex="col" items="end" w="fill"><Text size={12}>rechts?</Text></Frame></Frame>'`
+  **Observed:** Nachgemessen am Ergebnis: `counterAxisAlignItems=MAX`, aber `layoutSizingHorizontal=FILL`, `width=280`, `textAlignHorizontal=LEFT` — der Text füllt die Spalte und steht deshalb links, obwohl die Spalte auf MAX steht
+  **Expected:** `docs jsx-syntax` führt `items=` und `justify=` unter „Alignment" ohne Einschränkung und erwähnt bei `<Text>` kein eigenes Ausrichtungs-Prop. Dass Text automatisch FILL bekommt und Cross-Axis-Alignment damit wirkungslos wird, steht nirgends. Die Lösung ist `align="right"` direkt am `<Text>` — funktioniert (`textAlignHorizontal=RIGHT`), ist aber nur über die Warnung bei einem falschen Prop-Namen zu finden: `⚠ Unknown prop "textAlign" on <Text> — did you mean "align"?`. Zwei Zeilen in der Text-Sektion hätten mir zwei Neuaufbauten der Statusbar gespart, in denen die Meta-Zeile links stand statt rechts
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone, Statusbar-Mock
+  → real, deliberate, and undocumented: `generateChildrenCode` FILLs any `<Text>` with no width
+    of its own inside a sized column so Safe Mode wraps it, and a FILLed child leaves the column's
+    `items=` nothing to move. Two lines in the Text block of `docs jsx-syntax`, `align=` now shown
+    among the props — and `render` warns, so the next person does not have to find it through a
+    wrong prop name: `⚠ <Text> "…" fills "…" — items="end" has no effect on it. Use align="right"`.
+    `src/lib/text-autofill.js` + `tests/text-autofill.test.js`, your JSX among the cases. The
+    layout is unchanged; FILL is load-bearing for wrapping

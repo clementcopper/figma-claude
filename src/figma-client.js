@@ -9,6 +9,7 @@ import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle } from './lib/text-styles.js';
+import { autoFillDefeatsAlign } from './lib/text-autofill.js';
 
 /**
  * Visible fallback colors for shadcn semantic token names (Zinc light theme).
@@ -1007,6 +1008,27 @@ export class FigmaClient {
    * Figma connection needed — callers print the warnings before rendering.
    * Returns [{ tag, prop, suggestion|null }].
    */
+  /**
+   * Find `<Text>` whose auto-FILL silently defeats the parent column's `items=`.
+   *
+   * Parses the same way `parseJSX` does, then hands the tree to a pure decision. Reported from
+   * the panel: `items="end"` came back as `counterAxisAlignItems=MAX` with the text still left,
+   * because the text was FILLed to the column's full width. Returns [] on anything unparseable —
+   * a warning helper must never be the reason a render fails.
+   */
+  validateTextAlignment(jsx) {
+    try {
+      const openMatch = jsx.match(/<Frame\s+([^>]*)>/);
+      if (!openMatch) return [];
+      const startIdx = openMatch.index + openMatch[0].length;
+      const props = this.parseProps(openMatch[1]);
+      const children = this.parseChildren(this.extractContent(jsx.slice(startIdx), 'Frame'));
+      return autoFillDefeatsAlign(props, children);
+    } catch {
+      return [];
+    }
+  }
+
   validateJsxProps(jsx) {
     const layout = ['name', 'flex', 'gap', 'rowGap', 'wrapGap', 'counterAxisSpacing', 'wrap',
       'p', 'px', 'py', 'pt', 'pr', 'pb', 'pl', 'padding',

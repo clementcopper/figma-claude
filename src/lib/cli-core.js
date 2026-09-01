@@ -17,6 +17,7 @@ import * as apiDocs from '../api-docs.js';
 import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, getFigmaBinaryPath } from '../figma-patch.js';
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
+import { connectAdvice, inPanel } from './connection-help.js';
 import { extractGradient, extractMesh, buildMeshFromColors, buildFigmaPaint, buildCssString } from '../gradient-extractor.js';
 import {
   nullDevice, killPort, getPortPid, sleepAfterStop,
@@ -829,9 +830,10 @@ async function checkConnection() {
   const connected = await FigmaClient.isConnected();
   if (!connected) {
     console.log(chalk.red('\n✗ Not connected to Figma\n'));
-    console.log(chalk.white('  Make sure Figma is running:'));
-    console.log(chalk.cyan('  figma-ds-cli connect') + chalk.gray(' (Yolo Mode)'));
-    console.log(chalk.cyan('  figma-ds-cli connect --safe') + chalk.gray(' (Safe Mode)\n'));
+    // The advice used to name `figma-ds-cli` — the legacy alias — and, inside the panel, CLI
+    // commands a panel session is told not to run. `connectAdvice` knows which reader it has.
+    for (const line of connectAdvice({ panel: inPanel() })) console.log(chalk.cyan('  ' + line));
+    console.log('');
     process.exit(1);
   }
   return true;
@@ -857,9 +859,10 @@ function checkConnectionSync() {
     return true;
   } catch {
     console.log(chalk.red('\n✗ Not connected to Figma\n'));
-    console.log(chalk.white('  Make sure Figma is running:'));
-    console.log(chalk.cyan('  figma-ds-cli connect') + chalk.gray(' (Yolo Mode)'));
-    console.log(chalk.cyan('  figma-ds-cli connect --safe') + chalk.gray(' (Safe Mode)\n'));
+    // The advice used to name `figma-ds-cli` — the legacy alias — and, inside the panel, CLI
+    // commands a panel session is told not to run. `connectAdvice` knows which reader it has.
+    for (const line of connectAdvice({ panel: inPanel() })) console.log(chalk.cyan('  ' + line));
+    console.log('');
     process.exit(1);
   }
 }

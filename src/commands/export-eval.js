@@ -12,7 +12,8 @@ import {
   unescapeShell
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
-import { evalSilenceHint } from '../lib/eval-output.js';
+import { formatEvalOutput } from '../lib/eval-output.js';
+import { explainEvalError, inPanel } from '../lib/connection-help.js';
 
 // ============ EXPORT ============
 
@@ -301,13 +302,36 @@ program
 
 // ============ EVAL ============
 
+// ---- shared by `eval` and `run` ----
+// They had two copies of the same three decisions and drifted apart: `run` never learned to
+// name an empty result, and printed the bare word `null` for one. One home now.
+
+/** A walk over every page can outlast the default; the ceiling is the caller's to raise. */
+function evalTimeoutMs(raw) {
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 90000;
+}
+
+function printEvalResult(code, result) {
+  const out = formatEvalOutput(code, result);
+  console.log(out.dim ? chalk.gray(out.text) : out.text);
+}
+
+/** A lost connection reached the terminal as `spawnSync /bin/sh ETIMEDOUT` — a shell, not a state. */
+function printEvalError(error) {
+  const { lines } = explainEvalError(error && error.message, { panel: inPanel() });
+  console.log(chalk.red('✗ ' + lines[0]));
+  for (const line of lines.slice(1)) console.log(chalk.gray('  ' + line));
+}
+
+
 program
   .command('eval [code]')
   .description('Execute JavaScript in Figma plugin context')
   .option('-f, --file <path>', 'Run code from file instead of argument')
   .option('--timeout <seconds>', 'How long to wait for the result (default 90)', '90')
   .action(async (code, options) => {
-    checkConnection();
+    await checkConnection();
     let jsCode = code ? unescapeShell(code) : code;
 
     // If --file option provided, read code from file
@@ -324,20 +348,15 @@ program
       return;
     }
 
-    // A walk over every page can outlast the default; the ceiling is now the caller's to raise.
-    const seconds = Number(options.timeout);
-    const timeoutMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 90000;
+    const timeoutMs = evalTimeoutMs(options.timeout);
 
     // Always prefer async daemon (more reliable, no shell timeout issues)
     if (isDaemonRunning()) {
       try {
         const result = await daemonExec('eval', { code: jsCode }, timeoutMs);
-        if (result !== undefined && result !== null) {
-          console.log(typeof result === 'object' ? JSON.stringify(result, null, 2) : result);
-        } else {
-          // Silence used to be the answer here, which reads exactly like a dead connection.
-          console.log(chalk.gray('· ' + evalSilenceHint(jsCode, result)));
-        }
+        // Silence used to be the answer for an empty result, which reads exactly like a dead
+        // connection. `formatEvalOutput` makes that one decision for `eval` and `run` alike.
+        printEvalResult(jsCode, result);
         return;
       } catch (e) {
         // Check if this is a connection/daemon error vs user code error
@@ -351,7 +370,7 @@ program
           console.log(chalk.yellow('⚠ Daemon error, trying sync path...'));
         } else {
           // User code error - display directly, don't fall back
-          console.log(chalk.red('✗ ' + e.message));
+          printEvalError(e);
           return;
         }
       }
@@ -359,12 +378,9 @@ program
 
     // Sync fallback (when daemon not running)
     try {
-      const result = figmaEvalSync(jsCode);
-      if (result !== undefined && result !== null) {
-        console.log(typeof result === 'object' ? JSON.stringify(result, null, 2) : result);
-      }
+      printEvalResult(jsCode, figmaEvalSync(jsCode));
     } catch (error) {
-      console.log(chalk.red('✗ ' + error.message));
+      printEvalError(error);
     }
   });
 
@@ -372,8 +388,9 @@ program
 program
   .command('run <file>')
   .description('Run JavaScript file in Figma (alias for eval --file)')
-  .action(async (file) => {
-    checkConnection();
+  .option('--timeout <seconds>', 'How long to wait for the result (default 90)', '90')
+  .action(async (file, options) => {
+    await checkConnection();
     if (!existsSync(file)) {
       console.log(chalk.red('✗ File not found: ' + file));
       return;
@@ -382,16 +399,15 @@ program
     try {
       // Use async daemon path for better performance with long scripts
       if (isDaemonRunning()) {
-        const result = await daemonExec('eval', { code });
-        if (result !== undefined) {
-          console.log(typeof result === 'object' ? JSON.stringify(result, null, 2) : result);
-        }
+        const result = await daemonExec('eval', { code }, evalTimeoutMs(options.timeout));
+        printEvalResult(code, result);
       } else {
-        // Fallback to sync path
-        figmaUse(`eval "${code.replace(/"/g, '\\"')}"`);
+        // Fallback to sync path. `evalArg` builds the argument — the hand-rolled version that
+        // stood here is the one that flattened newlines and cost 60s on a `//` comment.
+        figmaUse(evalArg(code));
       }
     } catch (e) {
-      console.log(chalk.red('✗ ' + e.message));
+      printEvalError(e);
     }
   });
 

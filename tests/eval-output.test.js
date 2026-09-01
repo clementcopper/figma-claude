@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { evalSilenceHint } from '../src/lib/eval-output.js';
+import { evalSilenceHint, formatEvalOutput } from '../src/lib/eval-output.js';
 
 // Reported from the panel (FEEDBACK.md): a script ending in console.log(JSON.stringify(...))
 // printed nothing and exited 0 — "a logging script and a broken connection look identical".
@@ -38,5 +38,34 @@ describe('evalSilenceHint', () => {
 
   it('treats null like undefined', () => {
     assert.match(evalSilenceHint('console.log(1)', null), /Figma/);
+  });
+});
+
+describe('formatEvalOutput', () => {
+  it('prints a scalar as itself', () => {
+    assert.deepStrictEqual(formatEvalOutput('return 1', 1), { text: '1', dim: false });
+    assert.deepStrictEqual(formatEvalOutput('return ""', ''), { text: '', dim: false });
+    assert.deepStrictEqual(formatEvalOutput('return false', false), { text: 'false', dim: false });
+  });
+
+  it('pretty-prints an object', () => {
+    const out = formatEvalOutput('return {a:1}', { a: 1 });
+    assert.strictEqual(out.dim, false);
+    assert.strictEqual(out.text, '{\n  "a": 1\n}');
+  });
+
+  it('names the silence for a logging script, dimmed', () => {
+    const out = formatEvalOutput('console.log(x)', undefined);
+    assert.strictEqual(out.dim, true);
+    assert.match(out.text, /^· /);
+    assert.match(out.text, /Figma/);
+  });
+
+  // `run` printed the bare word "null" here while `eval` printed the hint — the drift that let
+  // the console.log report come back a second time for a command that never got the fix.
+  it('treats null as no value, not as the string "null"', () => {
+    const out = formatEvalOutput('const a = 1', null);
+    assert.strictEqual(out.dim, true);
+    assert.notStrictEqual(out.text, 'null');
   });
 });
