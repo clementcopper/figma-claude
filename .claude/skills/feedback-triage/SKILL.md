@@ -29,12 +29,19 @@ Fix those first; triaging a half-entry wastes the reproduction step.
 
 Run the command the entry names, against the state it names. Not the paraphrase — the command.
 
-Two failures are common enough to expect:
+Three failures are common enough to expect:
 
 - **The report is right, the cause is elsewhere.** Panel-side reports have blamed the CLI for
   what turned out to be a stale daemon or an unbound file.
 - **The report is wrong.** What looked like a bug was the documented behavior, and the real
   finding is that the docs are hard to find or hard to read.
+- **The observation is real but comes from a different command than the `**Repro:**` line names.**
+  A `wish` entry described `render --verify` as fixed at scale 0.5 and gave a measured image size
+  as proof; the number came from `figma-cli verify`, which the reporter had run instead, and
+  `render --verify` was fixed at 1. The reporter later confirmed they had never called the
+  command they were writing about. So read the **Observed** number against the code path the
+  **Repro** line actually reaches, and where they disagree, believe the code and say which
+  command produced the number. The finding usually survives; the explanation rarely does.
 
 If it does not reproduce, say so in the entry rather than deleting it — a second sighting turns
 a non-reproduction into a pattern.

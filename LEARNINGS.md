@@ -62,6 +62,8 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 
 ## Process
 
+- **Eine gemeldete Zahl beweist nicht, welcher Befehl sie erzeugt hat.** Ein `wish` beschrieb `render --verify` als fest bei 0.5 und belegte es mit einer gemessenen Bildgröße — die Zahl stammte aus `figma-cli verify`, das der Melder stattdessen aufgerufen hatte; `render --verify` stand fest bei 1. Er bestätigte danach, den Befehl, über den er schrieb, nie ausgeführt zu haben. Beim Triagieren also die **Observed**-Zahl gegen den Codepfad halten, den die **Repro**-Zeile wirklich erreicht. Der Befund überlebt meist, die Erklärung selten.
+
 - **Ein Doku-Verweis, den man nur in einer Übersicht sieht, wird nicht gelesen.** Die Panel-Session dazu, wörtlich: „Wenn dort steht ‚REFERENCE.md — 30 Themen', zahle ich keine Aufmerksamkeit dafür, weil ich nicht weiß, ob dort etwas steht, das ich nicht schon habe." Ein Verweis muss den **Unterschied** benennen, nicht den Umfang — und dort stehen, wo man beim Lesen darüber stolpert, nicht in einem Index.
 - **Den Leser fragen, wo er tatsächlich vorbeikommt.** Ich wollte `render --verify` in `quick-reference` und `ai-verification` setzen — beide logisch, beide von der meldenden Session in 50 Operationen nie geöffnet. Gelesen wurden `jsx-syntax`, `critical-pitfalls` und das `--help` des gerade getippten Befehls. Die logische Stelle und die begangene Stelle sind selten dieselbe.
 
