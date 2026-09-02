@@ -15,14 +15,10 @@ final class StatusRingGroup: NSView {
     private let nameLabel = RingLabel(labelWithString: "")
     private let subLabel = RingLabel(labelWithString: "")
 
-    /// The surface that appears under the pointer. A view rather than this group's own layer:
-    /// the group's bounds hug the ring and its two labels, and a highlight drawn on them touches
-    /// the glyphs. This one reaches past the edges without changing the width the row measures,
-    /// so no wrap step moves.
+    /// The surface that appears under the pointer: the circle behind the ring, and nothing else.
+    /// A box around the whole group — ring plus both labels — was the first version, and it read
+    /// as a selected row rather than as one control answering the pointer.
     private let highlight = NSView()
-    /// How far the surface reaches past the content. The row leaves `columnGap` (8) between two
-    /// items, so 3 a side keeps 2pt of air between two highlighted groups.
-    private static let highlightInset: CGFloat = 3
     private var hovering = false { didSet { applyHover() } }
     private var tracking: NSTrackingArea?
 
@@ -30,8 +26,9 @@ final class StatusRingGroup: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
+        // Same shape and radius as the stop button, which is the row's other round control.
         highlight.wantsLayer = true
-        highlight.layer?.cornerRadius = 6
+        highlight.layer?.cornerRadius = RingGeometry.boxSize / 2
         highlight.translatesAutoresizingMaskIntoConstraints = false
         addSubview(highlight)
 
@@ -57,16 +54,16 @@ final class StatusRingGroup: NSView {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
 
-        let inset = Self.highlightInset
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
             row.trailingAnchor.constraint(equalTo: trailingAnchor),
             row.topAnchor.constraint(equalTo: topAnchor),
             row.bottomAnchor.constraint(equalTo: bottomAnchor),
-            highlight.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -inset),
-            highlight.trailingAnchor.constraint(equalTo: trailingAnchor, constant: inset),
-            highlight.topAnchor.constraint(equalTo: topAnchor, constant: -2),
-            highlight.bottomAnchor.constraint(equalTo: bottomAnchor, constant: 2)
+            // Exactly the ring's box, so the circle sits under the track rather than around it.
+            highlight.leadingAnchor.constraint(equalTo: ring.leadingAnchor),
+            highlight.trailingAnchor.constraint(equalTo: ring.trailingAnchor),
+            highlight.topAnchor.constraint(equalTo: ring.topAnchor),
+            highlight.bottomAnchor.constraint(equalTo: ring.bottomAnchor)
         ])
         applyHover()
     }
