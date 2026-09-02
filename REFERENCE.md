@@ -375,6 +375,11 @@ node src/index.js config set <key> <value>
 
 **Elements:** `<Frame>`, `<Rectangle>`, `<Ellipse>`, `<Text>`, `<Line>`, `<Image>`, `<SVG>`, `<Icon>`
 
+**`<Ellipse>` / `<Circle>`:** `arc={90}` (sweep°), `arcStart={-90}` (start°, 0 = 3 o'clock,
+clockwise) and `innerRadius={0.82}` (0–1) turn it into a ring, spinner arc, donut or pie slice.
+Arc ends are **always flat** — `arcData` is a filled wedge, so `strokeCap` has nothing to act on;
+round caps need a vector path (`figma.createNodeFromSvg` with `stroke-linecap="round"`).
+
 **Size:** `w={320} h={200}`, `w="fill"`, `minW={100} maxW={500}`
 
 **Layout:** `flex="row|col"`, `gap={16}`, `wrap={true}`, `justify="start|center|end|between"`, `items="start|center|end"`
@@ -400,6 +405,10 @@ node src/index.js config set <key> <value>
 - **HTML entities:** numeric (`&#8250;`, `&#x203A;`) and common named entities
   (`&amp; &lt; &gt; &rarr; &times; &hellip; &mdash; &nbsp;` …) are decoded.
 - **Whitespace:** runs of spaces/newlines in `<Text>` content collapse to a single space (outer whitespace trimmed), so you can indent multi-line content freely.
+- **Alignment:** `align="left|center|right"` sets it on the text itself. That is the only place
+  it works: a `<Text>` with no width of its own inside a sized column is auto-set to FILL (so it
+  wraps in Safe Mode), and a child that spans the column leaves the parent's `items=` nothing to
+  move. `render` warns when it sees that combination.
 
 ```jsx
 <Text size={28} w={620} color="#9E9EA0">

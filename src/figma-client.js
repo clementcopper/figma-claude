@@ -10,6 +10,7 @@ import { getCdpPort } from './figma-patch.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
+import { KNOWN_PROPS, PROP_ALIASES } from './lib/jsx-props.js';
 
 /**
  * Visible fallback colors for shadcn semantic token names (Zinc light theme).
@@ -1030,50 +1031,9 @@ export class FigmaClient {
   }
 
   validateJsxProps(jsx) {
-    const layout = ['name', 'flex', 'gap', 'rowGap', 'wrapGap', 'counterAxisSpacing', 'wrap',
-      'p', 'px', 'py', 'pt', 'pr', 'pb', 'pl', 'padding',
-      'justify', 'items', 'align', 'grow', 'stretch', 'hug',
-      'w', 'h', 'width', 'height', 'minW', 'maxW', 'minH', 'maxH',
-      'position', 'x', 'y', 'top', 'right', 'bottom', 'left', 'centerOffsetX', 'centerOffsetY'];
-    const paint = ['bg', 'fill', 'stroke', 'strokeWidth', 'strokeAlign', 'opacity', 'blendMode',
-      'image', 'imageScale', 'visible', 'locked', 'clip', 'overflow', 'rotate'];
-    const corners = ['rounded', 'radius', 'roundedTL', 'roundedTR', 'roundedBL', 'roundedBR', 'cornerSmoothing'];
-    const effects = ['shadow', 'innerShadow', 'blur', 'bgBlur',
-      'noise', 'noiseDensity', 'noiseSize', 'noiseColor', 'noiseColor2', 'noiseOpacity',
-      'texture', 'textureSize', 'textureRadius', 'textureClip',
-      'progressiveBlur', 'progressiveBlurDir', 'progressiveBlurStart',
-      'glass', 'glassRefraction', 'glassDepth', 'glassRadius', 'glassDispersion', 'glassLight', 'glassLightAngle'];
-
-    const known = {
-      Frame: [...layout, ...paint, ...corners, ...effects],
-      Text: ['name', 'size', 'weight', 'color', 'font', 'italic', 'align', 'w', 'h', 'width', 'height',
-        'grow', 'opacity', 'x', 'y', 'position', 'lineHeight', 'letterSpacing', 'truncate', 'maxLines',
-        'textStyle'],
-      Icon: ['name', 'size', 's', 'color', 'c', 'x', 'y', 'position'],
-      Rect: ['name', 'w', 'h', 'width', 'height', 'bg', 'fill', 'rounded', 'radius', 'opacity', 'x', 'y', 'position'],
-      Rectangle: null, // alias of Rect, filled below
-      Ellipse: ['name', 'w', 'h', 'width', 'height', 'bg', 'fill', 'stroke', 'strokeWidth', 'strokeAlign',
-        'arc', 'arcStart', 'innerRadius', 'opacity', 'x', 'y', 'position'],
-      Circle: null,    // alias of Ellipse, filled below
-      Image: ['name', 'w', 'h', 'width', 'height', 'bg', 'fill', 'rounded', 'radius', 'opacity', 'x', 'y', 'position'],
-      Slot: ['name', 'flex', 'gap', 'p', 'px', 'py', 'padding', 'w', 'h', 'width', 'height', 'bg', 'fill'],
-      Instance: ['name', 'component', 'id', 'w', 'h', 'width', 'height'],
-    };
-    known.Rectangle = known.Rect;
-    known.Circle = known.Ellipse;
-
-    // Common wrong names -> the prop that actually works
-    const aliases = {
-      layout: 'flex', direction: 'flex', flexDirection: 'flex',
-      cornerRadius: 'rounded', borderRadius: 'rounded',
-      background: 'bg', backgroundColor: 'bg',
-      border: 'stroke', borderColor: 'stroke', borderWidth: 'strokeWidth',
-      fontSize: 'size', fontWeight: 'weight', fontFamily: 'font', textAlign: 'align',
-      style: 'textStyle', typography: 'textStyle', textstyle: 'textStyle',
-      spacing: 'gap', itemSpacing: 'gap',
-      alignItems: 'items', justifyContent: 'justify',
-      visibility: 'visible',
-    };
+    // The vocabulary lives in src/lib/jsx-props.js so the docs test can read it too.
+    const known = KNOWN_PROPS;
+    const aliases = PROP_ALIASES;
 
     const levenshtein = (a, b) => {
       const m = a.length, n = b.length;

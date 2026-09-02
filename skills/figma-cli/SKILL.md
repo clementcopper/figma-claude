@@ -19,6 +19,12 @@ run them silently and give friendly feedback.
   app is undesirable (compliance / locked-down machine / no "App Management" permission).
 - `figma-cli connect --safe` — **Safe**: official plugin (Plugins → Development → FigCli).
 
+## Finding a flag
+
+`figma-cli <command> --help` lists that command's options and is always current — cheaper and
+more reliable than any prose. `figma-cli docs` lists the guide's topics and names the other files
+worth splitting. Reach for both before reading a whole document.
+
 ## Golden rules
 1. **Create frames with `render` / `render-batch`** — they have smart positioning.
    NEVER use `eval` to create visual nodes (no positioning, bypasses guards).

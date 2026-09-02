@@ -489,7 +489,7 @@ glass={true}            // Apple-style liquid glass — glassRefraction/glassDep
 
 // Auto-Layout
 wrap={true}             // flow to next row (HORIZONTAL only)
-rowGap={12}             // gap between rows
+rowGap={12}             // gap between rows — wrapGap= and counterAxisSpacing= are aliases of it
 grow={1}                // fill remaining space
 stretch={true}          // fill cross-axis
 position="absolute" x={12} y={12}  // must have name for x/y
@@ -532,6 +532,15 @@ fontWeight="bold"     →  weight="bold"
 ```
 
 ---
+
+**Screenshot in the same call:** `render '<Frame…>' --verify` renders and returns the PNG, so a
+separate `figma-cli verify` roundtrip is not needed. It exports at native size; `--verify 3`
+scales up, which is what small type and thin strokes need to be judged at all. (Standalone
+`verify` defaults to 0.5 to stay cheap — that is the one that reads as blurry.)
+
+**More on `<Text>` than fits here** — inline runs (`<b>`, `<span weight=>`), HTML entities and the
+whitespace rules: `figma-cli docs --file REFERENCE.md text`.
+
 
 ## Critical Pitfalls
 

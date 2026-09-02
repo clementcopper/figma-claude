@@ -1,5 +1,6 @@
 // Commands: render (extracted from index.js)
 import chalk from 'chalk';
+import { exportScaleSnippet } from '../lib/verify-export.js';
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -23,6 +24,13 @@ import {
 // ============ RENDER ============
 
 // ---- shared render UX helpers ----
+
+// `--verify` is a flag when bare and a value when given one; Commander hands back `true` for the
+// first. Anything unreadable falls back to 1 rather than to NaN, which exports nothing.
+function verifyScale(raw) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
 
 // Warn before rendering about props that are silently ignored — a typo or a CSS-style
 // name (nothing happens), and a correct `items=` that auto-FILLed text makes ineffective.
@@ -105,9 +113,11 @@ function recordCreated(nodes) {
   } catch {}
 }
 
-// Screenshot a freshly rendered node (same export logic as `figma-cli verify`)
-// so render --verify gives Claude the visual check in a single roundtrip.
-async function verifyRendered(nodeId) {
+// Screenshot a freshly rendered node so `render --verify` gives the visual check in a single
+// roundtrip. The scale decision is shared with `figma-cli verify` (src/lib/verify-export.js) —
+// it used to be a second copy that hardcoded 1 and could not be asked for more, which is how a
+// frame that was correct got read as broken.
+async function verifyRendered(nodeId, scale = 1, maxDim = 2000) {
   try {
     const result = await fastEval(`(async () => {
       const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
@@ -115,16 +125,20 @@ async function verifyRendered(nodeId) {
       if (!('exportAsync' in node)) return { error: 'Node cannot be exported' };
       const nodeWidth = node.width || 100;
       const nodeHeight = node.height || 100;
-      let finalScale = 1;
-      const maxNodeDim = Math.max(nodeWidth, nodeHeight);
-      if (maxNodeDim * finalScale > 2000) finalScale = 2000 / maxNodeDim;
-      const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: finalScale } });
-      return { name: node.name, id: node.id, width: Math.round(nodeWidth * finalScale), height: Math.round(nodeHeight * finalScale), base64: figma.base64Encode(bytes) };
+      const chosen = ${exportScaleSnippet(scale, maxDim)};
+      const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: chosen.scale } });
+      return { name: node.name, id: node.id, width: Math.round(nodeWidth * chosen.scale), height: Math.round(nodeHeight * chosen.scale), scale: chosen.scale, clampedBecause: chosen.reason, base64: figma.base64Encode(bytes) };
     })()`);
     if (result && result.base64) {
       const savePath = join(tmpdir(), `figma-verify-${String(nodeId).replace(/:/g, '-')}.png`);
       writeFileSync(savePath, Buffer.from(result.base64, 'base64'));
-      console.log(JSON.stringify({ verify: { id: result.id, name: result.name, width: result.width, height: result.height, saved: savePath } }));
+      // The scale is reported, not assumed: a silently capped screenshot is how an export lies
+      // about the thing it was taken to prove.
+      console.log(JSON.stringify({ verify: {
+        id: result.id, name: result.name, width: result.width, height: result.height,
+        scale: result.scale, saved: savePath,
+        ...(result.clampedBecause ? { note: result.clampedBecause } : {})
+      } }));
     } else if (result && result.error) {
       console.error(chalk.yellow('\u26a0 verify failed:'), result.error);
     }
@@ -177,7 +191,7 @@ program
   .option('--as-component', 'After rendering, convert the resulting frame to a Figma component')
   .option('--keep-wrapper', 'Keep an outer flex Frame as a parent — disables the auto-split that turns "N items in a flex wrapper" into independent canvas items')
   .option('-c, --collection <name>', 'Pin var:<name> resolution to this variable collection (case-insensitive, fuzzy match). Per-attr `var:collection:name` overrides this.')
-  .option('--verify', 'After rendering, return a screenshot of the result (saves PNG, prints JSON) — replaces a separate `figma-cli verify` roundtrip')
+  .option('--verify [scale]', 'After rendering, return a screenshot of the result (saves PNG, prints JSON) — replaces a separate `figma-cli verify` roundtrip. Optional scale, default 1; raise it (--verify 3) when small type or thin strokes have to be judged')
   .option('--no-auto-style', "Don't auto-apply a matching text style to <Text> that names none (textStyle= still works)")
   .action(async (rawJsx, options) => {
     const jsx = unescapeShell(rawJsx);
@@ -266,7 +280,7 @@ program
       recordCreated([result]);
 
       await maybeAsComponent(result.id);
-      if (options.verify) await verifyRendered(result.id);
+      if (options.verify) await verifyRendered(result.id, verifyScale(options.verify));
     } catch (e) {
       const msg = e.stderr || e.message || String(e);
       // Extract node context from error if available
@@ -295,7 +309,7 @@ program
   .option('-d, --direction <dir>', 'Layout direction: row (horizontal) or col (vertical)', 'row')
   .option('--as-component', 'After rendering, convert each resulting frame to a Figma component')
   .option('-c, --collection <name>', 'Pin var:<name> resolution to this variable collection (case-insensitive, fuzzy match). Per-attr `var:collection:name` overrides this.')
-  .option('--verify', 'After rendering, return a screenshot of each result (saves PNGs, prints JSON)')
+  .option('--verify [scale]', 'After rendering, return a screenshot of each result (saves PNGs, prints JSON). Optional scale, default 1')
   .option('--no-auto-style', "Don't auto-apply a matching text style to <Text> that names none (textStyle= still works)")
   .action(async (jsxArrayStr, options) => {
     await checkConnection();
@@ -369,7 +383,7 @@ program
 
         if (options.verify) {
           for (const r of results) {
-            if (r && r.id) await verifyRendered(r.id);
+            if (r && r.id) await verifyRendered(r.id, verifyScale(options.verify));
           }
         }
       } else {

@@ -261,3 +261,40 @@ Append new entries at the end of **Open**; never rewrite one that is already the
     wrong prop name: `⚠ <Text> "…" fills "…" — items="end" has no effect on it. Use align="right"`.
     `src/lib/text-autofill.js` + `tests/text-autofill.test.js`, your JSX among the cases. The
     layout is unchanged; FILL is load-bearing for wrapping
+
+- [x] `docs` · **`REFERENCE.md` hat die ausführlichere `<Text>`-Sektion und ist trotzdem die veraltete — und was nur dort steht, findet niemand, der `docs` benutzt**
+  **Repro:** `figma-cli docs` listet 21 Themen aus `docs/FIGMA-USAGE.md`. `REFERENCE.md` (727 Zeilen) und `README.md` (546 Zeilen) haben keinen solchen Einstieg — sie sind nur ganz lesbar
+  **Observed:** `grep -c 'align=' REFERENCE.md docs/FIGMA-USAGE.md README.md` → 0 / 1 / 3. Ausgerechnet `REFERENCE.md` beschreibt `<Text>` am ausführlichsten (Inline-Runs, HTML-Entities, Whitespace-Regeln) und kennt `align=` als einziges nicht. Umgekehrt steht `render --verify` (Render und Screenshot in einem Aufruf) in `REFERENCE.md`, aber in keinem `docs`-Thema — ich habe heute in einer Session ~15 Mal separat `verify` aufgerufen, weil ich nur die gesharden Themen gelesen habe. `innerRadius`/`arc` (Ringe) kommt ebenfalls nur in `FIGMA-USAGE.md` vor; wer `REFERENCE.md` liest, erfährt bei `<Ellipse>` nichts davon
+  **Expected:** Ein Thema, ein Ort. `FIGMA-USAGE.md` ist mit dem Themenindex gut konsumierbar — Themengrößen stehen dabei, das Größte ist `key-rules` mit 1920 Token. Die Doppelung mit `REFERENCE.md` ist das Problem, nicht die Länge: entweder `REFERENCE.md` ebenfalls über `figma-cli docs` erreichbar machen (dann fällt Drift beim Lesen auf) oder die überlappenden Abschnitte (Render JSX Syntax, Safe Mode, Slot Details) dort streichen und auf das Thema verweisen. `figma-cli <command> --help` war für mich der billigste und verlässlichste Weg überhaupt und wird in keiner Doku als Einstieg genannt
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone, Statusbar-Mock über ~50 Operationen
+  → beides gebaut, und drei deiner fünf Belege lagen anders als gemeldet. Bestätigt: `align=`
+    stand 0/1/3 (REFERENCE/FIGMA-USAGE/README) — meine Schuld von gestern, jetzt in der
+    `<Text>`-Sektion von REFERENCE.md; `arc`/`innerRadius` fehlten dort ganz, stehen jetzt beim
+    `<Ellipse>`-Absatz samt flacher Bogenenden; `<command> --help` stand in keiner der vier
+    Dateien und wird nun in `skills/figma-cli/SKILL.md` und in der Fußzeile von `figma-cli docs`
+    genannt. Nicht bestätigt: `render --verify` steht sehr wohl in `docs quick-reference` — als
+    Klammerzusatz hinter `verify`, in einem Thema, das du nach eigener Auskunft in 50 Operationen
+    nie geöffnet hast. Es fehlte nicht, es war vergraben, deshalb steht es jetzt am Ende von
+    `jsx-syntax` statt in quick-reference. Und `docs --file REFERENCE.md` gab es bereits; gefehlt
+    hat nur der Hinweis darauf, der jetzt den **Unterschied** nennt statt der Themenzahl, wie du
+    es gefordert hast. REFERENCE.md wird nicht gekürzt — das Detail dort ist das bessere.
+    Dahinter die eigentliche Fehlerklasse: `tests/docs-coverage.test.js` hält die `known`-Map aus
+    `src/lib/jsx-props.js` gegen alle vier Dateien, mit benannter Rückstandsliste von sieben.
+    `counterAxisSpacing`, für das du auf `eval` ausweichen musstest, und `wrapGap` sind
+    dokumentiert und aus der Liste heraus
+
+- [x] `wish` · **`render --verify` nimmt keine Skala — der Roundtrip taugt damit nur zur Existenzprüfung**
+  **Repro:** `figma-cli render '<JSX>' --verify` gegen `figma-cli verify <id> -s 3`
+  **Observed:** `render --help` kennt `--verify` als Schalter ohne Wert; die Skala liegt fest bei 0.5. Ein 500 px breiter Frame kommt als 250-px-Bild zurück. Bei einer Statusbar mit 36-px-Ringen und 9–10-px-Text war darauf weder die Ringfüllung noch die Zahl zu beurteilen — ich habe den Frame für unfertig gehalten, bis derselbe Knoten mit `verify -s 3` zeigte, dass er stimmte
+  **Expected:** `--verify` sollte dieselbe Skala annehmen wie `verify`, etwa `--verify 3` oder `--verify --scale 3`. Ohne das kostet jede Prüfung zwei Aufrufe statt einem — in einer Session mit rund 15 Prüfrunden also 15 zusätzliche Roundtrips, und der eingebaute Weg wird zur Attrappe: er bestätigt, dass etwas entstanden ist, nicht dass es richtig aussieht
+  **Context:** CLI 2.1.2, FigmaClaude-Panel, Datei Designdone, Statusbar-Mock (500 × 97 px, Ringe 36 px)
+  → gebaut: `--verify [scale]`, also `render '<JSX>' --verify 3`, auch auf `render-batch`.
+    Zur Beweislage: die Skala lag nicht bei 0.5, sondern fest bei 1 — dein 500→250-Bild kam von
+    `figma-cli verify` mit dessen Vorgabe 0.5, nicht vom Roundtrip. Der Wunsch stimmt trotzdem,
+    und die Messung führte auf etwas Größeres: es gab **zwei Kopien** der Export-Logik mit
+    verschiedenen Vorgaben und verschiedenen Deckeln, während `render --help` Ersatz für `verify`
+    versprach. Beide rechnen jetzt in `src/lib/verify-export.js` (`tests/verify-export.test.js`,
+    inkl. Vergleich der eingebetteten Fassung gegen die Funktion, weil genau diese Doppelung die
+    Ursache war). Eine gedeckelte Skala wird ab jetzt im JSON gemeldet statt still angewandt.
+    Live geprüft an `915:5252`: 36 px bei Skala 1, 108 px bei 3, und bei `-s 100` sauber auf
+    2000 px gedeckelt

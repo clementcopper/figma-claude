@@ -12,6 +12,7 @@ import {
   unescapeShell
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
+import { exportScaleSnippet } from '../lib/verify-export.js';
 import { formatEvalOutput } from '../lib/eval-output.js';
 import { explainEvalError, inPanel } from '../lib/connection-help.js';
 
@@ -210,18 +211,12 @@ program
       if (!node) return { error: 'No node selected or found' };
       if (!('exportAsync' in node)) return { error: 'Node cannot be exported' };
 
-      // Calculate optimal scale to stay under max dimension
+      // How large the export comes out is decided in src/lib/verify-export.js, so this and
+      // render --verify cannot drift apart again -- they already had.
       const nodeWidth = node.width || 100;
       const nodeHeight = node.height || 100;
-      let finalScale = ${scale};
-      const maxNodeDim = Math.max(nodeWidth, nodeHeight);
-      if (maxNodeDim * finalScale > ${maxDim}) {
-        finalScale = ${maxDim} / maxNodeDim;
-      }
-      // Ensure we don't exceed 8000px (API limit)
-      if (maxNodeDim * finalScale > 7500) {
-        finalScale = 7500 / maxNodeDim;
-      }
+      const chosen = ${exportScaleSnippet(scale, maxDim)};
+      const finalScale = chosen.scale;
 
       const bytes = await node.exportAsync({
         format: 'PNG',

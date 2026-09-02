@@ -62,6 +62,9 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 
 ## Process
 
+- **Ein Doku-Verweis, den man nur in einer Übersicht sieht, wird nicht gelesen.** Die Panel-Session dazu, wörtlich: „Wenn dort steht ‚REFERENCE.md — 30 Themen', zahle ich keine Aufmerksamkeit dafür, weil ich nicht weiß, ob dort etwas steht, das ich nicht schon habe." Ein Verweis muss den **Unterschied** benennen, nicht den Umfang — und dort stehen, wo man beim Lesen darüber stolpert, nicht in einem Index.
+- **Den Leser fragen, wo er tatsächlich vorbeikommt.** Ich wollte `render --verify` in `quick-reference` und `ai-verification` setzen — beide logisch, beide von der meldenden Session in 50 Operationen nie geöffnet. Gelesen wurden `jsx-syntax`, `critical-pitfalls` und das `--help` des gerade getippten Befehls. Die logische Stelle und die begangene Stelle sind selten dieselbe.
+
 - **A fix that lands on one of two twin commands is not a fix.** `eval` learned to name an empty result in August; `run` — its own copy of the same three decisions — did not, and `REFERENCE.md` documented the behavior as if it covered both. The same friction was reported from the panel a second time, six weeks later, against a doc line that was already there and already wrong. When two commands share a decision, give them one function, not two copies that pass review separately.
 - **`docs <topic>` is what a panel session reads; `REFERENCE.md` is not.** Three of four entries in this round asked for something REFERENCE.md either said or did not need to say. Documentation that only exists there does not reach the reader who files the report.
 

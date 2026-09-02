@@ -125,3 +125,40 @@ through the unknown-prop warning: `docs jsx-syntax` never showed the prop.
 (`src/lib/text-autofill.js`, pure) + `FigmaClient.validateTextAlignment`, printed next to the
 unknown-prop warnings in `src/commands/render.js`. The layout is unchanged — FILL is load-bearing
 for wrapping — so no parity run was needed.
+
+## Two Copies of the Export Scale, One Promise (2026-09-02, from FEEDBACK.md)
+
+**Symptom:** a 500px status-bar frame came back too small to judge — 36px rings and 9px text
+unreadable — and was assumed unfinished until the same node at `verify -s 3` showed it had been
+correct. `render --help` says `--verify` "replaces a separate `figma-cli verify` roundtrip".
+
+**Cause, not the reported one:** the report said `--verify` was fixed at 0.5. It was fixed at
+**1** — the 250px image came from `figma-cli verify`, whose own default is 0.5. The real defect
+was underneath: two independent implementations of the same export. `verify`
+(`src/commands/export-eval.js`) clamped against `--max` and Figma's 7500px ceiling; `verifyRendered`
+(`src/commands/render.js`) had its own copy that knew only a 2000px cap, hardcoded scale 1, and
+took no argument — while the help promised equivalence.
+
+**Fix:** `src/lib/verify-export.js` decides once. `resolveExportScale` is the function,
+`exportScaleSnippet` the same rules as source for the plugin-side eval (they cannot import), and
+`tests/verify-export.test.js` runs the generated snippet against the function on every case —
+because two hand-written copies is precisely what caused this. `render --verify [scale]` now takes
+a value on both `render` and `render-batch`, and a clamped scale is reported in the JSON instead
+of applied silently. Verified live on `915:5252`: 36px at scale 1, 108px at 3, cleanly capped to
+2000px at `-s 100`.
+
+## A Prop That Exists and Is Written Down Nowhere (2026-09-02, from FEEDBACK.md)
+
+**Symptom:** `align=` worked in the parser and appeared in no `REFERENCE.md`, the file with the
+most detailed `<Text>` section. Separately, a session set `counterAxisSpacing` through `eval`
+because the JSX prop was documented nowhere.
+
+**Cause:** the vocabulary lived as a local constant inside `validateJsxProps`, so it was the
+truth about what exists and unreachable to anything that could check that truth. Nothing related
+the parser to the docs, so every new prop was one editorial slip away from being invisible.
+
+**Fix:** the list moved to `src/lib/jsx-props.js` (`KNOWN_PROPS`, `ALL_PROPS`, `PROP_ALIASES`) and
+`tests/docs-coverage.test.js` holds it against all four documents. The seven props that are
+genuinely undocumented today are a **named** allowlist, not a tolerated silence: without it the
+check would be red from its first run, and a permanently red line stops being read. The test also
+fails when a backlog entry becomes documented, so the list can only shrink.

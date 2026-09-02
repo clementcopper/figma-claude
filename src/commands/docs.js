@@ -14,6 +14,17 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // is the guide and the root CLAUDE.md is something else.
 const GUIDE_CANDIDATES = ['docs/FIGMA-USAGE.md', 'CLAUDE.md'];
 
+// Other markdown in this repo that `docs --file` already splits just as well, and that nobody
+// knew was reachable. Reported from the panel: REFERENCE.md carries the most detailed <Text>
+// section of any file and was the only one that never learned `align=`, because the reader who
+// would have noticed only ever saw the topics from the guide above.
+//
+// The blurb names what is DIFFERENT, not how big the file is — "30 topics" buys no attention
+// from someone who cannot tell whether any of them hold something they do not already have.
+const OTHER_GUIDES = [
+  { rel: 'REFERENCE.md', has: '<Text> detail (inline runs, entities, whitespace), Safe Mode, advanced examples' }
+];
+
 function loadGuide(explicitPath) {
   const candidates = explicitPath ? [explicitPath] : GUIDE_CANDIDATES;
   for (const rel of candidates) {
@@ -42,7 +53,19 @@ program
       for (const s of sections) {
         console.log(`  ${chalk.cyan(s.slug.padEnd(28))} ${chalk.gray(String(s.tokens).padStart(5) + ' tok')}  ${s.heading}`);
       }
-      console.log(chalk.gray(`\n  figma-cli docs <topic>   prints one section instead of all ~${total} tokens\n`));
+      console.log(chalk.gray(`\n  figma-cli docs <topic>   prints one section instead of all ~${total} tokens`));
+
+      // Counted, never written down: a maintained number is a number that drifts.
+      for (const other of OTHER_GUIDES) {
+        const found = loadGuide(other.rel);
+        if (!found) continue;
+        const theirs = parseSections(found.markdown);
+        if (theirs.length === 0) continue;
+        console.log(chalk.gray(`\n  also splittable — ${chalk.cyan(other.rel)}, ${theirs.length} topics: ${other.has}`));
+        console.log(chalk.gray(`  figma-cli docs --file ${other.rel} <topic>`));
+      }
+      // The cheapest route of all, and it was documented nowhere.
+      console.log(chalk.gray(`\n  figma-cli <command> --help   the flags of one command, always current\n`));
       return;
     }
 
