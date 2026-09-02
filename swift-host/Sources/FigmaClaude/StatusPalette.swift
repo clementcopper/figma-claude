@@ -68,3 +68,16 @@ enum StatusPalette {
         return NSFont(descriptor: descriptor, size: size) ?? .systemFont(ofSize: size, weight: weight)
     }
 }
+
+/// An `NSTextField` that occupies exactly the space it draws.
+///
+/// `NSStackView` spaces by alignment rects, and a plain text field reports an inset — so the
+/// head's documented 5pt gap between the stop button and the model name measured 3.0. It went
+/// unnoticed while the button's glyph was smaller than its box and left optical air on both
+/// sides; the moment the circle filled its 36pt box, the missing two points showed.
+///
+/// The same fix exists twice in this target already, both times file-private. This is the ring bar's own, named apart
+/// so it cannot collide with either.
+final class RingLabel: NSTextField {
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsets() }
+}

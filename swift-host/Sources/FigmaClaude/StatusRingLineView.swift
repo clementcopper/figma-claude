@@ -13,6 +13,8 @@ final class StatusRingLineView: NSView {
     }
     var onStop: (() -> Void)?
     var onSelectionClick: (() -> Void)?
+    /// Called with the new threshold in percent when one is picked from the Ctx ring's menu.
+    var onThresholdChange: ((Double) -> Void)?
 
     // The Figma selection keeps its own band above the rings, exactly as it had above the bar —
     // the ring design replaces the status row, not the panel's other half.
@@ -35,13 +37,13 @@ final class StatusRingLineView: NSView {
 
         // Monospaced, like the path it is: a directory read in a proportional face loses the
         // alignment that makes two paths comparable at a glance.
-        cwdLabel.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
+        cwdLabel.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         cwdLabel.textColor = StatusPalette.subtleText
         cwdLabel.lineBreakMode = .byTruncatingHead
         cwdLabel.translatesAutoresizingMaskIntoConstraints = false
 
         selectionButton.isBordered = false
-        selectionButton.font = StatusPalette.font(size: 11)
+        selectionButton.font = StatusPalette.font(size: 12)
         selectionButton.contentTintColor = .linkColor
         selectionButton.target = self
         selectionButton.action = #selector(selectionClicked)
@@ -63,8 +65,11 @@ final class StatusRingLineView: NSView {
         let stack = NSStackView(views: [selectionRow, separator, row, cwdLabel])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 4
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
+        stack.spacing = 6
+        // The rings are 36pt tall and were sitting 4pt from both edges, which read as cramped
+        // against a band that is otherwise mostly air. 10 top and bottom gives the block room
+        // without moving any wrap step — the steps are decided by width, not height.
+        stack.edgeInsets = NSEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
@@ -122,6 +127,16 @@ final class StatusRingLineView: NSView {
             }
             group.set(mode: mode, level: item.level, value: item.value, sub: item.sub)
             group.toolTip = item.tooltip
+            // Only the context ring does anything on click. With the drag handle gone this menu
+            // is the only way to reach the threshold at all, so the ring it belongs to is where
+            // it has to live.
+            if item.name == "Ctx" {
+                group.toolTip = item.tooltip + " — click to set the threshold"
+                group.onClick = { [weak self, weak group] in
+                    guard let self, let group else { return }
+                    self.showThresholdMenu(from: group)
+                }
+            }
             items.append(group)
         }
         row.setItems(items)
@@ -146,6 +161,43 @@ final class StatusRingLineView: NSView {
 
     @objc private func selectionClicked() { onSelectionClick?() }
 
+    /// The threshold picker, opened by clicking the context ring.
+    ///
+    /// Labelled in tokens rather than percent: the ring's own second line says "400k", so the
+    /// menu that sets it should say the same thing. The current choice carries a tick, so opening
+    /// the menu also answers "what is it set to" without changing anything.
+    private func showThresholdMenu(from group: NSView) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let total = lastSnapshot?.totalTokens ?? 0
+
+        let heading = NSMenuItem(title: "Clear threshold", action: nil, keyEquivalent: "")
+        heading.isEnabled = false
+        menu.addItem(heading)
+        menu.addItem(.separator())
+
+        for choice in contextThresholdChoices(totalTokens: total) {
+            let item = NSMenuItem(title: choice.label,
+                                  action: #selector(thresholdPicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = choice.percent
+            // Within half a point, because the stored value is a Double that has been through
+            // JSON — an exact comparison would leave the menu with no tick at all.
+            item.state = abs(choice.percent - contextThreshold) < 0.5 ? .on : .off
+            menu.addItem(item)
+        }
+
+        menu.popUp(positioning: nil,
+                   at: NSPoint(x: 0, y: group.bounds.maxY + 4),
+                   in: group)
+    }
+
+    @objc private func thresholdPicked(_ sender: NSMenuItem) {
+        guard let percent = sender.representedObject as? Double else { return }
+        contextThreshold = percent
+        onThresholdChange?(percent)
+    }
+
     /// The band's height is read in `PanelContentView.layout()`, which nothing schedules on its
     /// own — without this the row keeps the height it had before the content changed.
     private func invalidateLayout() {
@@ -161,12 +213,15 @@ final class StatusRingLineView: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        var height = 8 + row.intrinsicContentSize.height
-        if !cwdLabel.isHidden { height += cwdLabel.fittingSize.height + 4 }
-        if !selectionRow.isHidden { height += selectionRow.fittingSize.height + 4 }
-        if !separator.isHidden { height += separator.fittingSize.height + 4 }
+        var height = 20 + row.intrinsicContentSize.height
+        if !cwdLabel.isHidden { height += cwdLabel.fittingSize.height + 6 }
+        if !selectionRow.isHidden { height += selectionRow.fittingSize.height + 6 }
+        if !separator.isHidden { height += separator.fittingSize.height + 6 }
         return NSSize(width: NSView.noIntrinsicMetric, height: height)
     }
+
+    /// The head's internal spacing, for the probe.
+    func measureHeadGap() -> String { head.measureGap() }
 
     /// Each item's width against the design's, so a wrap step that moves says which group moved it.
     func measureItems() -> String {

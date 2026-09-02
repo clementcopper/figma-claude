@@ -96,7 +96,7 @@ public func buildSnapshot(_ payload: [String: Any], budget: Int = 0,
     // any reader that does not know the newer field.
     snapshot.sessionResetsAt = number(fiveHour["resets_at"])
     snapshot.weekPercent = number(sevenDay["used_percentage"])
-    snapshot.weekResetsAt = number(sevenDay["resets_at"]).map { formatClock($0) }
+    snapshot.weekResetsAt = number(sevenDay["resets_at"]).map { formatWeekReset($0) }
 
     // The reset-window rule is already ported and is used rather than restated: it decides when
     // the percentage falls and why the absolute point stays.
@@ -189,6 +189,34 @@ public func formatClock(_ epochSeconds: Double) -> String {
     let formatter = DateFormatter()
     formatter.dateFormat = "HH:mm"
     return formatter.string(from: Date(timeIntervalSince1970: epochSeconds))
+}
+
+/// When the weekly bucket refills: weekday and hour, not just an hour.
+///
+/// `formatClock` gives "01:00", which is what the week ring showed — and a bare time on a limit
+/// that resets once a week says nothing about *which* day, so it read as "in the next hour". The
+/// epoch is in the payload the whole time; only the formatter was throwing the day away.
+///
+/// Fixed English weekday abbreviations rather than the user's locale: the row is 9pt and mixes
+/// with English labels either way, and a locale that spells Sunday as five characters would move
+/// the widest group in the bar.
+public func formatWeekReset(_ epochSeconds: Double) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "EEE h:mm a"
+    return formatter.string(from: Date(timeIntervalSince1970: epochSeconds))
+}
+
+/// Whether a weekly reset still carries the shape written before `formatWeekReset` existed.
+///
+/// Those values are bare clock times — "01:00" — and they outlive the fix: they sit in every
+/// tab's file and in the remembered `limits.json`. Dropping them was the first attempt and made
+/// the line blank until the next payload with `seven_day` data arrived, which can be a while: an
+/// hour without its day is poor, but blank says nothing at all. So it is shown and replaced the
+/// moment a real value lands.
+public func isLegacyWeekReset(_ text: String?) -> Bool {
+    guard let text, !text.isEmpty else { return false }
+    return text.range(of: "^\\d{1,2}:\\d{2}$", options: .regularExpression) != nil
 }
 
 /// How alarming the number is. One name, so bar and figure can never disagree.

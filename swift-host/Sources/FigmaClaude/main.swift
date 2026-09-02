@@ -270,13 +270,21 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     let window: NSWindow
     private let tabStrip = TabStripView()
     private let toolbar = ToolbarView()
-    private let statusLine = StatusLineView()
+    // The ring design replaces the bar. `StatusLineView` stays in the tree for now — the render
+    // probe still measures it, and its marker work is not lost by being unused.
+    /// What to start instead when a tab exits with code 1 — see `ExitRecovery`.
+    private var exitRecovery = ExitRecovery()
+
+    private let statusLine = StatusRingLineView()
     private var statusWatcher: StatusLineWatcher!
     private var prompts: PromptDetector!
     /// Tabs whose process is being replaced on purpose — their exit is not worth reporting.
     private var respawning: Set<String> = []
     /// An action that touches the daemon or Figma is running; the menu is read-only until it ends.
     private var figmaBusy = false
+    /// Whether the "should clear" toast has already fired for the current crossing of the
+    /// marker. Reset when the fill dips back under it, so a re-crossing toasts again.
+    private var markerDangerToasted = false
     private lazy var cli = resolveCli(appRoot: Bundle.main.bundlePath, configured: PanelConfig.load().figmaCli)
     private let container = TerminalColumn()
     /// What the terminal column should be. The window has no other opinion about its width.
@@ -364,13 +372,53 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         tabStrip.onNewTab = { [weak self] in self?.newTab() }
         toolbar.onPickDirectory = { [weak self] in self?.pickDirectory() }
         toolbar.onFigmaMenu = { [weak self] button in self?.showFigmaMenu(from: button) }
-        toolbar.onResume = { [weak self] in self?.respawnActive(["--resume"]) }
-        toolbar.onContinue = { [weak self] in self?.respawnActive(["--continue"]) }
-        toolbar.onRestart = { [weak self] in self?.respawnActive([]) }
+        toolbar.onResume = { [weak self] in
+            guard let self else { return }
+            // Registered before the respawn, because the process it protects starts inside it:
+            // `--resume` kills the running session to make room for the picker, and cancelling
+            // the picker then leaves nothing to go back to.
+            if let id = self.state.active?.id {
+                self.exitRecovery.register(resumeRecoveryPlan(), for: id)
+            }
+            self.respawnActive(["--resume"])
+        }
+        toolbar.onContinue = { [weak self] in
+            guard let self else { return }
+            if let id = self.state.active?.id { self.exitRecovery.clear(for: id) }
+            self.respawnActive(["--continue"])
+        }
+        toolbar.onRestart = { [weak self] in
+            guard let self else { return }
+            if let id = self.state.active?.id { self.exitRecovery.clear(for: id) }
+            self.respawnActive([])
+        }
         statusLine.onSelectionClick = { [weak self] in self?.insertSelection() }
+        // Still the same stored value, still `contextMarker` in panel.json — only the way it is
+        // set changed. The ring design has no handle to drag, so it is a number now.
+        statusLine.contextThreshold = PanelConfig.load().contextMarker
+        statusLine.onThresholdChange = { [weak self] value in
+            guard let self, updatePanelConfig(["contextMarker": value]) else { return }
+            self.toolbar.toast("Clear threshold \(Int(value.rounded()))%")
+        }
+        // ESC is what interrupts a turn in Claude Code. Sent to the active tab, because the
+        // status line always describes that one.
+        statusLine.onStop = { [weak self] in
+            guard let tab = self?.state.active else { return }
+            tab.view.send(txt: "\u{1b}")
+        }
         statusWatcher = StatusLineWatcher { [weak self] tabId, snapshot in
             guard let self, self.state.active?.id == tabId else { return }
             self.statusLine.render(snapshot)
+            // Toast once per crossing of the clear marker, not on every 2.5 s poll. The colour of
+            // the bar already tells the story; the toast is the nudge. Reset when it dips back.
+            let marker = self.statusLine.contextThreshold
+            let danger = contextFillLevel(snapshot.usedPercent, marker: marker) == .danger
+            if danger && !self.markerDangerToasted {
+                self.markerDangerToasted = true
+                self.toolbar.toast("Context \(Int(snapshot.usedPercent.rounded()))% — /clear")
+            } else if !danger && self.markerDangerToasted {
+                self.markerDangerToasted = false
+            }
         }
         statusWatcher.start()
         prompts = PromptDetector { [weak self] _, _ in self?.refreshTabBar() }
@@ -732,8 +780,16 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     /// The tab keeps its place and its id: the status line is keyed on that id, and a new one
     /// would point the row at a tab that no longer exists.
     private func respawnActive(_ extraArgs: [String]) {
-        guard let index = state.activeIndex, let old = state.tabs.first(where: { $0.id == state.tabs[index].id })
-        else { return }
+        guard let index = state.activeIndex else { return }
+        respawn(at: index, extraArgs: extraArgs)
+    }
+
+    /// The same for a named tab rather than the active one. A cancelled session picker can land
+    /// on a tab the user has since switched away from; respawning "the active tab" would then
+    /// restart the wrong conversation.
+    private func respawn(at index: Int, extraArgs: [String]) {
+        guard index < state.tabs.count else { return }
+        let old = state.tabs[index]
 
         let config = PanelConfig.load()
         let environment = panelEnvironment(config: config, tabId: old.id)
@@ -889,8 +945,24 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         guard !respawning.contains(state.tabs[index].id) else { return }
 
         let tab = state.tabs[index]
+        // SwiftTerm hands the raw waitpid status through, so an exit of 1 arrives as 256. That is
+        // the number the panel used to print, and the reason the code-1 branch below never fired.
+        let status = exitStatus(waitStatus: exitCode ?? 0)
+
+        if let step = exitRecovery.next(for: tab.id, exitCode: status.code) {
+            tab.view.feed(text: "\r\n" + step.note + "\r\n")
+            // Out of the exit callback before spawning the replacement, the way the Electron host
+            // defers it — restarting a process from inside its own termination is asking for it.
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      let now = self.state.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+                self.respawn(at: now, extraArgs: step.args)
+            }
+            return
+        }
+
         tab.view.feed(text: describePtyExit(
-            code: exitCode ?? 0,
+            code: status.code,
             msSinceSpawn: Date().timeIntervalSince(tab.spawnedAt) * 1000,
             sawOutput: tab.view.sawOutput))
     }

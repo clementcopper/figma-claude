@@ -7,9 +7,13 @@ import FigmaClaudeCore
 /// Sun 1:00 AM" is the widest group in the default state, and a longer reset time moves every
 /// step after it.
 final class StatusRingGroup: NSView {
+    /// Set on the groups that do something. The pointer changes only where this is non-nil, so a
+    /// ring that is only a readout never looks clickable.
+    var onClick: (() -> Void)?
+
     private let ring = StatusRingView(frame: .zero)
-    private let nameLabel = NSTextField(labelWithString: "")
-    private let subLabel = NSTextField(labelWithString: "")
+    private let nameLabel = RingLabel(labelWithString: "")
+    private let subLabel = RingLabel(labelWithString: "")
 
     init(name: String) {
         super.init(frame: .zero)
@@ -19,7 +23,7 @@ final class StatusRingGroup: NSView {
         // Name and value share one colour on purpose: they are two halves of one reading, not a
         // label and its data.
         for (label, weight) in [(nameLabel, NSFont.Weight.semibold), (subLabel, .regular)] {
-            label.font = StatusPalette.font(size: 9, weight: weight)
+            label.font = StatusPalette.font(size: 10, weight: weight)
             label.textColor = StatusPalette.text
             label.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -47,6 +51,16 @@ final class StatusRingGroup: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    override func mouseDown(with event: NSEvent) {
+        guard onClick != nil else { return super.mouseDown(with: event) }
+        onClick?()
+    }
+
+    override func resetCursorRects() {
+        guard onClick != nil else { return }
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
     func set(mode: StatusRingView.Mode, level: StatusLevel, value: String, sub: String) {
         ring.set(mode: mode, level: level, value: value)
         subLabel.stringValue = sub
@@ -62,7 +76,10 @@ final class StatusRingGroup: NSView {
 final class StatusStopButton: NSView {
     var onClick: (() -> Void)?
 
-    private let glyph = NSView()
+    /// Whether the disc behind the symbol is drawn. `stop.circle` carries its own ring, so on the
+    /// disc it reads as a circle inside a circle — the flat variant drops the disc and lets the
+    /// symbol be the button.
+    private let glyph = NSImageView()
     private var hovering = false { didSet { applyState() } }
     private var pressed = false { didSet { applyState() } }
     private var tracking: NSTrackingArea?
@@ -73,16 +90,19 @@ final class StatusStopButton: NSView {
         wantsLayer = true
         layer?.cornerRadius = RingGeometry.boxSize / 2
 
-        glyph.wantsLayer = true
-        glyph.layer?.cornerRadius = 1.5
+        // `stop.circle` rather than a drawn square: it is the platform's own word for this, and
+        // it stays legible at 9pt where a hand-drawn glyph turns into a dot.
+        // `stop.fill` — the solid square, with the disc already providing the round surface.
+        glyph.image = symbolImage(["stop.fill", "stop"], pointSize: 16, weight: .regular).image
+        glyph.imageScaling = .scaleProportionallyUpOrDown
         glyph.translatesAutoresizingMaskIntoConstraints = false
         addSubview(glyph)
 
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: RingGeometry.boxSize),
             heightAnchor.constraint(equalToConstant: RingGeometry.boxSize),
-            glyph.widthAnchor.constraint(equalToConstant: 11),
-            glyph.heightAnchor.constraint(equalToConstant: 11),
+            glyph.widthAnchor.constraint(equalToConstant: 16),
+            glyph.heightAnchor.constraint(equalToConstant: 16),
             glyph.centerXAnchor.constraint(equalTo: centerXAnchor),
             glyph.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
@@ -102,7 +122,7 @@ final class StatusStopButton: NSView {
     private func applyState() {
         let active = hovering || pressed
         layer?.backgroundColor = (active ? StatusPalette.danger : StatusPalette.disc).cgColor
-        glyph.layer?.backgroundColor = (active ? NSColor.white : StatusPalette.text).cgColor
+        glyph.contentTintColor = active ? .white : StatusPalette.text
         layer?.opacity = pressed ? 0.85 : 1
     }
 
@@ -142,8 +162,8 @@ final class StatusStopButton: NSView {
 /// four ring groups still wrap individually, which is the behaviour the separation bought.
 final class StatusHeadGroup: NSView {
     let stop = StatusStopButton(frame: .zero)
-    private let modelLabel = NSTextField(labelWithString: "")
-    private let effortLabel = NSTextField(labelWithString: "")
+    private let modelLabel = RingLabel(labelWithString: "")
+    private let effortLabel = RingLabel(labelWithString: "")
     private let effortBox = NSView()
 
     override init(frame frameRect: NSRect) {
@@ -153,9 +173,9 @@ final class StatusHeadGroup: NSView {
         // 36pt, the same box as a ring — measured, not guessed. At 18 the head came out 16pt
         // narrower than the design and the 220pt panel stopped wrapping to three lines.
 
-        modelLabel.font = StatusPalette.font(size: 10, weight: .semibold)
+        modelLabel.font = StatusPalette.font(size: 11, weight: .semibold)
         modelLabel.textColor = StatusPalette.text
-        effortLabel.font = StatusPalette.font(size: 8, weight: .medium)
+        effortLabel.font = StatusPalette.font(size: 9, weight: .medium)
         effortLabel.textColor = StatusPalette.subtleText
 
         effortBox.wantsLayer = true
@@ -198,6 +218,14 @@ final class StatusHeadGroup: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// Where the stop circle ends and the model text begins, so the gap is a number.
+    func measureGap() -> String {
+        let discEdge = stop.frame.maxX
+        let textEdge = modelLabel.convert(modelLabel.bounds, to: self).minX
+        return String(format: "stop %.0f…%.0f | model starts %.0f | gap %.1f | head %.0f",
+                      stop.frame.minX, discEdge, textEdge, textEdge - discEdge, bounds.width)
+    }
+
     func set(model: String, effort: String?) {
         modelLabel.stringValue = model
         effortBox.isHidden = (effort ?? "").isEmpty
@@ -218,6 +246,10 @@ final class StatusRingRow: NSView {
     static let rowGap: CGFloat = 8
     /// The row's own left and right padding, which the wrap has to be told about.
     static let horizontalPadding: CGFloat = 8
+    /// Air above and below the circles themselves. Insets on the enclosing stack were not this:
+    /// they padded the whole band, selection row included, and left the rings still touching
+    /// their own edges.
+    static let verticalPadding: CGFloat = 8
 
     static var debugFrames = false
     private var items: [NSView] = []
@@ -274,6 +306,7 @@ final class StatusRingRow: NSView {
         let tallest = items.map { $0.fittingSize.height }.max() ?? RingGeometry.boxSize
         let height = CGFloat(laidOut.count) * tallest
             + CGFloat(laidOut.count - 1) * StatusRingRow.rowGap
+            + StatusRingRow.verticalPadding * 2
         return NSSize(width: NSView.noIntrinsicMetric, height: height)
     }
 
@@ -289,7 +322,7 @@ final class StatusRingRow: NSView {
         // rows keep the left edge so the head stays in line with the file and directory rows.
         let centred = laidOut.count == 1
 
-        var y = bounds.maxY - tallest
+        var y = bounds.maxY - StatusRingRow.verticalPadding - tallest
         for row in laidOut {
             let widths = row.map { items[$0].fittingSize.width }
             let lineWidth = StatusFlow.lineWidth(widths: widths, columnGap: StatusRingRow.columnGap)

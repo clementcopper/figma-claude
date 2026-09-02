@@ -99,6 +99,25 @@ private let immediateMs: Double = 1000
 /// never printed a thing. `[Process exited with code 1]` on its own reads like a broken `claude`
 /// or a broken PATH, and both send you looking in the wrong place. The one cause seen so far is a
 /// stale instance — the bundle in /Applications replaced while the app was running.
+/// What a `waitpid` status actually says.
+///
+/// SwiftTerm hands `processTerminated` the raw status from `waitpid(shellPid, &n, WNOHANG)`
+/// unchanged (`LocalProcess.swift`), not an exit code. So a process that exits 1 arrives as
+/// `1 << 8 = 256` — which is what the panel printed, and why the `code == 1` branch below could
+/// never have fired since it was written.
+///
+/// - Returns: the exit code, and the signal that killed the process if one did. A signalled
+///   process has no exit code of its own; reporting the low bits as one would invent a number.
+public func exitStatus(waitStatus: Int32) -> (code: Int32, signal: Int32?) {
+    let low = waitStatus & 0x7f
+    // 0x7f in the low bits means stopped, not exited — not a termination this panel ever sees,
+    // but reporting it as "exit code 127" would be a lie.
+    if low != 0 && low != 0x7f {
+        return (code: 128 + low, signal: low)
+    }
+    return (code: (waitStatus >> 8) & 0xff, signal: nil)
+}
+
 public func describePtyExit(code: Int32, msSinceSpawn: Double, sawOutput: Bool) -> String {
     let line = "\r\n[Process exited with code \(code)]\r\n"
 

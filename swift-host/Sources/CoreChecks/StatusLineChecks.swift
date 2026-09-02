@@ -87,7 +87,7 @@ enum StatusLineTests {
         limits.sessionResetsAt = now / 1000 + 3600
         limits.sessionResetsInMin = 60
         limits.weekPercent = 87
-        limits.weekResetsAt = "01:00"
+        limits.weekResetsAt = "01:00"   // the legacy shape, deliberately
 
         // A thin snapshot gets them all.
         var thin = StatusLineSnapshot()

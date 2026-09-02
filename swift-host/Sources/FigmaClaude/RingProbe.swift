@@ -76,6 +76,7 @@ enum RingProbe {
         snapshot.weekResetsAt = "Sun 1:00 AM"
         snapshot.compacted = 2
         snapshot.compactBudget = 3
+        snapshot.compactAuto = 1
         snapshot.updatedAt = Date().timeIntervalSince1970
 
         let column = NSStackView()
@@ -112,7 +113,10 @@ enum RingProbe {
             box.heightAnchor.constraint(equalToConstant: line.bounds.height).isActive = true
             column.addArrangedSubview(box)
 
-            if width == widths.first { print("[probe] widths \(line.measureItems())") }
+            if width == widths.first {
+                print("[probe] widths \(line.measureItems())")
+                print("[probe] head   \(line.measureHeadGap())")
+            }
             print("[probe] \(Int(width))pt -> \(line.measure())")
         }
 

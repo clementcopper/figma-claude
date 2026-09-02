@@ -44,7 +44,7 @@ final class StatusRingView: NSView {
         self.level = level
         valueLabel.stringValue = value
         // Four characters ("100%") reach the arc at the design's 10pt, so that one case steps down.
-        valueLabel.font = StatusPalette.font(size: value.count > 3 ? 9 : 10, weight: .semibold)
+        valueLabel.font = StatusPalette.font(size: value.count > 3 ? 10 : 11, weight: .semibold)
         valueLabel.textColor = level == .normal ? StatusPalette.text : StatusPalette.color(for: level)
         needsDisplay = true
     }
@@ -52,9 +52,14 @@ final class StatusRingView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
 
-        stroke(from: RingGeometry.startDegrees,
-               to: RingGeometry.startDegrees + RingGeometry.spanDegrees,
-               center: center, color: StatusPalette.ringTrack)
+        // The continuous track belongs to the rings that fill. A counting ring has no continuous
+        // track at all: its unlit segments are drawn as segments too, so the gaps are there
+        // whether or not anything is lit and the ring reads as a count even when it is empty.
+        if case .fill = mode {
+            stroke(from: RingGeometry.startDegrees,
+                   to: RingGeometry.startDegrees + RingGeometry.spanDegrees,
+                   center: center, color: StatusPalette.ringTrack)
+        }
 
         switch mode {
         case .fill(let fraction):
@@ -69,9 +74,10 @@ final class StatusRingView: NSView {
             // session is in, and a two-tone ring reads as two different measurements.
             let reached = RingGeometry.compactionLevel(compacted: lit)
             let segments = RingGeometry.compactionSegments(budget: budget)
-            for (index, segment) in segments.enumerated() where index < lit {
+            for (index, segment) in segments.enumerated() {
+                let filled = index < lit
                 stroke(from: segment.start, to: segment.end, center: center,
-                       color: StatusPalette.color(for: reached))
+                       color: filled ? StatusPalette.color(for: reached) : StatusPalette.ringTrack)
             }
         }
 

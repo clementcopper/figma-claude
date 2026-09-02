@@ -12,6 +12,10 @@ enum StatusRingTests {
         wrapSteps()
         wrapEdges()
         ringModel()
+        contextWindow()
+        weekReset()
+        weekResetLegacy()
+        thresholdNotice()
     }
 
     static func ringArcs() {
@@ -133,6 +137,99 @@ enum StatusRingTests {
         Checks.expect(StatusFlow.wrap(widths: [50, 50], available: 107, columnGap: 8).count, 2)
     }
 
+    /// A weekly reset with no weekday is recognised — and still shown.
+    ///
+    /// Dropping it was the first attempt and left the line blank until the next payload carrying
+    /// `seven_day` arrived. An hour without its day is poor; blank is worse.
+    static func weekResetLegacy() {
+        for bare in ["01:00", "1:00", "23:59"] {
+            Checks.expect(isLegacyWeekReset(bare), true)
+        }
+        for real in ["Sun 1:00 AM", "Mon 11:30 PM"] {
+            Checks.expect(isLegacyWeekReset(real), false)
+        }
+        Checks.expect(isLegacyWeekReset(nil), false)
+        Checks.expect(isLegacyWeekReset(""), false)
+
+        // And it survives the merge rather than being swallowed.
+        var limits = RememberedLimits()
+        limits.weekPercent = 12
+        limits.weekResetsAt = "01:00"
+        var thin = StatusLineSnapshot()
+        thin.model = "Opus 5"
+        Checks.expect(applyingLimits(limits, to: thin).weekResetsAt, "01:00")
+    }
+
+    /// Past the threshold the context ring says what to do about it.
+    static func thresholdNotice() {
+        var snap = StatusLineSnapshot()
+        snap.totalTokens = 1_000_000
+
+        // Under it: the budget, so the setting is visible.
+        snap.usedPercent = 30
+        Checks.expect(statusRings(snap, threshold: 60)[0].sub, "600k")
+
+        // At it and past it: the way out, and it stays there rather than passing like a toast.
+        snap.usedPercent = 60
+        Checks.expect(statusRings(snap, threshold: 60)[0].sub, "/clear")
+        Checks.expect(statusRings(snap, threshold: 60)[0].value, "100%")
+        snap.usedPercent = 75
+        Checks.expect(statusRings(snap, threshold: 60)[0].sub, "/clear")
+        Checks.expect(statusRings(snap, threshold: 60)[0].level, StatusLevel.danger)
+
+        // No threshold: the notice only fires against a budget someone set.
+        snap.usedPercent = 75
+        Checks.expect(statusRings(snap, threshold: 100)[0].sub, "1M")
+    }
+
+    /// The weekly reset carries its weekday.
+    static func weekReset() {
+        // A known instant: 2026-08-30 01:00 UTC is a Sunday. Compared in UTC so the case does
+        // not change with wherever this runs.
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        var parts = DateComponents()
+        parts.year = 2026; parts.month = 8; parts.day = 30; parts.hour = 1; parts.minute = 0
+        let epoch = utc.date(from: parts)!.timeIntervalSince1970
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")!
+        formatter.dateFormat = "EEE h:mm a"
+        let expected = formatter.string(from: Date(timeIntervalSince1970: epoch))
+        Checks.expect(expected, "Sun 1:00 AM")
+
+        // What the row actually shows carries a weekday and an am/pm, whatever the zone. The old
+        // formatter gave "01:00" — a time with no day, on a limit that resets once a week.
+        let shown = formatWeekReset(epoch)
+        Checks.expect(shown.split(separator: " ").count, 3)
+        Checks.expect(shown.hasSuffix("AM") || shown.hasSuffix("PM"), true)
+        Checks.expect(formatClock(epoch).contains(":"), true)
+        Checks.expect(formatClock(epoch).count, 5)
+    }
+
+    /// The context ring's second line: the window it fills against.
+    static func contextWindow() {
+        var snap = StatusLineSnapshot()
+        snap.totalTokens = 1_000_000
+        // A threshold slices the window, and that slice is the only place the setting is visible.
+        Checks.expect(contextWindowLabel(snap, threshold: 60), "600k")
+        Checks.expect(contextWindowLabel(snap, threshold: 40), "400k")
+        // No threshold — the whole window.
+        Checks.expect(contextWindowLabel(snap, threshold: 100), "1M")
+        Checks.expect(contextWindowLabel(snap, threshold: 0), "1M")
+        // No window size: no line, rather than a made-up total.
+        var blank = StatusLineSnapshot()
+        blank.totalTokens = 0
+        Checks.expect(contextWindowLabel(blank, threshold: 60), "")
+
+        // The menu says the same thing the line says, so setting it and reading it agree.
+        let choices = contextThresholdChoices(totalTokens: 1_000_000)
+        Checks.expect(choices.first!.label, "1M · full window")
+        Checks.expect(choices.first(where: { $0.percent == 60 })!.label, "600k · 60%")
+        Checks.expect(choices.count, 8)
+    }
+
     /// Snapshot to rings. The cases that matter are the incomplete ones.
     static func ringModel() {
         var full = StatusLineSnapshot()
@@ -147,13 +244,15 @@ enum StatusRingTests {
         full.compacted = 2
         full.compactBudget = 3
 
+        full.compactAuto = 0
+
         let rings = statusRings(full, threshold: 60)
         Checks.expect(rings.map(\.name), ["Ctx", "Sess", "Week", "Comp"])
 
-        // The number is the raw percentage; the fill is measured against the threshold. At 25.4%
-        // of a 60% budget the ring is only just over 40% full — reading the arc as 25% would make
-        // the threshold decorative.
-        Checks.expect(rings[0].value, "25%")
+        // Number and arc answer the same question. At 25.4% of the window against a 60%
+        // threshold, 42% of the budget is spent — and 42 is what both the ring and the figure
+        // say. Showing 25 there would make the threshold decorative.
+        Checks.expect(rings[0].value, "42%")
         if case .fraction(let f) = rings[0].fill {
             Checks.expect((f * 100).rounded(), 42)
         } else {
@@ -161,7 +260,9 @@ enum StatusRingTests {
         }
 
         Checks.expect(rings[3].value, "2")
-        Checks.expect(rings[3].sub, "of 3")
+        // The second line counts the automatic compactions, not the budget — the budget is
+        // already the number of segments in the ring.
+        Checks.expect(rings[3].sub, "0 auto")
         Checks.expect(rings[3].level, StatusLevel.warn)
 
         // A fresh tab: Claude Code leaves rate limits out until the session has made a request.
@@ -173,12 +274,15 @@ enum StatusRingTests {
         bare.totalTokens = 1000
         Checks.expect(statusRings(bare).map(\.name), ["Ctx"])
 
-        // Over the threshold: the arc is capped by the geometry, the number is not.
+        // Over the threshold: the arc is capped by the geometry, the number is not. 92% of the
+        // window against a 60% budget is 153% of it, and saying so is the point.
         var over = StatusLineSnapshot()
         over.usedPercent = 92
         over.totalTokens = 1000
         let hot = statusRings(over, threshold: 60)
-        Checks.expect(hot[0].value, "92%")
+        Checks.expect(hot[0].value, "153%")
+        // Without a threshold the figure is the plain window percentage again.
+        Checks.expect(statusRings(over, threshold: 100)[0].value, "92%")
         Checks.expect(hot[0].level, StatusLevel.danger)
         Checks.expect(RingGeometry.fillArc(fraction: 92 / 60).end, 420)
 
