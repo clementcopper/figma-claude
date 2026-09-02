@@ -178,14 +178,24 @@ public func panelEnvironment(config: PanelConfig, home: String = NSHomeDirectory
 
 /// The arguments a tab starts Claude Code with. A `-n` the user put in `panel.json` wins — this
 /// only fills a gap, like `withSessionName` in `ptyManager.ts`.
-public func panelArguments(config: PanelConfig, sessionName: String,
+///
+/// Name and id are empty on a `--resume`/`--continue` spawn, which adopts an existing session.
+/// The status line has to be handed over either way, so it sits outside that condition — a
+/// resumed tab that lost its ring bar was the first thing this got wrong.
+public func panelArguments(config: PanelConfig, sessionName: String, sessionId: String = "",
                            statusLineCommand: String? = nil) -> [String] {
     var args = config.args
     let runsClaude = (config.command as NSString).lastPathComponent
         .replacingOccurrences(of: "\\.(exe|cmd|bat)$", with: "", options: .regularExpression) == "claude"
-    guard runsClaude, config.directMode, !sessionName.isEmpty else { return args }
-    guard !args.contains("-n"), !args.contains("--name") else { return args }
-    args.append(contentsOf: ["-n", sessionName])
+    guard runsClaude, config.directMode else { return args }
+
+    let adopting = ["--resume", "-r", "--continue", "-c"].contains { args.contains($0) }
+    if !sessionName.isEmpty, !args.contains("-n"), !args.contains("--name") {
+        args.append(contentsOf: ["-n", sessionName])
+    }
+    if !sessionId.isEmpty, !adopting, !args.contains("--session-id") {
+        args.append(contentsOf: ["--session-id", sessionId])
+    }
 
     // Handed over per session, so nothing in the user's own ~/.claude/settings.json changes and
     // their status line keeps behaving exactly as before outside the panel.

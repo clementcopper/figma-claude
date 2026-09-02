@@ -132,6 +132,10 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **SwiftTerm's key handling is closed.** `keyDown`, `flagsChanged` and `doCommand` are `public override`, not `open` — nothing about it can be corrected from outside the module. `send(source:data:)` *is* `open` and is where every keystroke leaves for the PTY.
 - **A terminal exiting must not close the app.** The Electron host writes `describePtyExit` into the tab and leaves it standing (`app/src/main.ts:738`); closing the tab instead took the whole window down whenever Claude Code ended.
 - **Two SF Symbols the panel wants need macOS 15** (`arrow.trianglehead.*`). `NSImage(systemSymbolName:)` returns nil for an unknown symbol — no icon at all — so every name is asked for with a fallback.
+- **Claude Code keeps a session's name in two places.** The `-n` value lands in the transcript as `agent-name`/`custom-title` records *and*, once renamed, in a sidecar `~/.claude/projects/<slug>/<session-uuid>/custom-title.json`. A sweep over `*/*.jsonl` alone leaves the sidecar standing, and the sidecar is what the picker shows.
+- **`-n` alongside `--resume` renames the session the user picks.** The panel passed both on every respawn, so one session on disk ended up carrying two names. A spawn that adopts a conversation (`--resume`, `-r`, `--continue`, `-c`) must pass neither a name nor `--session-id`.
+- **A guard that carries two things drops both.** `panelArguments` hung the status-line `--settings` off the same `!sessionName.isEmpty` guard as `-n`; the moment resume stopped passing a name, the tab would have lost its ring bar too.
+- **`folding(.diacriticInsensitive)` deletes "ß" rather than folding it.** "Größen" slugs to `gro-en` unless ß is replaced with `ss` first. Umlauts do fold (ü → u), so only the sharp s needs the special case.
 - **XCTest needs full Xcode.** With only the Command Line Tools `swift test` stops at "XCTest not available"; the ported cases run as a plain executable target instead.
 
 ## Dead Ends

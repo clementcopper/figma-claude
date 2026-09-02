@@ -452,7 +452,10 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         watcher.waitForFirstPoll()
         let snapshot = watcher.snapshot
         let file = snapshot.file.isEmpty ? config.figmaFile : snapshot.file
-        let sessionName = panelSessionName(file: file, cwd: cwd)
+        // The id is minted here rather than left to Claude, so the name can carry it: the tab's
+        // row in the `/resume` picker then points at its own session file.
+        let sessionId = UUID().uuidString.lowercased()
+        let sessionName = panelSessionName(file: file, cwd: cwd, sessionId: sessionId)
         let name = state.nextName()
         let view = MeteredTerminalView(frame: container.bounds)
         let tab = TerminalTab(view: view, name: name, cwd: cwd)
@@ -476,6 +479,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             }
             executable = resolved
             args = panelArguments(config: config, sessionName: sessionName,
+                                  sessionId: sessionId,
                                   statusLineCommand: Self.statusLineCommand)
         }
 
@@ -799,8 +803,14 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
         let snapshot = watcher.snapshot
         let file = snapshot.file.isEmpty ? config.figmaFile : snapshot.file
-        let sessionName = panelSessionName(file: file, cwd: old.cwd)
+        // Restart begins a conversation of its own and gets a name and an id; `--resume` and
+        // `--continue` adopt one that already has both, and naming it would rename it. That also
+        // covers the recovery steps in `resumeRecoveryPlan()`, which come through here.
+        let fresh = startsANewSession(extraArgs: extraArgs)
+        let sessionId = fresh ? UUID().uuidString.lowercased() : ""
+        let sessionName = fresh ? panelSessionName(file: file, cwd: old.cwd, sessionId: sessionId) : ""
         var args = panelArguments(config: config, sessionName: sessionName,
+                                  sessionId: sessionId,
                                   statusLineCommand: Self.statusLineCommand)
         args.append(contentsOf: extraArgs)
 
