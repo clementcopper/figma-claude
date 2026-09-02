@@ -273,6 +273,38 @@ else
     # The keychain is the source; ask only when it has nothing. `-w` prints the secret, so it is
     # never echoed and never passed through a file.
     KEY="$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null || true)"
+    # Nothing in the keychain, but the key is probably already here: the per-project entries in
+    # ~/.claude.json carry it inline. Adopt it rather than asking — Figma shows a personal access
+    # token exactly once, at creation, so "paste your token" means "make a new one" for anyone
+    # who set this up months ago. Captured into a variable, never printed.
+    if [ -z "$KEY" ]; then
+        KEY="$(python3 - "$MCP_NAME" <<'PYEOF' 2>/dev/null || true
+import json, os, re, sys
+name = sys.argv[1]
+try:
+    data = json.load(open(os.path.expanduser("~/.claude.json")))
+except Exception:
+    raise SystemExit
+for scope in [data, *(data.get("projects") or {}).values()]:
+    entry = (scope.get("mcpServers") or {}).get(name)
+    if not entry:
+        continue
+    for arg in entry.get("args") or []:
+        hit = re.fullmatch(r"--figma-api-key=(.+)", arg)
+        if hit:
+            print(hit.group(1)); raise SystemExit
+    for key in ("FIGMA_API_KEY", "FIGMA_ACCESS_TOKEN"):
+        if (entry.get("env") or {}).get(key):
+            print(entry["env"][key]); raise SystemExit
+PYEOF
+)"
+        if [ -n "$KEY" ]; then
+            security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w "$KEY" -U 2>/dev/null \
+                && ok "adopted the key from an existing $MCP_NAME entry, saved to the keychain" \
+                || warn "adopted the key from an existing entry — could not write the keychain"
+        fi
+    fi
+
     # Only ask where someone can answer. Without a terminal (CI, a scripted run, a pipe) the
     # prompt is a key request printed into a log that nobody reads.
     if [ -z "$KEY" ] && [ -t 0 ]; then
