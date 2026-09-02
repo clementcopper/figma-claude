@@ -172,7 +172,12 @@ private func decimalUnit(_ value: Double, _ unit: String) -> String {
 public func shortenPath(_ path: String, maxSegments: Int = 2) -> String {
     let segments = path.split(separator: "/").filter { !$0.isEmpty }
     if segments.count <= maxSegments || path.count <= 28 { return path }
-    return "…/" + segments.suffix(maxSegments).joined(separator: "/")
+    // Under the home directory the tilde carries the head, rather than an ellipsis that says
+    // "something was cut" without saying where from. `collapseHome` has already put it there;
+    // this used to throw it away. Outside home there is nothing to stand in, so the ellipsis
+    // remains — and either way the label's tooltip holds the full path.
+    let head = segments.first == "~" ? "~/" : "…/"
+    return head + segments.suffix(maxSegments).joined(separator: "/")
 }
 
 /// `2h 10m`, `48m`, `<1m` — the answer to "can I prompt again yet".

@@ -189,9 +189,12 @@ enum StatusLineTests {
         Checks.expect(formatRemaining(130), "2h 10m")
 
         // Keeps the tail, which is the part that identifies the project.
-        Checks.expect(shortenPath("~/Documents/DMA/Designdone/Business"), "…/Designdone/Business")
+        Checks.expect(shortenPath("~/Documents/DMA/Designdone/Business"), "~/Designdone/Business")
         Checks.expect(shortenPath("~/Business"), "~/Business")
         Checks.expect(shortenPath("/a/b/c", maxSegments: 2), "/a/b/c")
+        // Outside the home directory there is no tilde to lead with, so the ellipsis stays.
+        Checks.expect(shortenPath("/Volumes/Extern/Kunden/Designdone/Business"),
+                      "…/Designdone/Business")
 
         Checks.expect(collapseHome("/Users/x/Business", home: "/Users/x"), "~/Business")
         Checks.expect(collapseHome("/Users/x", home: "/Users/x"), "~")
