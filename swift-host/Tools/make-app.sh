@@ -1,5 +1,13 @@
 #!/bin/bash
-# Assembles FigmaClaude.app around the release binary.
+# Assembles the app bundle around the release binary.
+#
+# The app is "Figma Claude" everywhere a person reads it, and that takes two different things:
+# the menu bar takes CFBundleName, while Finder and the Dock label take the *file name* — measured
+# on Brave, which is `Brave Browser.app` with CFBundleName "Brave" and shows both. So the bundle
+# directory carries the space too.
+#
+# The executable inside does not: it stays `FigmaClaude`, because `pgrep -x` addresses it by that
+# name and a space in an argv[0] is a trap nobody needs.
 #
 # There is no `xcodebuild` here — this machine has the Command Line Tools only — and none is
 # needed: an .app is a directory with an Info.plist. Without it LaunchServices does not treat the
@@ -9,7 +17,7 @@
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="${1:-$ROOT/build/FigmaClaude.app}"
+APP="${1:-$ROOT/build/Figma Claude.app}"
 BINARY="$ROOT/.build/release/FigmaClaude"
 
 if [ ! -x "$BINARY" ]; then
@@ -26,15 +34,29 @@ strip -no_code_signature_warning "$APP/Contents/MacOS/FigmaClaude" 2>/dev/null |
 
 VERSION="$(cd "$ROOT/../app" 2>/dev/null && node -e 'process.stdout.write(require("./package.json").version)' 2>/dev/null || echo "0.1.0")"
 
+# One icon for both hosts rather than a second 646 KB copy that drifts. The Electron half owns
+# it (`app/build/icon.icns`, built from `icon.png` with iconutil); the same path the version is
+# read from, and missing just as gracefully — without an icon the app still runs, it only
+# inherits the generic one.
+ICON_SRC="$ROOT/../app/build/icon.icns"
+ICON_KEY=""
+if [ -f "$ICON_SRC" ]; then
+    cp "$ICON_SRC" "$APP/Contents/Resources/icon.icns"
+    ICON_KEY="    <key>CFBundleIconFile</key>          <string>icon.icns</string>"
+else
+    echo "  (no icon at $ICON_SRC — bundle gets the generic one)" >&2
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>              <string>FigmaClaude</string>
-    <key>CFBundleDisplayName</key>       <string>FigmaClaude</string>
+    <key>CFBundleName</key>              <string>Figma Claude</string>
+    <key>CFBundleDisplayName</key>       <string>Figma Claude</string>
     <key>CFBundleIdentifier</key>        <string>de.designdone.figmaclaude.swift</string>
     <key>CFBundleExecutable</key>        <string>FigmaClaude</string>
+$ICON_KEY
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key>           <string>$VERSION</string>
@@ -49,6 +71,14 @@ PLIST
 # Ad-hoc signature: unsigned bundles are refused outright on Apple Silicon, and even here it
 # stops the "damaged" dialog after the bundle is replaced in place.
 codesign --force --deep --sign - "$APP" 2>/dev/null || echo "  (codesign skipped)"
+
+# The bundle was called FigmaClaude.app until 2026-09-02. A build from before the rename sits
+# next to the new one and keeps running from there, so it is named rather than deleted — removing
+# a bundle while it runs is what broke `install:app` once already.
+STALE="$ROOT/build/FigmaClaude.app"
+if [ -d "$STALE" ] && [ "$STALE" != "$APP" ]; then
+    echo "  ! $STALE is the pre-rename bundle — quit it, then: rm -rf \"$STALE\"" >&2
+fi
 
 echo "✓ $APP"
 du -sh "$APP" | awk '{print "  " $1}'

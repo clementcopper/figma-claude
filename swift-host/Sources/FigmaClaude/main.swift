@@ -11,6 +11,20 @@ import AppKit
 import SwiftTerm
 import FigmaClaudeCore
 
+/// What the app is called, read from the bundle rather than typed twice.
+///
+/// The bundle is `Figma Claude.app`; only the executable inside it stays `FigmaClaude`, because
+/// `pgrep -x` addresses it by that name. Keeping the visible string in the Info.plist means the
+/// rename happened in one place — the fallback is for `swift run`, which has no bundle at all.
+let appDisplayName: String = {
+    for key in ["CFBundleDisplayName", "CFBundleName"] {
+        if let name = Bundle.main.object(forInfoDictionaryKey: key) as? String, !name.isEmpty {
+            return name
+        }
+    }
+    return "Figma Claude"
+}()
+
 /// Wall-clock from the first byte of a burst to the last, printed to stderr.
 ///
 /// A burst is "output with no gap longer than `idleGap`" — a crude definition, but the same one
@@ -307,7 +321,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
         let config = PanelConfig.load()
         applyTheme(ThemeSetting(rawValue: config.theme) ?? .system)
-        window.title = "FigmaClaude"
+        window.title = appDisplayName
         window.delegate = self
         // An explicit floor, so the answer to "how narrow may this be" is a decision rather than
         // whatever the longest label happened to be.
@@ -858,7 +872,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
 
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
-        window.title = title.isEmpty ? "FigmaClaude" : title
+        window.title = title.isEmpty ? appDisplayName : title
     }
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
