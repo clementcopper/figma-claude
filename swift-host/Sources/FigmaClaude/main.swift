@@ -1100,25 +1100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// "Version <short> (<build>)" from the bundle itself, so the numbers cannot drift from what
     /// LaunchServices thinks is installed. Only the credits below them are ours.
     @objc private func showAbout() {
-        NSApp.orderFrontStandardAboutPanel(options: aboutPanelOptions(cliVersion: cliVersion()))
+        NSApp.orderFrontStandardAboutPanel(options: aboutPanelOptions(cliVersion: figmaCliVersion()))
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    /// The CLI's own version, read the way the About dialog does it — the last line that looks
-    /// like a version, so a shell error never appears as a number.
-    private func cliVersion() -> String? {
-        let path = LoginShellPath.resolve() ?? ProcessInfo.processInfo.environment["PATH"] ?? ""
-        guard let cli = whichOnPath("figma-cli", path: path) else { return nil }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: cli)
-        process.arguments = ["--version"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return parseCliVersion(String(decoding: data, as: UTF8.self))
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -1130,6 +1113,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 if CommandLine.arguments.contains("--statusline") {
     runStatusLineProducer()
     exit(0)
+}
+
+/// The CLI's own version, for the About panel — the last line that looks like a version, so a
+/// shell error never appears as a number.
+///
+/// Through `runCli`, not a `Process` of its own. The hand-rolled spawn this replaces found
+/// `figma-cli` on the login PATH but started it with the app's own environment, and the installed
+/// `figma-cli` is a shim that runs `exec node …`: launched from the Dock, where PATH is
+/// `/usr/bin:/bin:/usr/sbin:/sbin`, the child died with "exec: node: not found" and the dialog
+/// said "figma-cli —". `runCli` hands the resolved PATH to the child, and `resolveCli` also finds
+/// a checkout when nothing is installed globally.
+///
+/// Free function rather than a method on the delegate so `--print-about` exercises this exact
+/// path. While it was private the probe passed a fixed version instead — and the dialog shipped
+/// broken with every check green.
+func figmaCliVersion() -> String? {
+    let cli = resolveCli(appRoot: Bundle.main.bundlePath, configured: PanelConfig.load().figmaCli)
+    let result = runCli(cli, ["--version"], timeout: 10)
+    guard result.ok else { return nil }
+    return parseCliVersion(result.output)
 }
 
 /// What the About panel is opened with — one place, so `--render-about` shows the real dialog
@@ -1275,6 +1278,24 @@ if let index = CommandLine.arguments.firstIndex(of: "--render-chrome") {
         .flatMap { CommandLine.arguments.count > $0 + 1 ? Double(CommandLine.arguments[$0 + 1]) : nil }
         ?? 546
     RenderProbe.chrome(width: width, tabs: tabs, to: "/tmp/chrome.png")
+    exit(0)
+}
+
+// What the About panel would say, as text, with the real CLI lookup — the one thing the PNG
+// probe cannot show, because it passes a fixed version so the render stays reproducible.
+if CommandLine.arguments.contains("--print-about") {
+    _ = NSApplication.shared
+    let path = LoginShellPath.resolve() ?? ProcessInfo.processInfo.environment["PATH"] ?? ""
+    let cli = resolveCli(appRoot: Bundle.main.bundlePath, configured: PanelConfig.load().figmaCli)
+    print("PATH      \(path)")
+    print("figma-cli \(cli.isUsable ? ([cli.file] + cli.args).joined(separator: " ") : "not found")")
+    print("version   \(figmaCliVersion() ?? "nil")")
+    let info = Bundle.main.infoDictionary
+    print("bundle    \(info?["CFBundleShortVersionString"] as? String ?? "—") " +
+          "(\(aboutBuild(commit: info?["CFBundleVersion"] as? String))) " +
+          "\(info?["FCBuildDate"] as? String ?? "—")")
+    print("---")
+    print(aboutCredits(cliVersion: figmaCliVersion(), buildDate: info?["FCBuildDate"] as? String))
     exit(0)
 }
 
