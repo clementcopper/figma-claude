@@ -15,9 +15,25 @@ final class StatusRingGroup: NSView {
     private let nameLabel = RingLabel(labelWithString: "")
     private let subLabel = RingLabel(labelWithString: "")
 
+    /// The surface that appears under the pointer. A view rather than this group's own layer:
+    /// the group's bounds hug the ring and its two labels, and a highlight drawn on them touches
+    /// the glyphs. This one reaches past the edges without changing the width the row measures,
+    /// so no wrap step moves.
+    private let highlight = NSView()
+    /// How far the surface reaches past the content. The row leaves `columnGap` (8) between two
+    /// items, so 3 a side keeps 2pt of air between two highlighted groups.
+    private static let highlightInset: CGFloat = 3
+    private var hovering = false { didSet { applyHover() } }
+    private var tracking: NSTrackingArea?
+
     init(name: String) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
+
+        highlight.wantsLayer = true
+        highlight.layer?.cornerRadius = 6
+        highlight.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(highlight)
 
         nameLabel.stringValue = name
         // Name and value share one colour on purpose: they are two halves of one reading, not a
@@ -41,15 +57,48 @@ final class StatusRingGroup: NSView {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
 
+        let inset = Self.highlightInset
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
             row.trailingAnchor.constraint(equalTo: trailingAnchor),
             row.topAnchor.constraint(equalTo: topAnchor),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor)
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            highlight.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -inset),
+            highlight.trailingAnchor.constraint(equalTo: trailingAnchor, constant: inset),
+            highlight.topAnchor.constraint(equalTo: topAnchor, constant: -2),
+            highlight.bottomAnchor.constraint(equalTo: bottomAnchor, constant: 2)
         ])
+        applyHover()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Forces the pointer state for the render probe — a still image has no pointer, and this is
+    /// the state that would otherwise never be looked at.
+    func previewHover() { hovering = true }
+
+    /// `disc` is the tone the stop button rests on, so the row has one surface colour rather than
+    /// two. It moves away from the ground in both modes — darker on the light ground, lighter on
+    /// the dark one — instead of being the light value mirrored.
+    private func applyHover() {
+        let active = hovering && onClick != nil
+        highlight.layer?.backgroundColor = active ? StatusPalette.disc.cgColor : NSColor.clear.cgColor
+    }
+
+    override func updateLayer() { applyHover() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
 
     override func mouseDown(with event: NSEvent) {
         guard onClick != nil else { return super.mouseDown(with: event) }

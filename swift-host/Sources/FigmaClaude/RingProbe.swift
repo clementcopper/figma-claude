@@ -66,7 +66,10 @@ enum RingProbe {
         var snapshot = StatusLineSnapshot()
         snapshot.model = "Opus 5"
         snapshot.effort = "high"
-        snapshot.cwd = "/Users/danielmartin/Documents/DMA/Designdone/Business"
+        // As the payload arrives: `collapseHome` has already run by the time a snapshot exists,
+        // so a raw /Users path here made the probe render a leading ellipsis where the app shows
+        // a tilde.
+        snapshot.cwd = "~/Documents/DMA/Designdone/Business"
         snapshot.usedTokens = 254_321
         snapshot.totalTokens = 1_000_000
         snapshot.usedPercent = 31.8
@@ -98,8 +101,10 @@ enum RingProbe {
             // the discard, still reported the right one.
             line.translatesAutoresizingMaskIntoConstraints = true
             line.render(snapshot)
-            // The pointer state on the one control that has one, so a still image still shows it.
+            // The pointer states, so a still image still shows them: the stop button on the
+            // widest row, the context ring on the one below it, where the row has not yet wrapped.
             if width == widths.first { line.previewStopHover() }
+            if widths.count > 1, width == widths[1] { line.previewCtxHover() }
 
             line.frame = NSRect(x: 0, y: 0, width: width, height: line.intrinsicContentSize.height)
             line.layoutSubtreeIfNeeded()

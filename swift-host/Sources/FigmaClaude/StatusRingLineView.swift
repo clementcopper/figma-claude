@@ -284,6 +284,10 @@ final class StatusRingLineView: NSView {
 
     /// Forces the stop button's hover state for the probe.
     func previewStopHover() { head.stop.previewHover() }
+
+    /// The same for the context ring, the only ring that is a control. Its pointer state shipped
+    /// missing because no probe forced it and a still image cannot hover.
+    func previewCtxHover() { groups["Ctx"]?.previewHover() }
 }
 
 /// One hairline in the status bar's own colour.
