@@ -7,9 +7,10 @@
 # which is not version controlled, so on a second machine figma-claude would never learn that
 # FEEDBACK.md exists — and would hit a permission prompt if it tried.
 #
-# Step 6 is not about feedback at all: it registers the Framelink MCP server and the rule that
-# says which of the two tools answers which question. The name is now narrower than the job;
-# renaming it would break what is written in CLAUDE.md and in muscle memory, so it stays.
+# Steps 6 to 8 are not about feedback at all: they register the Framelink MCP server, the rule
+# that says which of the two tools answers which question, and the SessionStart hook that prints
+# the previous session's handoff after a /clear. The name is now narrower than the job; renaming
+# it would break what is written in CLAUDE.md and in muscle memory, so it stays.
 #
 # macOS only where it touches the keychain (step 6) — as is step 5, which looks in /Applications.
 #
@@ -48,6 +49,12 @@ KEYCHAIN_ACCOUNT="figma-api-key"
 # Same keychain service `src/credentials.js` uses, so the key has one home rather than two.
 KEYCHAIN_SERVICE="figma-cli"
 TOOLS_MARKER="## Figma lesen: Framelink oder figma-cli"
+
+# Step 8. The handoff the pre-clear skill writes, and where it is read back from after a /clear.
+# The panel writes under "Figma Claude/" (with the space — that is the folder on disk and the
+# app's own name); the terminal writes at the project root. The pre-space spelling stays last so
+# a handoff already written there does not become invisible.
+HANDOFF_CMD='for f in "Figma Claude/Sessions/HANDOFF.md" "Sessions/HANDOFF.md" "FigmaClaude/Sessions/HANDOFF.md"; do [ -f "$f" ] && { echo "# Handoff der vorherigen Session ($f) — Stand pruefen, dann fortsetzen:"; cat "$f"; break; }; done; true'
 
 ok()   { printf "  ${GREEN}✓${NC}  %s\n" "$1"; }
 skip() { printf "  ${DIM}○${NC}  %s\n" "$1"; }
@@ -379,5 +386,67 @@ if [ "$LINES" -gt 200 ]; then
 else
     printf "     ${DIM}%s lines of 200${NC}\n" "$LINES"
 fi
+
+# --- 8. The handoff after a /clear, so the next session starts where this one stopped ----------
+#
+# `/clear` leaves nothing behind, which is the whole reason the pre-clear skill writes a handoff.
+# A SessionStart hook is what prints it back — and without this step it exists only on the machine
+# where someone once added it by hand. It was also wrong there for months: it looked for
+# "FigmaClaude/" while the skill wrote "Figma Claude/", so a panel handoff was written every time
+# and read back never.
+
+node -e '
+const fs = require("fs");
+const [settings, command] = process.argv.slice(1);
+let config = {};
+let existed = false;
+try {
+  config = JSON.parse(fs.readFileSync(settings, "utf8"));
+  existed = true;
+} catch (error) {
+  if (error.code !== "ENOENT") { console.log("PARSE_ERROR " + error.message); process.exit(3); }
+}
+config.hooks = config.hooks || {};
+const list = (config.hooks.SessionStart = config.hooks.SessionStart || []);
+// Matched by what it does, not by an exact string: an older install has a different search list,
+// and that one has to be replaced rather than duplicated.
+const mine = (h) => typeof h?.command === "string" && h.command.includes("HANDOFF.md");
+for (const group of list) {
+  const found = (group.hooks || []).find(mine);
+  if (!found) continue;
+  if (found.command === command) { console.log("PRESENT"); process.exit(0); }
+  if (existed) fs.copyFileSync(settings, settings + ".bak");
+  found.command = command;
+  group.matcher = "clear";
+  fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
+  console.log("UPDATED");
+  process.exit(0);
+}
+const clear = list.find((g) => g.matcher === "clear");
+const entry = { type: "command", command };
+if (clear) (clear.hooks = clear.hooks || []).push(entry);
+else list.push({ matcher: "clear", hooks: [entry] });
+if (existed) fs.copyFileSync(settings, settings + ".bak");
+fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
+console.log(existed ? "ADDED" : "CREATED");
+' "$SETTINGS" "$HANDOFF_CMD" > /tmp/fig-handoff-hook.$$ 2>&1
+HANDOFF_STATUS=$?
+HANDOFF_RESULT=$(cat /tmp/fig-handoff-hook.$$)
+rm -f /tmp/fig-handoff-hook.$$
+
+case "$HANDOFF_RESULT" in
+    PRESENT)  skip "SessionStart handoff hook already installed" ;;
+    UPDATED)  ok "SessionStart handoff hook updated — it was looking in the wrong folder"
+              printf "     ${DIM}backup: %s${NC}\n" "$SETTINGS.bak" ;;
+    ADDED)    ok "SessionStart handoff hook added to ~/.claude/settings.json" ;;
+    CREATED)  ok "~/.claude/settings.json created with the handoff hook" ;;
+    PARSE_ERROR*)
+              fail "~/.claude/settings.json does not parse — fix it, then run this again"
+              exit 1 ;;
+    *)        fail "could not write the handoff hook into ~/.claude/settings.json"
+              printf "     ${DIM}node exited %s: %s${NC}\n" "$HANDOFF_STATUS" "$HANDOFF_RESULT"
+              exit 1 ;;
+esac
+printf "     ${DIM}prints Figma Claude/Sessions/HANDOFF.md after a /clear${NC}\n"
 
 printf "\n  ${DIM}Running this again changes nothing.${NC}\n\n"
