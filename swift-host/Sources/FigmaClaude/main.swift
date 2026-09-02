@@ -1176,12 +1176,39 @@ if CommandLine.arguments.contains("--render-menurows") {
     exit(0)
 }
 
+if CommandLine.arguments.contains("--probe-late-label") {
+    _ = NSApplication.shared
+    applyProbeAppearance()
+    let width = CommandLine.arguments.count > 1
+        ? Double(CommandLine.arguments.last!) ?? 546 : 546
+    RenderProbe.lateLabelBudget(width: width)
+    exit(0)
+}
+
+if let index = CommandLine.arguments.firstIndex(of: "--render-rings") {
+    _ = NSApplication.shared
+    applyProbeAppearance()
+    let path = CommandLine.arguments.count > index + 1 && !CommandLine.arguments[index + 1].hasPrefix("--")
+        ? CommandLine.arguments[index + 1] : NSTemporaryDirectory() + "figmaclaude-rings.png"
+    if CommandLine.arguments.contains("--bar") {
+        RingProbe.bar(to: path)
+    } else {
+        RingProbe.run(to: path)
+    }
+    exit(0)
+}
+
 if let index = CommandLine.arguments.firstIndex(of: "--render-statusline") {
     _ = NSApplication.shared
     applyProbeAppearance()
     let width = CommandLine.arguments.count > index + 1
         ? Double(CommandLine.arguments[index + 1]) ?? 546 : 546
-    RenderProbe.run(width: width, to: "/tmp/statusline.png",
+    // An optional path after the width, so two probe runs can be compared instead of overwriting
+    // each other. Anything starting with `--` there is a flag, not a path.
+    let path = CommandLine.arguments.count > index + 2
+        && !CommandLine.arguments[index + 2].hasPrefix("--")
+        ? CommandLine.arguments[index + 2] : "/tmp/statusline.png"
+    RenderProbe.run(width: width, to: path,
                     danger: CommandLine.arguments.contains("--danger"))
     exit(0)
 }
