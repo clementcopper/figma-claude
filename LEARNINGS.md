@@ -62,6 +62,8 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 
 ## Process
 
+- **Ein Name an vier Stellen ist ein stiller Ausfall, der auf seinen Anlass wartet.** Der Ordner für die Panel-Dokumente hieß im `pre-clear`-Skill `Figma Claude/`, in dessen Schritt 3b `FigmaClaude/`, im SessionStart-Hook `FigmaClaude/` und im Swift-Host `FigmaClaude` — letzteres als Konstante, die **nirgends benutzt** wurde. Auf der Platte lag die Variante mit Leerzeichen. Ein Panel-Handoff wäre also geschrieben und nie gelesen worden; unbemerkt blieb es nur, weil überhaupt erst ein Handoff existierte und der aus einem Terminal stammte. Wo zwei Enden denselben Pfad bilden müssen, gehört ein Test dazwischen, der beide Zeichenketten vergleicht — nichts verglich sie, und genau deshalb liefen sie auseinander.
+
 - **Eine gemeldete Zahl beweist nicht, welcher Befehl sie erzeugt hat.** Ein `wish` beschrieb `render --verify` als fest bei 0.5 und belegte es mit einer gemessenen Bildgröße — die Zahl stammte aus `figma-cli verify`, das der Melder stattdessen aufgerufen hatte; `render --verify` stand fest bei 1. Er bestätigte danach, den Befehl, über den er schrieb, nie ausgeführt zu haben. Beim Triagieren also die **Observed**-Zahl gegen den Codepfad halten, den die **Repro**-Zeile wirklich erreicht. Der Befund überlebt meist, die Erklärung selten.
 
 - **Ein Doku-Verweis, den man nur in einer Übersicht sieht, wird nicht gelesen.** Die Panel-Session dazu, wörtlich: „Wenn dort steht ‚REFERENCE.md — 30 Themen', zahle ich keine Aufmerksamkeit dafür, weil ich nicht weiß, ob dort etwas steht, das ich nicht schon habe." Ein Verweis muss den **Unterschied** benennen, nicht den Umfang — und dort stehen, wo man beim Lesen darüber stolpert, nicht in einem Index.
