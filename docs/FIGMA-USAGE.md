@@ -791,3 +791,42 @@ figma-cli daemon restart             # Restart daemon
 ```
 
 For eval patterns, layout examples, and Safe Mode templates, see REFERENCE.md.
+
+## Framelink MCP vs figma-cli (reading a file)
+
+Both can read a Figma file; only figma-cli writes. Where both report something, they agree —
+Framelink's numbers were checked against the Plugin API and matched. What differs is **what
+Framelink cannot see at all**, because it reads Figma's REST API rather than the live document.
+
+| Task | Tool |
+|---|---|
+| Understand someone else's frame — structure, text, layout, text styles by name | Framelink |
+| Anything that writes | figma-cli (Framelink is read-only) |
+| Variables, bindings, dark mode | figma-cli |
+| Completeness, including hidden nodes | figma-cli |
+| Vectors, paths, stroke values | figma-cli |
+| Export images | either |
+| Confirm a change landed | figma-cli `verify` |
+
+**Three blind spots, measured** (file Designdone, 2026-09-02):
+
+1. **Hidden nodes vanish with no marker.** `534:2800` — Framelink returns 7 children, the Plugin
+   API returns 9. A divider and a whole stat column sit at `visible=false` and are simply absent.
+   Seven looks complete.
+2. **Variable bindings arrive as hex.** `534:2793` — Framelink says `#5757FF`. The Plugin API says
+   `boundVariables.fills → color/text-brand` (collection *Semantic*), itself an alias per mode:
+   `Mode 1 → color/brand-500`, `Dark → color/brand-400`. Through Framelink a bound colour is
+   indistinguishable from a hardcoded one, and dark mode is invisible.
+3. **Vectors come back empty.** The status-bar rings report as `[IMAGE-SVG] "arcs"` — no path, no
+   stroke. The Plugin API has it all, but only on the `VECTOR` **children**: `915:5252` is the
+   wrapping frame with no strokes at all; `915:5253`/`915:5254` carry `d`, `strokeWeight 3.24` and
+   `strokeCap ROUND`. Walk to the vector, not to the frame.
+
+**Where Framelink wins:** one call returns structure, text, layout (mode/gap/padding/sizing), text
+styles **by name** (`Display/XL`), and instances with `componentId` + `componentProperties`,
+deduplicated via `GLOBAL_VARS`. `get` returns one node and `node tree` only names and sizes, so
+the same picture otherwise costs a hand-written `eval` walker.
+
+**Checked and NOT a disadvantage:** staleness (a frame made minutes earlier read fine; two 404s
+were re-issued ids after a page move, not a cache) and accuracy (gap/justify matched the Plugin
+API exactly).
