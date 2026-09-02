@@ -210,6 +210,12 @@ enum StatusLineTests {
         Checks.expect(contextLevel(90), .danger)
         Checks.expect(limitLevel(79.9), .normal)
         Checks.expect(limitLevel(80), .danger)
+        // Marker is 10 points of orange before the red line.
+        Checks.expect(contextFillLevel(49.9, marker: 60), .normal)
+        Checks.expect(contextFillLevel(50, marker: 60), .warn)
+        Checks.expect(contextFillLevel(59.9, marker: 60), .warn)
+        Checks.expect(contextFillLevel(60, marker: 60), .danger)
+        Checks.expect(contextFillLevel(94, marker: 60), .danger)
     }
 
     static func secondRow() {

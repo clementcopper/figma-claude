@@ -37,13 +37,13 @@ final class ToolbarView: NSView {
 
         cwdButton.target = self
         cwdButton.action = #selector(pickDirectory)
-        cwdButton.setContentCompressionResistancePriority(.init(250), for: .horizontal)
+        cwdButton.setContentCompressionResistancePriority(.init(90), for: .horizontal)
 
         figmaButton.target = self
         figmaButton.action = #selector(showFigmaMenu)
         // The file and page names are whatever Figma has open; they must never decide how wide
         // the window is.
-        figmaButton.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+        figmaButton.setContentCompressionResistancePriority(.init(90), for: .horizontal)
 
         // The three the extension's view/title group had, in that order. SF Symbols rather than
         // the panel's redrawn codicons: they carry the system's own weight and colour, which is
@@ -139,7 +139,10 @@ final class ToolbarView: NSView {
         let fixed = 8 + cwdButton.minimumWidth
             + 8 + 8 + figmaButton.minimumWidth
             + 8 + CGFloat(icons) + 8
-        let budgets = toolbarLabelBudgets(available: Double(bounds.width - fixed),
+        // The row's own edge insets (8 left, 8 right) sit inside `bounds.width`, so they are
+        // available space the labels must not be given — count them out before the split.
+        let insets: CGFloat = 16
+        let budgets = toolbarLabelBudgets(available: Double(bounds.width - fixed - insets),
                                           cwdWanted: Double(cwdButton.labelWanted),
                                           figmaWanted: Double(figmaButton.labelWanted),
                                           cwdGap: Double(cwdButton.labelGap),
@@ -170,6 +173,23 @@ final class ToolbarView: NSView {
         // time it is meant to be readable.
         guard toastUntil == nil else { return }
         figmaButton.text = lastLabel
+        // The label arrives on a poll, after the toolbar has already laid itself out with it empty.
+        // `setLabelBudget` runs inside `layout()`, so a text change alone leaves the label's width
+        // at whatever the first, empty budget was — the full name only appears once a resize forces
+        // a fresh layout. Re-run the layout with the real label so the budget catches up. The
+        // budgets still decide what fits; this only makes them aware of the new text.
+        rebalanceLabelBudgets()
+    }
+
+    /// Re-runs the toolbar layout so the label budgets are recomputed from the current label text.
+    ///
+    /// `layout()` hands each label its width out of the row's leftover space. When a label is set
+    /// after that pass (the first poll lands async), `layout()` has to run again — a text change
+    /// alone does not reliably force the toolbar's own `layout()` override. Doing it explicitly
+    /// keeps the budget computation and the label text on the same page.
+    private func rebalanceLabelBudgets() {
+        needsLayout = true
+        layoutSubtreeIfNeeded()
     }
 
     /// What an action did, where the file name usually is.
@@ -204,6 +224,7 @@ final class ToolbarView: NSView {
     func setDirectory(_ path: String) {
         cwdButton.text = (path as NSString).lastPathComponent
         cwdButton.toolTip = path + " — click to choose another"
+        rebalanceLabelBudgets()
     }
 
     /// Every gap in the row, measured after layout. Judging spacing by eye on a screenshot is

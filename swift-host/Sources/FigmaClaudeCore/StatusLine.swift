@@ -204,6 +204,19 @@ public func limitLevel(_ percent: Double) -> StatusLevel {
     percent >= 80 ? .danger : .normal
 }
 
+/// How urgent the context fill is against a user-set clear threshold.
+///
+/// This is the marker on the context bar, deliberately separate from `contextLevel` (which
+/// colours against the provider's rate limits — the "waiting" problem). Here the whole fill stays
+/// normal until the last 10 points before the marker, then warns, and turns danger the moment the
+/// marker is crossed — the "should clear" problem. The marker is the user's own number, so it
+/// comes in as a parameter and never lives here.
+public func contextFillLevel(_ usedPercent: Double, marker: Double) -> StatusLevel {
+    if usedPercent >= marker        { return .danger }
+    if usedPercent >= marker - 10   { return .warn }
+    return .normal
+}
+
 /// The second row, as text. Returns nil when there is nothing to say.
 /// The second row, split so each piece can be coloured for what it is. Compactions are a count,
 /// not a limit — colouring them red because the week is nearly spent says the wrong thing.

@@ -19,6 +19,9 @@ public struct PanelConfig: Decodable {
     public var theme: String = "system"
     /// Which connection mode `connect` runs in — `yolo`, `safe` or `browser`.
     public var figmaMode: String = "yolo"
+    /// Where the user's clear-threshold marker sits on the context bar, in percent. The bar warns
+    /// 10 points before it and turns red when the fill crosses it.
+    public var contextMarker: Double = 60
 
     /// Synthesised memberwise init is internal, and `Decodable` suppresses the empty one — the
     /// defaults above are only reachable from outside with this.
@@ -34,7 +37,7 @@ public struct PanelConfig: Decodable {
     /// (`app/src/host/config.ts:41`).
     private enum CodingKeys: String, CodingKey {
         case command, args, shell, env, directMode, cwd, statusLine, figmaFile, figmaCli
-        case theme, figmaMode
+        case theme, figmaMode, contextMarker
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +47,9 @@ public struct PanelConfig: Decodable {
         }
         func flag(_ key: CodingKeys, _ fallback: Bool) -> Bool {
             (try? container.decodeIfPresent(Bool.self, forKey: key)).flatMap { $0 } ?? fallback
+        }
+        func number(_ key: CodingKeys, _ fallback: Double) -> Double {
+            (try? container.decodeIfPresent(Double.self, forKey: key)).flatMap { $0 } ?? fallback
         }
 
         command = string(.command, "claude")
@@ -57,6 +63,7 @@ public struct PanelConfig: Decodable {
         figmaCli = string(.figmaCli, "")
         theme = string(.theme, "system")
         figmaMode = string(.figmaMode, "yolo")
+        contextMarker = number(.contextMarker, 60)
     }
 
     public static let path = NSHomeDirectory() + "/.figma-ds-cli/panel.json"

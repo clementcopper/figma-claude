@@ -207,6 +207,13 @@ enum RenderProbe {
         snapshot.compacted = 3
         snapshot.compactBudget = 5
         view.render(snapshot)
+        // `--marker 95` puts the handle at the edges, where a centred tag would hang out of the
+        // window — the case the horizontal clamp exists for.
+        if let index = CommandLine.arguments.firstIndex(of: "--marker"),
+           CommandLine.arguments.count > index + 1,
+           let value = Double(CommandLine.arguments[index + 1]) {
+            view.contextMarker = value
+        }
         // `--no-selection` renders the state the band is hidden in, which is the one that must
         // not leave a gap.
         if !CommandLine.arguments.contains("--no-selection") {
@@ -218,11 +225,74 @@ enum RenderProbe {
         view.frame = NSRect(x: 0, y: 0, width: width, height: fitting.height)
         view.layoutSubtreeIfNeeded()
 
+        // `--empty` is the launch state: a tab whose Claude Code has not written a status line
+        // yet. The bar is hidden there, so the handle must be too — this is the state where it
+        // used to be drawn against a zero-width bar, at the left edge, until the first snapshot
+        // arrived and it jumped to the marker.
+        if CommandLine.arguments.contains("--empty") {
+            view.render(nil)
+            view.layoutSubtreeIfNeeded()
+        }
+
+        // The handle is placed in `viewWillDraw`, which has not run yet — measuring before it
+        // would report the position of an earlier pass, which is how the 35-point offset stayed
+        // invisible in the first place.
+        view.placeMarkerNow()
+        FileHandle.standardError.write(
+            ("[probe] " + view.measureMarkerDot() + "\n").data(using: .utf8)!)
+        // `--handle` after the final layout, the way a real hover lands on a laid-out bar: the
+        // percent tag positions itself from the bar's real width.
+        if CommandLine.arguments.contains("--handle") {
+            view.previewMarkerHandle()
+            FileHandle.standardError.write(
+                ("[probe] handle " + view.measureMarkerHandle() + "\n").data(using: .utf8)!)
+        }
+
         FileHandle.standardError.write(("[probe] " + view.measureContextRow() + "\n").data(using: .utf8)!)
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
+
+        // The tag is meant to overhang the band's top edge, and `view.bounds` would cut off
+        // exactly the thing the picture has to prove. Render through a canvas with headroom so the
+        // overhang is in the PNG.
+        let headroom: CGFloat = CommandLine.arguments.contains("--handle") ? 24 : 0
+        let canvas = NSView(frame: NSRect(x: 0, y: 0, width: width,
+                                          height: view.frame.height + headroom))
+        canvas.wantsLayer = true
+        canvas.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        canvas.addSubview(view)
+
+        guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return }
+        canvas.cacheDisplay(in: canvas.bounds, to: rep)
         guard let data = rep.representation(using: .png, properties: [:]) else { return }
         try? data.write(to: URL(fileURLWithPath: path))
-        FileHandle.standardError.write("[probe] wrote \(path) at \(Int(width))×\(Int(view.frame.height))\n".data(using: .utf8)!)
+        FileHandle.standardError.write("[probe] wrote \(path) at \(Int(width))×\(Int(canvas.frame.height))\n".data(using: .utf8)!)
+    }
+
+    /// Reproduces the "squashed figma button at launch" bug: the toolbar lays itself out with an
+    /// empty label, then the first poll sets the label afterwards (async). Without a re-balance the
+    /// label's width stays at its first, empty budget until a resize forces a fresh layout.
+    ///
+    /// Measures `measureRow()` after the labels arrive late. The report must show both `labels on`
+    /// AND the figma text reaching past the marker — a visible but truncated label is still the bug.
+    static func lateLabelBudget(width: CGFloat) {
+        let toolbar = ToolbarView(frame: NSRect(x: 0, y: 0, width: width,
+                                                height: ToolbarView.barHeight))
+        // Stage 1: the launch state — nothing polled yet. This is where the first layout pass
+        // happens in the app, with both labels empty and the budgets computed for that.
+        toolbar.layoutSubtreeIfNeeded()
+
+        // Stage 2: the first poll lands. In the app this arrives after the window is on screen, so
+        // the budget computation has already run against the empty labels.
+        toolbar.setDirectory("/Users/danielmartin/Documents/DMA/Designdone/Business")
+        var snapshot = FigmaSnapshot.empty
+        snapshot.health = Health(mode: "yolo", cdp: true, file: "Designdone – Figma")
+        snapshot.status = toStatusView(snapshot.health)
+        snapshot.file = "Designdone"
+        snapshot.page = "CI"
+        snapshot.figmaRunning = true
+        snapshot.cdpOk = true
+        toolbar.render(snapshot)
+
+        FileHandle.standardError.write(
+            ("[probe] late-label " + toolbar.measureRow() + "\n").data(using: .utf8)!)
     }
 }
