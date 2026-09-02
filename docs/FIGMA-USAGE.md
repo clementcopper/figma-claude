@@ -817,10 +817,12 @@ Framelink cannot see at all**, because it reads Figma's REST API rather than the
    `boundVariables.fills → color/text-brand` (collection *Semantic*), itself an alias per mode:
    `Mode 1 → color/brand-500`, `Dark → color/brand-400`. Through Framelink a bound colour is
    indistinguishable from a hardcoded one, and dark mode is invisible.
-3. **Vectors come back empty.** The status-bar rings report as `[IMAGE-SVG] "arcs"` — no path, no
-   stroke. The Plugin API has it all, but only on the `VECTOR` **children**: `915:5252` is the
-   wrapping frame with no strokes at all; `915:5253`/`915:5254` carry `d`, `strokeWeight 3.24` and
-   `strokeCap ROUND`. Walk to the vector, not to the frame.
+3. **Vectors come back empty.** The status-bar rings report as `[IMAGE-SVG] "arcs" #915:5252` —
+   no path, no stroke. The Plugin API has it all, but only on the `VECTOR` **children**, and the
+   id Framelink hands you is the wrapper's: `915:5252` is a frame with no strokes at all, while
+   `915:5253`/`915:5254` carry `d`, `strokeWeight 3.24` and `strokeCap ROUND`. So the obvious
+   move — take Framelink's id to the Plugin API — answers, and answers with nothing, which reads
+   as "the Plugin API is blind here too". Walk down to the vector.
 
 **Where Framelink wins:** one call returns structure, text, layout (mode/gap/padding/sizing), text
 styles **by name** (`Display/XL`), and instances with `componentId` + `componentProperties`,
