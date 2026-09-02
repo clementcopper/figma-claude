@@ -194,8 +194,6 @@ public func undoMessage(removed: Int, names: [String]) -> String {
 
 // MARK: - The About dialog's credits (about-panel.ts)
 
-private let provenance = "Ported from clementcopper/claude-terminal-panel"
-
 /// The version out of `figma-cli --version`, or nil when the output is not one.
 ///
 /// Commander prints it bare (`2.1.2`), but nothing guarantees that: a wrapper may add a banner,
@@ -217,8 +215,23 @@ public func parseCliVersion(_ stdout: String) -> String? {
 
 /// An em dash rather than a hidden line when there is no version — "figma-cli —" says the panel
 /// looked and found nothing. Omitting the row would read as "there is no CLI involved".
-public func aboutCredits(cliVersion: String?) -> String {
-    "figma-cli \(cliVersion ?? "—")\n\(provenance)"
+///
+/// The panel's own version is not in here: the standard About panel draws it itself from the
+/// bundle, above these lines.
+public func aboutCredits(cliVersion: String?, buildDate: String? = nil) -> String {
+    var lines = ["figma-cli \(cliVersion ?? "—")"]
+    if let buildDate, !buildDate.isEmpty { lines.append("Built \(buildDate)") }
+    return lines.joined(separator: "\n")
+}
+
+/// What the standard About panel puts in parentheses after the version — the commit the running
+/// bundle was built from.
+///
+/// Empty when `make-app.sh` had no git to ask (a tarball, a detached build). AppKit then simply
+/// leaves the parentheses off, which is the honest result: no commit is known.
+public func aboutBuild(commit: String?) -> String {
+    guard let commit, !commit.isEmpty, commit != "unknown" else { return "" }
+    return commit
 }
 
 // MARK: - Where FigmaClaude puts things in a user's project (project-layout.ts)

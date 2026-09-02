@@ -32,7 +32,20 @@ cp "$BINARY" "$APP/Contents/MacOS/FigmaClaude"
 # The binary carries debug symbols the app does not need; stripping is most of the size.
 strip -no_code_signature_warning "$APP/Contents/MacOS/FigmaClaude" 2>/dev/null || true
 
-VERSION="$(cd "$ROOT/../app" 2>/dev/null && node -e 'process.stdout.write(require("./package.json").version)' 2>/dev/null || echo "0.1.0")"
+# The Swift host's own version, hand-set in swift-host/VERSION. It used to be read from
+# `app/package.json` — the Electron twin's number, stuck at 1.0.0 since the port, so the About
+# box showed a version that belonged to another program and never moved.
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo "0.0.0")"
+
+# The commit the bundle was built from, and its date. CFBundleVersion is what the standard About
+# panel prints in parentheses after the version, which makes "which build is this?" answerable
+# from the running app. Empty when git has nothing to say — a tarball build still works.
+COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "")"
+BUILD_DATE="$(git -C "$ROOT" log -1 --format=%cs 2>/dev/null || date +%Y-%m-%d)"
+if [ -n "$COMMIT" ] && [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
+    # An uncommitted tree does not match its commit; saying so beats a SHA that lies.
+    COMMIT="$COMMIT+"
+fi
 
 # One icon for both hosts rather than a second 646 KB copy that drifts. The Electron half owns
 # it (`app/build/icon.icns`, built from `icon.png` with iconutil); the same path the version is
@@ -59,7 +72,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 $ICON_KEY
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
-    <key>CFBundleVersion</key>           <string>$VERSION</string>
+    <key>CFBundleVersion</key>           <string>${COMMIT:-$VERSION}</string>
+    <!-- Read by the About panel; not an Apple key, so it needs the prefix. -->
+    <key>FCBuildDate</key>               <string>$BUILD_DATE</string>
     <key>LSMinimumSystemVersion</key>    <string>13.0</string>
     <!-- A terminal is a document-less app that still owns a window and a menu bar. -->
     <key>LSUIElement</key>               <false/>
@@ -80,5 +95,5 @@ if [ -d "$STALE" ] && [ "$STALE" != "$APP" ]; then
     echo "  ! $STALE is the pre-rename bundle — quit it, then: rm -rf \"$STALE\"" >&2
 fi
 
-echo "✓ $APP"
+echo "✓ $APP  $VERSION (${COMMIT:-no commit}, $BUILD_DATE)"
 du -sh "$APP" | awk '{print "  " $1}'

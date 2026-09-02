@@ -1096,11 +1096,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func nextTab() { controller?.cycleTab(by: 1) }
     @objc private func previousTab() { controller?.cycleTab(by: -1) }
 
+    /// Apple's own About panel rather than an `NSAlert`: it draws the app icon, the name and
+    /// "Version <short> (<build>)" from the bundle itself, so the numbers cannot drift from what
+    /// LaunchServices thinks is installed. Only the credits below them are ours.
     @objc private func showAbout() {
-        let alert = NSAlert()
-        alert.messageText = "Figma Claude"
-        alert.informativeText = aboutCredits(cliVersion: cliVersion())
-        alert.runModal()
+        NSApp.orderFrontStandardAboutPanel(options: aboutPanelOptions(cliVersion: cliVersion()))
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// The CLI's own version, read the way the About dialog does it — the last line that looks
@@ -1129,6 +1130,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 if CommandLine.arguments.contains("--statusline") {
     runStatusLineProducer()
     exit(0)
+}
+
+/// What the About panel is opened with — one place, so `--render-about` shows the real dialog
+/// rather than a rebuilt lookalike.
+///
+/// The version and the build come from the bundle, not from a constant compiled in: they are what
+/// LaunchServices reads, so the panel cannot claim a version the installed bundle does not have.
+/// Outside a bundle (`swift run`) there is no plist and the panel says "—".
+func aboutPanelOptions(cliVersion: String?) -> [NSApplication.AboutPanelOptionKey: Any] {
+    let info = Bundle.main.infoDictionary
+    let credits = aboutCredits(cliVersion: cliVersion, buildDate: info?["FCBuildDate"] as? String)
+    var options: [NSApplication.AboutPanelOptionKey: Any] = [
+        .applicationName: "Figma Claude",
+        .applicationVersion: info?["CFBundleShortVersionString"] as? String ?? "—",
+        .credits: NSAttributedString(
+            string: credits,
+            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                         .foregroundColor: NSColor.secondaryLabelColor])
+    ]
+    // `.version` is what lands in the parentheses. Left out entirely when there is no commit, so
+    // the panel shows "Version 0.9.0" rather than empty brackets.
+    let build = aboutBuild(commit: info?["CFBundleVersion"] as? String)
+    if !build.isEmpty { options[.version] = build }
+    return options
 }
 
 /// `--appearance light|dark` forces the palette the probes draw in.
@@ -1250,6 +1275,21 @@ if let index = CommandLine.arguments.firstIndex(of: "--render-chrome") {
         .flatMap { CommandLine.arguments.count > $0 + 1 ? Double(CommandLine.arguments[$0 + 1]) : nil }
         ?? 546
     RenderProbe.chrome(width: width, tabs: tabs, to: "/tmp/chrome.png")
+    exit(0)
+}
+
+// The About panel, drawn to a PNG. It is an AppKit window like any other, so `cacheDisplay`
+// reaches it without Screen Recording permission — but only when this binary runs from inside the
+// bundle, since everything in the panel except the credits comes from Info.plist:
+//   "build/Figma Claude.app/Contents/MacOS/FigmaClaude" --render-about /tmp/about.png
+if let index = CommandLine.arguments.firstIndex(of: "--render-about") {
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    applyProbeAppearance()
+    let path = CommandLine.arguments.count > index + 1
+        && !CommandLine.arguments[index + 1].hasPrefix("--")
+        ? CommandLine.arguments[index + 1] : NSTemporaryDirectory() + "figmaclaude-about.png"
+    RenderProbe.about(to: path)
     exit(0)
 }
 

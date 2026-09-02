@@ -271,6 +271,69 @@ enum RenderProbe {
     /// empty label, then the first poll sets the label afterwards (async). Without a re-balance the
     /// label's width stays at its first, empty budget until a resize forces a fresh layout.
     ///
+    /// The About panel as the app opens it.
+    ///
+    /// AppKit builds the panel lazily and lays it out on the run loop, so a capture taken right
+    /// after `orderFrontStandardAboutPanel` catches an empty window. The loop below spins until
+    /// the panel has a content view with a real size, then draws that view — not a screenshot of
+    /// the screen, so no Screen Recording permission is involved.
+    static func about(to path: String) {
+        // A fixed version rather than shelling out to figma-cli: the probe is about the layout,
+        // and a machine without the CLI on PATH would otherwise render a different dialog.
+        NSApp.orderFrontStandardAboutPanel(options: aboutPanelOptions(cliVersion: "2.1.2"))
+
+        var panel: NSWindow?
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            if let candidate = NSApp.windows.first(where: {
+                ($0.contentView?.bounds.width ?? 0) > 100 && $0.isVisible
+            }) {
+                panel = candidate
+                break
+            }
+        }
+        guard let view = panel?.contentView else {
+            FileHandle.standardError.write("[probe] no About panel appeared\n".data(using: .utf8)!)
+            return
+        }
+        view.layoutSubtreeIfNeeded()
+        // The appearance is in the report because the first three dark renders came out blank and
+        // "is it even in dark mode?" was the question that could not be answered from the PNG.
+        FileHandle.standardError.write(
+            String(format: "[probe] about panel %.0f×%.0f %@\n",
+                   view.bounds.width, view.bounds.height,
+                   view.effectiveAppearance.name.rawValue).data(using: .utf8)!)
+
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        // Two separate traps, both of which showed up as a blank dark render:
+        //   1. `cacheDisplay` resolves dynamic colours against the *current* drawing appearance,
+        //      not the window's — so the labels came out in the wrong mode.
+        //   2. The panel's background belongs to the window, not to the content view, so what
+        //      `cacheDisplay` returns is transparent behind the text. In dark mode that is white
+        //      text on nothing, which a PNG viewer shows as an empty page.
+        // Hence: draw in the window's appearance, then lay the result over the window's own
+        // background colour.
+        // Two traps, both of which showed up as a blank dark render:
+        //   1. `cacheDisplay` resolves dynamic colours against the *current* drawing appearance,
+        //      not the window's, so the labels came out in the wrong mode.
+        //   2. The panel's background belongs to the window, not to the content view. What
+        //      `cacheDisplay` returns is transparent behind the text — measured, not guessed:
+        //      every pixel outside the glyphs came back a0.00. In dark mode that is white text
+        //      on nothing, which reads as an empty page.
+        // Giving the view a layer of its own puts the background inside the captured hierarchy,
+        // and the colour is resolved while the window's appearance is current.
+        view.wantsLayer = true
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            view.layer?.backgroundColor =
+                (panel?.backgroundColor ?? .windowBackgroundColor).cgColor
+            view.cacheDisplay(in: view.bounds, to: rep)
+        }
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        try? data.write(to: URL(fileURLWithPath: path))
+        FileHandle.standardError.write("[probe] wrote \(path)\n".data(using: .utf8)!)
+    }
+
     /// Measures `measureRow()` after the labels arrive late. The report must show both `labels on`
     /// AND the figma text reaching past the marker — a visible but truncated label is still the bug.
     static func lateLabelBudget(width: CGFloat) {

@@ -159,8 +159,19 @@ enum PanelPiecesTests {
         Checks.expectNil(parseCliVersion("zsh: command not found: figma-cli"))
         Checks.expectNil(parseCliVersion(""))
 
-        Checks.expect(aboutCredits(cliVersion: nil).hasPrefix("figma-cli —"), true)
-        Checks.expect(aboutCredits(cliVersion: "2.1.2").hasPrefix("figma-cli 2.1.2"), true)
+        Checks.expect(aboutCredits(cliVersion: nil), "figma-cli —")
+        Checks.expect(aboutCredits(cliVersion: "2.1.2"), "figma-cli 2.1.2")
+        Checks.expect(aboutCredits(cliVersion: "2.1.2", buildDate: "2026-09-02"),
+                      "figma-cli 2.1.2\nBuilt 2026-09-02")
+        // A bundle built without git has no date to show, and an empty line would look broken.
+        Checks.expect(aboutCredits(cliVersion: "2.1.2", buildDate: ""), "figma-cli 2.1.2")
+
+        // The build goes in the About panel's parentheses; nothing usable means no parentheses.
+        Checks.expect(aboutBuild(commit: "8ce6ba5"), "8ce6ba5")
+        Checks.expect(aboutBuild(commit: "8ce6ba5+"), "8ce6ba5+")
+        Checks.expect(aboutBuild(commit: nil), "")
+        Checks.expect(aboutBuild(commit: ""), "")
+        Checks.expect(aboutBuild(commit: "unknown"), "")
 
         Checks.expect(rulesInstalled("# Using figma-cli\n…"), true)
         Checks.expect(rulesInstalled(""), false)
