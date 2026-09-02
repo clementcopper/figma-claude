@@ -20,7 +20,16 @@ final class StatusRingLineView: NSView {
     // the ring design replaces the status row, not the panel's other half.
     private let selectionButton = NSButton()
     private let selectionRow = NSStackView()
-    private let separator = NSBox()
+    private let separator = Hairline().constrainedHeight()
+
+    /// The band's own padding, above and below the selected layer's name. It used to be 4, with
+    /// the vertical stack's 10pt top inset landing on top of it — 14 above the text and 10 below,
+    /// which is what "the top bar is too tall and lopsided" was.
+    static let selectionPadding: CGFloat = 6
+    /// The rings' block keeps the room it was given; it now sits in a stack of its own so the
+    /// number applies to the rings and not to whatever else shares the column.
+    private static let ringInset: CGFloat = 10
+    private static let ringSpacing: CGFloat = 6
 
     private let head = StatusHeadGroup(frame: .zero)
     private let row = StatusRingRow()
@@ -50,26 +59,36 @@ final class StatusRingLineView: NSView {
 
         selectionRow.orientation = .horizontal
         selectionRow.alignment = .centerY
-        selectionRow.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 8)
+        selectionRow.edgeInsets = NSEdgeInsets(top: Self.selectionPadding, left: 4,
+                                               bottom: Self.selectionPadding, right: 8)
         selectionRow.addArrangedSubview(selectionButton)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         selectionRow.addArrangedSubview(spacer)
         selectionRow.isHidden = true
 
-        separator.boxType = .separator
         separator.isHidden = true
 
         row.onHeightChange = { [weak self] in self?.invalidateIntrinsicContentSize() }
 
-        let stack = NSStackView(views: [selectionRow, separator, row, cwdLabel])
+        // Two stacks, not one. The rings want room around them and the selection band wants very
+        // little; sharing one set of edge insets meant the number set for the rings was also the
+        // number above the selected layer's name, and no amount of tuning could make that band
+        // symmetric.
+        let rings = NSStackView(views: [row, cwdLabel])
+        rings.orientation = .vertical
+        rings.alignment = .leading
+        rings.spacing = Self.ringSpacing
+        rings.edgeInsets = NSEdgeInsets(top: Self.ringInset, left: 0,
+                                        bottom: Self.ringInset, right: 0)
+
+        // Every vertical gap now lives in an inset, so `intrinsicContentSize` can be read off the
+        // same constants the layout uses instead of restating them.
+        let stack = NSStackView(views: [selectionRow, separator, rings])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 6
-        // The rings are 36pt tall and were sitting 4pt from both edges, which read as cramped
-        // against a band that is otherwise mostly air. 10 top and bottom gives the block room
-        // without moving any wrap step — the steps are decided by width, not height.
-        stack.edgeInsets = NSEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
+        stack.spacing = 0
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
@@ -79,11 +98,17 @@ final class StatusRingLineView: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             selectionRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            row.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            cwdLabel.leadingAnchor.constraint(equalTo: stack.leadingAnchor,
+            rings.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            row.widthAnchor.constraint(equalTo: rings.widthAnchor),
+            // Inset left and right, so this line reads as belonging to the band rather than
+            // cutting the panel in two. The top edge above it is the one that runs edge to edge.
+            separator.leadingAnchor.constraint(equalTo: stack.leadingAnchor,
+                                               constant: StatusRingRow.horizontalPadding),
+            separator.trailingAnchor.constraint(equalTo: stack.trailingAnchor,
+                                                constant: -StatusRingRow.horizontalPadding),
+            cwdLabel.leadingAnchor.constraint(equalTo: rings.leadingAnchor,
                                               constant: StatusRingRow.horizontalPadding),
-            cwdLabel.trailingAnchor.constraint(lessThanOrEqualTo: stack.trailingAnchor,
+            cwdLabel.trailingAnchor.constraint(lessThanOrEqualTo: rings.trailingAnchor,
                                                constant: -StatusRingRow.horizontalPadding)
         ])
     }
@@ -207,16 +232,32 @@ final class StatusRingLineView: NSView {
     }
 
     /// What the panel probe prints, in the same shape the bar version printed it.
+    ///
+    /// The band's own padding is in here because "too tall, and not the same above as below" was
+    /// reported from the running app while every probe was green — none of them looked at it.
     func measureBands() -> String {
-        String(format: "height %.1f | fitting %.1f | selection %@",
-               bounds.height, fittingSize.height, selectionRow.isHidden ? "hidden" : "shown")
+        var text = String(format: "height %.1f | fitting %.1f | selection %@",
+                          bounds.height, fittingSize.height,
+                          selectionRow.isHidden ? "hidden" : "shown")
+        if !selectionRow.isHidden {
+            // The button's frame is already in the band's own coordinates — its superview is the
+            // band. Mixing in the band's own origin, as the first version of this did, produced
+            // "above 94.0 below -90.0" for a band 18pt tall.
+            let band = selectionRow.frame
+            let button = selectionButton.frame
+            text += String(format: " | band %.1f (above %.1f below %.1f)",
+                           band.height, band.height - button.maxY, button.minY)
+        }
+        return text
     }
 
     override var intrinsicContentSize: NSSize {
-        var height = 20 + row.intrinsicContentSize.height
-        if !cwdLabel.isHidden { height += cwdLabel.fittingSize.height + 6 }
-        if !selectionRow.isHidden { height += selectionRow.fittingSize.height + 6 }
-        if !separator.isHidden { height += separator.fittingSize.height + 6 }
+        var height = Self.ringInset * 2 + row.intrinsicContentSize.height
+        if !cwdLabel.isHidden { height += cwdLabel.fittingSize.height + Self.ringSpacing }
+        // No spacing to add for these two: the outer stack's spacing is 0 and each row carries
+        // its own padding, so the fitting height is the whole of it.
+        if !selectionRow.isHidden { height += selectionRow.fittingSize.height }
+        if !separator.isHidden { height += Hairline.thickness }
         return NSSize(width: NSView.noIntrinsicMetric, height: height)
     }
 
@@ -243,4 +284,35 @@ final class StatusRingLineView: NSView {
 
     /// Forces the stop button's hover state for the probe.
     func previewStopHover() { head.stop.previewHover() }
+}
+
+/// One hairline in the status bar's own colour.
+///
+/// An `NSBox` with `boxType = .separator` drew this before. It paints a colour of its own that no
+/// token can reach, and the edge above the band — drawn by `PanelContentView` — was a third one
+/// again: measured 0.851 there against 0.896 here, on a 0.972 ground. Both are
+/// `StatusPalette.separator` now, which is the value read out of the design file.
+final class Hairline: NSView {
+    static let thickness: CGFloat = 1
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// For the constraint-driven use inside the status bar. The frame-driven one — the top edge,
+    /// which `PanelContentView` positions itself — must not carry a height constraint.
+    func constrainedHeight() -> Self {
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: Self.thickness).isActive = true
+        return self
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = StatusPalette.separator.cgColor
+    }
 }

@@ -70,7 +70,10 @@ enum RenderProbe {
         FileHandle.standardError.write(
             "[probe] terminal bg \(real.nativeBackgroundColor)\n".data(using: .utf8)!)
 
-        let canvas = PanelContentView(frame: NSRect(x: 0, y: 0, width: width, height: 220))
+        // 220 clipped the status bar: `PanelContentView.layout()` caps it at half the canvas, and
+        // with the selection band shown it wants 118 against the 110 it was given. A probe that
+        // renders 8pt less than the app is a probe that cannot answer a question about spacing.
+        let canvas = PanelContentView(frame: NSRect(x: 0, y: 0, width: width, height: 300))
         canvas.wantsLayer = true
         canvas.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         canvas.toolbar = toolbar

@@ -197,6 +197,11 @@ final class PanelContentView: NSView {
     /// more things to keep in step with the bands they divide.
     private let lineWidth: CGFloat = 1
 
+    /// The status bar's top edge is the exception: it has to run the full window width, and
+    /// `draw(_:)` happens *under* the subviews, so the tab strip painted over it — measured, the
+    /// line stopped dead at the strip's edge. A view added last sits on top of the strip.
+    let topEdge = Hairline()
+
     override var isFlipped: Bool { false }
 
     override func layout() {
@@ -225,24 +230,30 @@ final class PanelContentView: NSView {
         let middleTop = bounds.height - ToolbarView.barHeight - lineWidth
         terminal.frame = NSRect(x: 0, y: statusHeight + lineWidth, width: leftWidth,
                                 height: max(0, middleTop - statusHeight - lineWidth))
+
+        if topEdge.superview !== self { addSubview(topEdge) }
+        topEdge.frame = NSRect(x: 0, y: statusHeight, width: width, height: lineWidth)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        NSColor.separatorColor.setFill()
-
         let stripWidth = min(TabStripView.stripWidth, bounds.width)
         let leftWidth = max(0, bounds.width - stripWidth - lineWidth)
         let statusHeight = statusLine?.frame.height ?? 0
 
+        NSColor.separatorColor.setFill()
         // Under the toolbar, across the whole width.
         bounds.divided(atDistance: ToolbarView.barHeight + lineWidth, from: .maxYEdge)
             .slice.divided(atDistance: lineWidth, from: .minYEdge).slice.fill()
         // Left of the strip, from the toolbar down to the bottom edge.
         NSRect(x: leftWidth, y: 0, width: lineWidth,
                height: bounds.height - ToolbarView.barHeight - lineWidth).fill()
-        // Above the status line, only as far as the strip.
-        NSRect(x: 0, y: statusHeight, width: leftWidth, height: lineWidth).fill()
+
+        // The status bar's top edge is `topEdge`, a subview — see the property. It used to be a
+        // third `fill()` here, in the system separator colour, running only as far as the strip:
+        // measured 0.851 against the 0.896 of the hairline inside the bar, which is what made the
+        // bar look framed by two different lines.
+        _ = statusHeight
     }
 }
 
