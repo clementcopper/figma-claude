@@ -43,7 +43,7 @@ enum RenderProbe {
 
         // The real content view, so the separators and the strip running to the bottom edge are
         // what the window actually draws rather than an approximation of it.
-        let statusLine = StatusLineView(frame: .zero)
+        let statusLine = StatusRingLineView(frame: .zero)
         var snap = StatusLineSnapshot()
         snap.model = "Opus 5"
         snap.effort = "high"
@@ -122,7 +122,7 @@ enum RenderProbe {
         let toolbar = ToolbarView(frame: .zero)
         let strip = TabStripView(frame: .zero)
         let terminal = TerminalColumn()
-        let statusLine = StatusLineView(frame: .zero)
+        let statusLine = StatusRingLineView(frame: .zero)
         var snapshot = StatusLineSnapshot()
         snapshot.model = "Opus 5"
         snapshot.cwd = "~/Documents/DMA/Designdone/Business"
