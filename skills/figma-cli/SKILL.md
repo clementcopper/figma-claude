@@ -28,6 +28,22 @@ run them silently and give friendly feedback.
 4. After creating, **verify**: `figma-cli verify "<id>" --measure` (returns a
    screenshot + real w/h so you catch size bugs by numbers, not by eye).
 
+## Reading someone else's file (Framelink MCP)
+
+Where the Framelink MCP is available, use it to **read** an unfamiliar frame: one call returns
+structure, text, layout, text styles by name and instances with their properties. Everything that
+writes is figma-cli — Framelink has two tools and both are read-only.
+
+Read with figma-cli anyway when the answer has to be complete or true:
+
+- **Variables and bindings.** Framelink resolves a bound colour to hex, so a token is
+  indistinguishable from a hardcoded value and per-mode aliases (dark mode) are invisible.
+- **Hidden nodes.** `visible=false` children are dropped with no marker or count.
+- **Vectors.** Paths and stroke values come back empty — and the id Framelink reports is the
+  *wrapper's*, which answers with nothing. Walk down to the `VECTOR` child.
+
+Where both report something they agree; the measurements are in `figma-cli docs framelink`.
+
 ## Design tokens / variables
 - Bind colors at creation with `var:name`, never raw hex when a system is loaded:
   `<Frame bg="var:primary"><Text color="var:on-primary">Go</Text></Frame>`

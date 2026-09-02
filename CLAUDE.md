@@ -114,7 +114,7 @@ The `connect` fix is written to be upstreamable (pure function + unit test, no f
 
 **`app/` is deliberately self-contained:** its dependencies are not installed by the root `npm install`, and the existing `files: ["src","bin","plugin"]` keeps it out of the npm package. Nothing in `src/`, `tests/` or `package.json` refers to it, so an upstream merge cannot collide with it. It is a port of `clementcopper/claude-terminal-panel` — see `app/PORTED-FROM.md` before changing anything under `app/media/`.
 
-`docs/FIGMA-USAGE.md` is upstream's `CLAUDE.md`, moved unchanged so this file can stay short. **Keep its content byte-identical to upstream** — Git's rename detection then applies upstream's edits to it automatically instead of conflicting. Fork notes belong in this file, not in there.
+`docs/FIGMA-USAGE.md` started as upstream's `CLAUDE.md`, moved so this file can stay short. It **diverges deliberately** since 2026-09-01 — byte-identity bought rename detection during merges, and that stopped being worth the constraint (see `upstream-merge`, which keeps the ledger). Fork notes still belong in this file, not in there.
 
 ### Pulling from upstream
 

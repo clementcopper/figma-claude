@@ -1,11 +1,17 @@
 #!/bin/bash
 
-# fig-feedback-setup — install the panel half of the feedback loop on this machine.
+# fig-feedback-setup — install the machine-side half of the panel setup.
 #
 # The CLI half travels with the repo: FEEDBACK.md, the SessionStart hook in .claude/settings.json,
-# and the /feedback-triage skill all work right after a clone. The panel half lives in ~/.claude,
+# and the /feedback-triage skill all work right after a clone. The machine half lives in ~/.claude,
 # which is not version controlled, so on a second machine figma-claude would never learn that
 # FEEDBACK.md exists — and would hit a permission prompt if it tried.
+#
+# Step 6 is not about feedback at all: it registers the Framelink MCP server and the rule that
+# says which of the two tools answers which question. The name is now narrower than the job;
+# renaming it would break what is written in CLAUDE.md and in muscle memory, so it stays.
+#
+# macOS only where it touches the keychain (step 6) — as is step 5, which looks in /Applications.
 #
 # Idempotent: running it twice changes nothing.
 
@@ -34,6 +40,14 @@ CLAUDE_MD_MARKER="## figma-cli Feedback"
 # its findings in a project's LEARNINGS.md instead is exactly what happened without it.
 BOTH_TARGETS_MARKER="A project's own LEARNINGS.md does not replace it"
 SWEEP_MARKER="Sweep for CLI feedback"
+
+# Step 6. The MCP server keeps Framelink's name so an existing per-project entry is recognised
+# rather than duplicated under a second name.
+MCP_NAME="Framelink_Figma_MCP"
+KEYCHAIN_ACCOUNT="figma-api-key"
+# Same keychain service `src/credentials.js` uses, so the key has one home rather than two.
+KEYCHAIN_SERVICE="figma-cli"
+TOOLS_MARKER="## Figma lesen: Framelink oder figma-cli"
 
 ok()   { printf "  ${GREEN}✓${NC}  %s\n" "$1"; }
 skip() { printf "  ${DIM}○${NC}  %s\n" "$1"; }
@@ -243,6 +257,95 @@ elif grep -aq 'env.FIGMACLAUDE' "$APP_ASAR"; then
 else
     warn "installed FigmaClaude.app predates the FIGMACLAUDE marker — the rule will never fire"
     printf "     ${DIM}fix: cd %s/app && npm run install:app${NC}\n" "$REPO"
+fi
+
+# --- 6. Framelink MCP, so every session on this machine can read a file it did not build -------
+#
+# Framelink reads Figma over the REST API; figma-cli drives the live document. Neither replaces
+# the other, and a session that has only one of them does the other one's job badly. The
+# measurements behind the division of labour are in `figma-cli docs framelink`.
+
+if ! command -v claude >/dev/null 2>&1; then
+    skip "claude CLI not on PATH — cannot register an MCP server"
+elif claude mcp list 2>/dev/null | grep -q "$MCP_NAME"; then
+    skip "$MCP_NAME already registered"
+else
+    # The keychain is the source; ask only when it has nothing. `-w` prints the secret, so it is
+    # never echoed and never passed through a file.
+    KEY="$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null || true)"
+    # Only ask where someone can answer. Without a terminal (CI, a scripted run, a pipe) the
+    # prompt is a key request printed into a log that nobody reads.
+    if [ -z "$KEY" ] && [ -t 0 ]; then
+        printf "  ${BOLD}Figma API key${NC} ${DIM}(figd_… — Figma › Settings › Security › Personal access tokens)${NC}\n"
+        printf "  ${DIM}Stored in the login keychain, not in this repo. Empty input skips this step.${NC}\n"
+        printf "  key: "
+        read -rs KEY
+        printf "\n"
+        if [ -n "$KEY" ]; then
+            security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w "$KEY" -U 2>/dev/null \
+                && ok "key saved to the login keychain" \
+                || warn "could not write the keychain — registering anyway, the key is not remembered"
+        fi
+    fi
+
+    if [ -z "$KEY" ] && [ ! -t 0 ]; then
+        skip "no Figma API key and no terminal to ask — run this from a shell to register Framelink"
+    elif [ -z "$KEY" ]; then
+        skip "no Figma API key — run again to register Framelink"
+    # --scope user is the point: today the same key sits once per project in ~/.claude.json.
+    elif claude mcp add --scope user "$MCP_NAME" -- \
+            npx -y figma-developer-mcp "--figma-api-key=$KEY" --stdio >/dev/null 2>&1; then
+        ok "$MCP_NAME registered for every project (user scope)"
+        # Say what the storage actually is. Claude Code writes MCP arguments in the clear, so the
+        # keychain is the source and ~/.claude.json is a copy — assuming otherwise is the risk.
+        printf "     ${DIM}Claude Code stores MCP arguments in plain text in ~/.claude.json.${NC}\n"
+    else
+        warn "claude mcp add failed — run it by hand: claude mcp add --scope user $MCP_NAME -- npx -y figma-developer-mcp --figma-api-key=… --stdio"
+    fi
+fi
+
+# Per-project copies predate the user-scope entry. Named, never deleted: that is someone else's
+# configuration, and a duplicate is untidy rather than broken.
+PROJECT_COPIES=$(python3 - "$MCP_NAME" <<'PYEOF' 2>/dev/null || echo 0
+import json, os, sys
+name = sys.argv[1]
+try:
+    data = json.load(open(os.path.expanduser("~/.claude.json")))
+except Exception:
+    print(0); raise SystemExit
+print(sum(1 for v in (data.get("projects") or {}).values() if name in (v.get("mcpServers") or {})))
+PYEOF
+)
+if [ "${PROJECT_COPIES:-0}" -gt 0 ]; then
+    warn "$PROJECT_COPIES project(s) still carry their own $MCP_NAME entry with the key inline"
+    printf "     ${DIM}the user-scope entry covers them; remove them with /mcp in that project${NC}\n"
+fi
+
+# --- 7. The rule, so a session knows which of the two tools answers which question -------------
+
+if [ -f "$CLAUDE_MD" ] && grep -qF "$TOOLS_MARKER" "$CLAUDE_MD"; then
+    skip "~/.claude/CLAUDE.md already carries the tool-choice rule"
+else
+    [ -f "$CLAUDE_MD" ] && cp "$CLAUDE_MD" "$CLAUDE_MD.bak"
+    cat >> "$CLAUDE_MD" <<EOF
+
+$TOOLS_MARKER
+
+Fremdes Layout lesen — Struktur, Text, Textstile beim Namen, Instanzen: Framelink, ein Aufruf.
+Alles Schreibende: figma-cli. Auch lesend figma-cli, wo die Antwort vollstaendig oder wahr sein
+muss — Variablen und Bindungen (Framelink loest zu Hex auf, Dark Mode wird unsichtbar), versteckte
+Knoten (fallen ersatzlos weg) und Vektoren (kommen leer, und die gemeldete ID ist die des
+Wrappers). Belege: \`figma-cli docs framelink\`.
+EOF
+    ok "tool-choice rule appended to ~/.claude/CLAUDE.md"
+    [ -f "$CLAUDE_MD.bak" ] && printf "     ${DIM}backup: %s${NC}\n" "$CLAUDE_MD.bak"
+fi
+
+LINES=$(wc -l < "$CLAUDE_MD" | tr -d ' ')
+if [ "$LINES" -gt 200 ]; then
+    warn "~/.claude/CLAUDE.md is now $LINES lines — over the 200-line rule, condense it"
+else
+    printf "     ${DIM}%s lines of 200${NC}\n" "$LINES"
 fi
 
 printf "\n  ${DIM}Running this again changes nothing.${NC}\n\n"

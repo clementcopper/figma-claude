@@ -25,15 +25,33 @@ additions sit at the top or at a section edge, so a conflict stays local.
 - `app/` — FigmaClaude. Deliberately self-contained: not installed by the root `npm install`, not
   in the npm `files` list, and nothing in `src/`, `tests/` or `package.json` refers to it, so an
   upstream merge cannot collide with it
-- `docs/FIGMA-USAGE.md` — upstream's own `CLAUDE.md`, moved byte-identical. Keep it that way:
-  rename detection then applies upstream's edits automatically instead of conflicting.
-  **No longer byte-identical since 2026-09-01:** a Framelink-vs-figma-cli section at the end of
-  the file (fork-only — Framelink is Daniel's MCP setup, not upstream's concern; drop it from a
-  PR), plus three added lines answering panel feedback —
+- `docs/FIGMA-USAGE.md` — started as upstream's own `CLAUDE.md`. **Diverges on purpose since
+  2026-09-01**, byte-identity dropped (below). Fork-only content so far: the
+  Framelink-vs-figma-cli section at the end (Framelink is Daniel's local MCP setup, not
+  upstream's concern — drop it from any PR), plus three added lines answering panel feedback —
   arc ends are always flat (Ellipse block), `<Text align=>` and its auto-FILL (Text block), and
-  eval/run printing the return value (key-rules). All three are pure additions, so a conflict is
-  a three-hunk resolution rather than a rewrite. They are upstream-worthy; sending them as a PR
-  would let the file go back to identical
+  eval/run printing the return value (key-rules). Those three are upstream-worthy; the Framelink
+  section is not
+
+## Why byte-identity is gone (decided 2026-09-02)
+
+The rule was: keep the guide identical so Git's rename detection applies upstream's edits by
+itself. It cost a judgement call on every documentation change and was broken twice within two
+days by feedback that had to be answered where the panel actually reads — `docs <topic>`.
+
+Measured when the rule was dropped:
+
+| | |
+|---|---|
+| `upstream/main` last commit | 2026-08-12 |
+| our branch vs `upstream/main` | **0 behind, 76 ahead** |
+| PRs open upstream | 11, incl. all four of ours since 16./17.08. |
+| PR #29 (a stranger's MCP server) | open since 2026-07-07, **zero comments** |
+
+0 behind is the number that decided it: pulling stays free, so the remote and the four PRs stay.
+Only the *constraint* went. Merge from upstream whenever something lands there — expect a hunk
+in the guide now, resolve it, move on. Don't restore byte-identity; re-check the numbers above
+before assuming upstream is still quiet.
 
 ## Before merging
 
