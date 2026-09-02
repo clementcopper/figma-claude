@@ -223,10 +223,24 @@ public func aboutCredits(cliVersion: String?) -> String {
 
 // MARK: - Where FigmaClaude puts things in a user's project (project-layout.ts)
 
-/// Folder for everything the CLI generates in a project. Visible, not `.figmaclaude/`: the CLI's
-/// own `locateDesignMd` skips dot-directories, so a hidden folder would make DESIGN.md invisible
-/// to `spec` and `instantiate`.
-public let outputDir = "FigmaClaude"
+/// Folder for everything the panel and the CLI put into a user's project.
+///
+/// Visible, not `.figmaclaude/`: the CLI's own `locateDesignMd` skips anything beginning with a
+/// dot (`src/lib/design-md-locate.js`), so a hidden folder would make DESIGN.md invisible to
+/// `spec` and `instantiate`.
+///
+/// **With the space.** This constant said `FigmaClaude` and was used nowhere, while the
+/// `pre-clear` skill wrote `Figma Claude/` and the SessionStart hook looked for `FigmaClaude/` —
+/// so a handoff written by a panel session would have been read from the wrong place, or not at
+/// all. The spelling that is on disk and carries real history wins, and it is also the app's own
+/// name since the rename. It lives here, once; the hook and the skill follow it.
+public let outputDir = "Figma Claude"
+
+/// The handoff the `pre-clear` skill writes and the SessionStart hook reads back after a
+/// `/clear`. Named here so the two ends can be compared in a test rather than agreeing by
+/// accident — they did not, and the failure was silent: the handoff was written every time and
+/// simply never printed.
+public let handoffPathForHook = outputDir + "/Sessions/HANDOFF.md"
 
 /// Where the agent rules live, relative to the project root. Claude Code reads `CLAUDE.md` and
 /// `.claude/rules/`, and *not* `AGENTS.md`.
@@ -241,7 +255,52 @@ public func rulesInstalled(_ content: String?) -> Bool {
     return content.contains(rulesMarker)
 }
 
+/// What the output folder's README says, for a folder that would otherwise appear in someone's
+/// project with no explanation of who put it there.
+public let outputDirReadme = """
+# Figma Claude
+
+Written by Figma Claude.app and by figma-cli — not by hand, and not part of the project itself.
+
+- `Sessions/HANDOFF.md` — the state the last panel session left behind. Overwritten each time;
+  a `SessionStart` hook prints it into the next session after a `/clear`.
+- `Sessions/YYYY-MM-DD.md` — what was decided and what stayed open, per day.
+- `LEARNINGS.md` — quirks and dead ends worth not repeating.
+- `DESIGN.md` — the design system read out of the Figma file by `figma-cli extract`.
+
+Safe to delete: everything here is a record, nothing here is read back except the handoff.
+"""
+
+/// Creates the output folder in a project, so it exists before anything needs it and its name is
+/// settled by code rather than by whoever writes there first.
+///
+/// Nothing is overwritten. A folder already in place is left alone — in a project that has been
+/// used it holds Sessions, DESIGN.md and LEARNINGS.md — and the README is written only when it is
+/// missing. Here rather than in the window controller so it can be run against a real temporary
+/// directory in the checks: a copy of these six lines in a probe would prove the mechanism and
+/// not the code that ships.
+///
+/// - Returns: one line for the panel's result toast.
+public func prepareOutputFolder(cwd: String, fileManager: FileManager = .default) -> String {
+    let sessions = (cwd as NSString).appendingPathComponent(outputPath("Sessions"))
+    let readme = (cwd as NSString).appendingPathComponent(outputPath("README.md"))
+
+    do {
+        try fileManager.createDirectory(atPath: sessions, withIntermediateDirectories: true)
+    } catch {
+        return "Could not create \(outputDir)/: \(error.localizedDescription)"
+    }
+
+    if !fileManager.fileExists(atPath: readme) {
+        try? outputDirReadme.write(toFile: readme, atomically: true, encoding: .utf8)
+    }
+    return "\(outputDir)/ ready — Sessions and the handoff live here"
+}
+
 /// A path inside the output folder, for the commands that take one.
+///
+/// The one way to build such a path. Spelling it out at a call site is how the two names came
+/// apart in the first place.
 public func outputPath(_ segments: String...) -> String {
     ([outputDir] + segments).joined(separator: "/")
 }

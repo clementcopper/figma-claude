@@ -642,7 +642,9 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             // menu item here.
             let result = runCli(self.cli, ["init-agent", "--tool", "claude", "--no-setup"],
                                 cwd: cwd, timeout: 15)
-            return result.ok ? CliResult(ok: true, output: "Rules written to \(rulesFile)") : result
+            guard result.ok else { return result }
+            let folder = prepareOutputFolder(cwd: cwd)
+            return CliResult(ok: true, output: "Rules written to \(rulesFile)\n\(folder)")
         }
     }
 

@@ -12,6 +12,7 @@ enum PanelPiecesTests {
         ptyExit()
         renderUndo()
         aboutAndLayout()
+        outputFolder()
     }
 
     /// How the top bar gives way. The buttons keep their places; the text inside them is what
@@ -164,7 +165,44 @@ enum PanelPiecesTests {
         Checks.expect(rulesInstalled("# Using figma-cli\n…"), true)
         Checks.expect(rulesInstalled(""), false)
         Checks.expect(rulesInstalled(nil), false)
-        Checks.expect(outputPath("DESIGN.md"), "FigmaClaude/DESIGN.md")
-        Checks.expect(outputPath("Sessions", "2026-08-27.md"), "FigmaClaude/Sessions/2026-08-27.md")
+        Checks.expect(outputPath("DESIGN.md"), "Figma Claude/DESIGN.md")
+        Checks.expect(outputPath("Sessions", "2026-08-27.md"), "Figma Claude/Sessions/2026-08-27.md")
+
+        // The path the panel writes and the path the SessionStart hook reads have to be the same
+        // string. They were not: the skill wrote "Figma Claude/Sessions/HANDOFF.md" and the hook
+        // looked for "FigmaClaude/Sessions/HANDOFF.md", so a panel handoff was written and never
+        // read. Nothing enforced it, because nothing compared them.
+        Checks.expect(outputPath("Sessions", "HANDOFF.md"), handoffPathForHook)
+        // And the name itself, spelled out once, so a rename has to pass through here.
+        Checks.expect(outputDir, "Figma Claude")
+    }
+
+    /// The folder the "Prepare this folder" button creates, run against a real directory.
+    static func outputFolder() {
+        let root = NSTemporaryDirectory() + "figmaclaude-prepare-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: root) }
+
+        let sessions = root + "/Figma Claude/Sessions"
+        let readme = root + "/Figma Claude/README.md"
+
+        Checks.expect(prepareOutputFolder(cwd: root).contains("ready"), true)
+        Checks.expect(FileManager.default.fileExists(atPath: sessions), true)
+        Checks.expect(FileManager.default.fileExists(atPath: readme), true)
+
+        // Pressing it twice must change nothing. A project that has been used holds a handoff and
+        // a DESIGN.md in here; overwriting either would destroy exactly what the folder is for.
+        try? "kept".write(toFile: sessions + "/HANDOFF.md", atomically: true, encoding: .utf8)
+        try? "mine".write(toFile: readme, atomically: true, encoding: .utf8)
+        _ = prepareOutputFolder(cwd: root)
+        Checks.expect(try? String(contentsOfFile: sessions + "/HANDOFF.md", encoding: .utf8), "kept")
+        Checks.expect(try? String(contentsOfFile: readme, encoding: .utf8), "mine")
+
+        // The README says who wrote the folder — it appears in someone's project uninvited.
+        try? FileManager.default.removeItem(atPath: readme)
+        _ = prepareOutputFolder(cwd: root)
+        let text = (try? String(contentsOfFile: readme, encoding: .utf8)) ?? ""
+        Checks.expect(text.contains("HANDOFF.md"), true)
+        Checks.expect(text.contains("figma-cli"), true)
     }
 }
