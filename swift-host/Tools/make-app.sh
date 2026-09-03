@@ -87,6 +87,14 @@ PLIST
 # stops the "damaged" dialog after the bundle is replaced in place.
 codesign --force --deep --sign - "$APP" 2>/dev/null || echo "  (codesign skipped)"
 
+# Finder reads an app's icon through LaunchServices, not from the bundle directly, and it keeps
+# what it read. Rebuilding into the same path therefore left the generic document icon sitting
+# there while the Dock — which asks the running process — showed the real one. Touching the bundle
+# and forcing a re-registration is what makes the two agree.
+touch "$APP"
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+[ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" 2>/dev/null || true
+
 # The bundle was called FigmaClaude.app until 2026-09-02. A build from before the rename sits
 # next to the new one and keeps running from there, so it is named rather than deleted — removing
 # a bundle while it runs is what broke `install:app` once already.
