@@ -1,6 +1,6 @@
 ---
 name: upstream-merge
-description: Pull changes from silships/figma-cli into this fork. Use when merging or rebasing on upstream, when `git merge upstream/main` conflicts, or when checking which fork-only files are at risk. Covers the branch layout (the fork's default is master, not main) and the four files that reliably conflict.
+description: Take changes from silships/figma-cli into this fork. Use when picking upstream commits, when a cherry-pick conflicts, or when checking which fork-only files are at risk. Covers the branch layout (the fork's default is master, not main) and which files are ours outright.
 ---
 
 # Pulling from upstream
@@ -9,16 +9,26 @@ description: Pull changes from silships/figma-cli into this fork. Use when mergi
 sits on `master` tracking `origin/master`; upstream's default is `main`.
 
 `master` is the only branch the fork maintains: one trunk carrying `src/`, `app/` (Electron) and
-`swift-host/`. It was `v2` until 2026-09-03 — see *The branch cleanup* at the end.
+`swift-host/`. It was `v2` until 2026-09-03 — see *The branch cleanup* at the end. The repository
+is `clementcopper/figma-claude`; it was `clementcopper/figma-cli` until the same day.
+
+**Pick, do not merge** (decided 2026-09-03). The fork is no longer a copy of upstream with a few
+blocks inserted — the app is the subject and the CLI is a part of it, so a whole-tree merge drags
+in text that no longer belongs here.
 
 ```bash
-git fetch upstream && git merge upstream/main
+git fetch upstream
+git log --oneline upstream/main ^master        # what is actually new over there
+git cherry-pick <sha>                          # one at a time, and only what matters here
 ```
 
-Expect conflicts only in `CLAUDE.md` (ours), `README.md` (two fork blocks: the note under the
-header, the FigmaClaude section before *For developers*), `CHANGELOG.md` (the `## Fork` section
-above `## Upstream`) and possibly `package.json` (`bin`/`files` entries for `bin/`). All fork
-additions sit at the top or at a section edge, so a conflict stays local.
+Conflicts to expect, and only in files upstream also touches: `CLAUDE.md` (ours), `CHANGELOG.md`
+(the `## Fork` section above `## Upstream`) and possibly `package.json` (`bin`/`files` entries for
+`bin/`).
+
+`README.md` is **ours outright** since 2026-09-03 — rewritten around Figma Claude, with the CLI
+credited to Sil Bormüller in the first screen. Never reconcile it with upstream's; take nothing
+from there but facts worth restating in our own words.
 
 ## What must survive every pull
 

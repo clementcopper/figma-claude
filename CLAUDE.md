@@ -98,7 +98,7 @@ It **hot-reloads `figma-client.js`** by copying it to a temp module when its mti
 
 ---
 
-## Fork-Specific (clementcopper/figma-cli)
+## Fork-Specific (clementcopper/figma-claude)
 
 `upstream` = `silships/figma-cli`, `origin` = this fork. Everything above is upstream; these three are ours and have to survive future upstream pulls:
 

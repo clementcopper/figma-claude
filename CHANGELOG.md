@@ -1,7 +1,7 @@
 # Changelog
 
 > Everything below **Upstream** is `silships/figma-cli`'s own history, untouched. This first
-> section is what the fork [`clementcopper/figma-cli`](https://github.com/clementcopper/figma-cli)
+> section is what the fork [`clementcopper/figma-claude`](https://github.com/clementcopper/figma-claude)
 > adds on top.
 
 ## Fork — unreleased
