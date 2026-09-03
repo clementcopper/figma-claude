@@ -66,10 +66,9 @@ time there is usually nothing to do at all.
 
 ## The window
 
-- **Claude's status line as rings** — context, session, weekly limit and compactions, each a dial
-  that turns amber and then red as it fills. Claude Code hands that data to a `statusLine` command,
-  which the app supplies per session by calling its own binary, so your `~/.claude/settings.json`
-  is never touched and nothing needs to be on your `PATH`.
+- **Claude's status line as rings**, described below. Claude Code hands that data to a
+  `statusLine` command, which the app supplies per session by calling its own binary, so your
+  `~/.claude/settings.json` is never touched and nothing needs to be on your `PATH`.
 - **Tabs**, resume and continue a conversation in place, restart. Each tab gets a name of its own —
   `fc-<figma file>-<session id>` — so the `/resume` picker can tell them apart.
 - **A working directory you pick**, because Claude Code keeps its history per directory: that
@@ -80,6 +79,31 @@ time there is usually nothing to do at all.
 
 Building it, the render probes and the architecture:
 **[swift-host/README.md](swift-host/README.md)**.
+
+### The status bar
+
+Four dials along the bottom, and the point of them is that you read a colour, not a number. Each
+fills from grey through amber at 60% to red at 80%, so "am I close to something" is answered
+before you have looked at a single digit.
+
+- **Ctx** does not fill against the whole context window — it fills against a **threshold you
+  set**, 60% by default, and the second line names the window that leaves (`600k` of a 1M model).
+  That turns the ring into the question worth asking: *how much room until I should clear?* rather
+  than *how full is the window?* Past the threshold it keeps counting — 120% is a real reading —
+  and the second line stops naming the budget and says `/clear` instead. Click the ring to change
+  the threshold; the menu is labelled in tokens, not percent.
+- **Sess** is your session limit with the time until it resets. **Week** is the weekly one, and it
+  names the **weekday** as well — `Sun 1:00 AM`, because a bare clock time on a limit that resets
+  once a week reads as "within the hour".
+- **Comp** counts compactions as lit segments rather than a percentage, with `N auto` underneath:
+  how many Claude did on its own. `0 auto` is worth saying — it means every compaction so far was
+  a decision, not a ceiling being hit. The second one turns amber and the third red, whatever the
+  budget, because a conversation compacted three times has lost more than a percentage conveys.
+
+Two things it does that a terminal status line cannot. It is **remembered per working directory**,
+so a fresh tab opens showing the limits it last saw instead of four empty dials until the first
+request comes back. And the **stop button** sits in the same band, left of the rings — the one
+control you reach for while output is still streaming past.
 
 ### The Figma menu
 
