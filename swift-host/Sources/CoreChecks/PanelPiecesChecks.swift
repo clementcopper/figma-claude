@@ -28,8 +28,8 @@ enum PanelPiecesTests {
                                           cwdGap: 5, figmaGap: 5),
                       LabelBudgets(cwd: 50, figma: 50))
 
-        // Below the floor it is dropped rather than left as a letter and an ellipsis — and its gap
-        // comes back to the folder name, which is why this is one function and not two.
+        // Below the floor the Figma label is dropped rather than left as a letter and an ellipsis —
+        // and its gap comes back to the folder name, which is why this is one function and not two.
         Checks.expect(toolbarLabelBudgets(available: 85, cwdWanted: 50, figmaWanted: 90,
                                           cwdGap: 5, figmaGap: 5),
                       LabelBudgets(cwd: 50, figma: 0))
@@ -37,18 +37,28 @@ enum PanelPiecesTests {
                                           cwdGap: 5, figmaGap: 5),
                       LabelBudgets(cwd: 40, figma: 0))
 
-        // Symbols only: the last state, and the one a 320-point window has to survive.
+        // The narrowest the window goes: the folder name is squeezed, not removed. It used to be
+        // dropped here too, and the row then said nothing about where you were.
         Checks.expect(toolbarLabelBudgets(available: 34, cwdWanted: 50, figmaWanted: 90,
                                           cwdGap: 5, figmaGap: 5),
-                      LabelBudgets(cwd: 0, figma: 0))
+                      LabelBudgets(cwd: 29, figma: 0))
+        // Nothing left to hand out is arithmetic, not a decision.
         Checks.expect(toolbarLabelBudgets(available: -20, cwdWanted: 50, figmaWanted: 90),
                       LabelBudgets(cwd: 0, figma: 0))
 
-        // Exactly at the floor the label stays; one point under it goes.
+        // The floor is the Figma label's alone now. The folder name keeps whatever is left.
         Checks.expect(toolbarLabelBudgets(available: minimumLabelWidth, cwdWanted: 50,
                                           figmaWanted: 90).cwd, minimumLabelWidth)
         Checks.expect(toolbarLabelBudgets(available: minimumLabelWidth - 1, cwdWanted: 50,
-                                          figmaWanted: 90).cwd, 0)
+                                          figmaWanted: 90).cwd, minimumLabelWidth - 1)
+
+        // The promise itself, across the range rather than at three points: as long as there is
+        // room for anything at all, the folder name has some of it.
+        let dropped = stride(from: 6.0, through: 200.0, by: 1.0).filter { available in
+            toolbarLabelBudgets(available: available, cwdWanted: 50, figmaWanted: 90,
+                                cwdGap: 5, figmaGap: 5).cwd <= 0
+        }
+        Checks.expect(dropped.count, 0)
         // A label never gets more than it asked for, however much room there is.
         Checks.expect(toolbarLabelBudgets(available: 4000, cwdWanted: 50, figmaWanted: 90),
                       LabelBudgets(cwd: 50, figma: 90))

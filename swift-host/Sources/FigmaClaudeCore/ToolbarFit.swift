@@ -5,11 +5,12 @@ import Foundation
 /// The rule, in one place and checkable: the buttons keep their positions — the folder button hangs
 /// on the left edge, the three icon buttons on the right — and what adapts is the text inside them.
 /// The Figma name goes first, because the three lights beside it already carry the state and the
-/// file name is the extra; the folder name follows; below that both are gone and the bar is symbols
-/// only.
+/// file name is the extra. The folder name then narrows, but it is **never dropped**: it is the
+/// only thing in the row that says *where* you are, and the icon beside it does not. It reaches
+/// zero only when the arithmetic leaves nothing, which is no longer a decision.
 
-/// Below this a label is not worth showing: an ellipsis with a letter in front of it says less than
-/// the icon it would be crowding.
+/// Below this the **Figma** label is not worth showing: an ellipsis with a letter in front of it
+/// says less than the icon it would be crowding. The folder name has no such floor — see above.
 public let minimumLabelWidth: Double = 30
 
 public struct LabelBudgets: Equatable {
@@ -44,10 +45,9 @@ public func toolbarLabelBudgets(available: Double, cwdWanted: Double, figmaWante
         return LabelBudgets(cwd: cwdWanted, figma: min(figmaWanted, forFigma))
     }
 
-    // Dropped entirely, and its gap comes back to the folder name.
+    // The Figma label is dropped entirely and its gap comes back to the folder name, which then
+    // takes whatever is left. No floor here: squeezed is still an answer to "where am I", gone is
+    // not.
     let forCwd = free - cwdGap
-    if forCwd >= minimum {
-        return LabelBudgets(cwd: min(cwdWanted, forCwd), figma: 0)
-    }
-    return LabelBudgets(cwd: 0, figma: 0)
+    return LabelBudgets(cwd: max(0, min(cwdWanted, forCwd)), figma: 0)
 }

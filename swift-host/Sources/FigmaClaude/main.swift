@@ -516,13 +516,16 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         container.hideScroller(in: tab.view)
         container.needsLayout = true
         window.makeFirstResponder(tab.view)
-        // Here rather than at each call site: three places bring a tab to the front, and a row
-        // that is only redrawn in one of them shows the previous tab's numbers in the other two.
+        // Both bars, here rather than at each call site: four places bring a tab to the front, and
+        // anything redrawn in only some of them shows the previous tab's state in the others. The
+        // folder button was exactly that — set at launch and when picking a directory, never on a
+        // tab switch, so every tab wore the last directory chosen anywhere.
         //
         // The fallback is what a respawned tab lives on: Claude Code writes no snapshot until it
         // renders, and after `--continue` its first one carries no rate limits at all.
         statusLine.render(statusWatcher.snapshot(for: tab.id)
             ?? statusWatcher.initialSnapshot(cwd: tab.cwd))
+        toolbar.setDirectory(tab.cwd)
     }
 
     func activate(_ index: Int) {
@@ -733,8 +736,10 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         guard panel.runModal() == .OK, let chosen = panel.url?.path else { return }
 
         guard updatePanelConfig(["cwd": chosen]) else { return reportConfigWriteFailed() }
-        toolbar.setDirectory(chosen)
 
+        // The button is not set here: `newTab()` below brings its tab to the front and `show`
+        // labels it from that tab's own directory. Two sources for one label is how it came to
+        // show the same folder for every tab.
         // Replace the active tab so the new directory actually applies — new one first, old one
         // second. The other way round the panel disappeared: with a single tab open, which is the
         // normal case, `closeTab` found no active tab left, took the window with it, and
