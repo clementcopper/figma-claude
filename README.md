@@ -74,8 +74,7 @@ time there is usually nothing to do at all.
 - **A working directory you pick**, because Claude Code keeps its history per directory: that
   choice decides which conversations `--resume` offers.
 - **Figma's state**: dots for the daemon and the connection into Figma, the open file's name, one
-  click to reconnect. With something selected, a band above the rings puts that selection — names
-  and node ids — into the prompt.
+  click to reconnect — and the selected layer, described below.
 
 Building it, the render probes and the architecture:
 **[swift-host/README.md](swift-host/README.md)**.
@@ -83,7 +82,7 @@ Building it, the render probes and the architecture:
 ### The status bar
 
 <p align="center">
-  <img src="swift-host/statusbar.png" width="480" alt="The status bar along the bottom of the window: the stop button, the model, and four rings — context, session, week and compactions — above the working directory">
+  <img src="swift-host/statusbar.png" width="520" alt="The bottom of the window: the selected Figma layer on a band of its own, the same layer already written into the prompt with its node id, and below them the stop button and four rings — context, session, week and compactions — over the working directory">
 </p>
 
 Four dials along the bottom, and the point of them is that you read a colour, not a number. Each
@@ -108,6 +107,23 @@ Two things it does that a terminal status line cannot. It is **remembered per wo
 so a fresh tab opens showing the limits it last saw instead of four empty dials until the first
 request comes back. And the **stop button** sits in the same band, left of the rings — the one
 control you reach for while output is still streaming past.
+
+### The selected layer, as context
+
+Select something in Figma and a band appears above the rings with its name — the blue line in the
+screenshot above. Click it and the layer is written into the prompt, **unsent**:
+
+```
+Figma selection: "designdone.de — Landingpage - Desktop - 1440 [Membership – Improved]" (FRAME 534:2780)
+```
+
+The band shows the name; the prompt gets the name **and the node id**, because the id is the part
+that does work — `figma-cli get`, `set` and `render --parent` all take one. Otherwise it is a trip
+to Figma's inspector and a string of digits typed by hand.
+
+It arrives as a bracketed paste, so a selection spanning several layers lands as one block instead
+of as newlines that would submit the prompt half-written. Nothing is sent: you add your sentence
+around it and press return yourself. With nothing selected the band is not empty, it is gone.
 
 ### The Figma menu
 
