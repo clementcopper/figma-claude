@@ -57,11 +57,12 @@ open "build/Figma Claude.app"
 ```
 
 Unsigned, so right-click → **Open** the first time. In the window, pick a working directory and
-say:
+start describing what you want built. Figma updates in front of you.
 
-> "Connect to Figma."
-
-Then describe what you want built. Figma updates in front of you.
+You do not tell Claude to connect. The app polls Figma itself, and the three dots in the toolbar
+say what it found. Only when the way in is genuinely missing does its Figma menu offer
+**Connect** — one click, not a sentence. The Yolo patch survives a restart, so after the first
+time there is usually nothing to do at all.
 
 ## The window
 
