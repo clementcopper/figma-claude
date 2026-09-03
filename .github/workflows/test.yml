@@ -2,9 +2,11 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    # `main` is upstream's default; `master` is this fork's. Without the second name CI never
+    # ran on a push here at all — the fork has never had a branch called main.
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   test:
@@ -25,3 +27,24 @@ jobs:
           for f in src/index.js src/lib/*.js src/commands/*.js src/daemon.js src/figma-client.js; do
             node --check "$f"
           done
+
+  # Fork-only. The CLI job above runs on Linux and cannot see `swift-host/` at all, so the tool
+  # Daniel actually uses was the one part with no CI. `swift build` compiles the AppKit code —
+  # where every bug of the past week lived — and `CoreChecks` runs the ported cases, which need
+  # no window and no Xcode.
+  swift:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: swift-host
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: swift-host/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('swift-host/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
+      - run: swift --version
+      - run: swift build
+      - run: swift run CoreChecks
