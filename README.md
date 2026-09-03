@@ -82,6 +82,10 @@ Building it, the render probes and the architecture:
 
 ### The status bar
 
+<p align="center">
+  <img src="swift-host/statusbar.png" width="480" alt="The status bar along the bottom of the window: the stop button, the model, and four rings — context, session, week and compactions — above the working directory">
+</p>
+
 Four dials along the bottom, and the point of them is that you read a colour, not a number. Each
 fills from grey through amber at 60% to red at 80%, so "am I close to something" is answered
 before you have looked at a single digit.
@@ -128,6 +132,47 @@ toolbar.
 - **Mode** switches between Yolo, Safe and Browser and reconnects in the new one — a mode only
   counts as changed once the connection stands in it.
 - **Appearance** follows macOS, or pins the window to light or dark.
+
+### Tabs, and the names they give their sessions
+
+Every tab is a Claude Code of its own, with its own conversation. They are numbered `Claude 1`,
+`Claude 2`, and the counter never reuses a number — close the second and open a new one and you do
+not end up with two tabs that were both once "Claude 2".
+
+**A tab in the background grows a dot when Claude there is waiting for an answer.** The detection
+is deliberately timid: it only looks once the output has settled, new output clears it, and a
+keystroke clears it too. A missed dot costs you nothing; a false one would teach you to ignore
+them.
+
+**Three buttons in the toolbar act on the tab you are in**, not on "the last session" globally,
+which is what makes several conversations side by side workable at all:
+
+| | |
+|---|---|
+| ⟲ **Resume** | hands this tab to Claude Code's session picker |
+| ▷ **Continue** | reopens this directory's most recent conversation, no picker |
+| ↻ **Restart** | a new conversation, with a new name and a new session id |
+
+The tab keeps its place and its identity through all three — the status line is keyed on it, so a
+restart must not produce a tab the rings no longer recognise.
+
+Resume has a trapdoor built under it. `--resume` ends the running session to make room for the
+picker, so pressing Escape there used to leave the tab holding a dead terminal and no way back.
+Now the app registers a fallback before it starts: first `--continue`, which reopens the very
+session that was just closed, and behind that a plain start. Each step is used once — a plan that
+refilled itself would be a restart carousel — and the tab writes what it is doing before it does
+it: *"Resume cancelled — reopening the tab's last session."*
+
+Picking a working directory replaces the active tab, because Claude Code keeps its history per
+directory and the choice has to reach the process.
+
+And each tab names its own session. In the status bar screenshot further up, the window title and
+the prompt box both read `fc-designdone-66a69304` — `fc`, the Figma file, and the first block of the session's
+own id. The app mints that id, hands it to `claude --session-id`, and builds the name around it, so
+the row you see in `/resume` points at a real transcript on disk. Before this, every panel session
+was called `figma-claude:<file>`; four of them ended up with the same name and the picker could not
+tell them apart. Resuming or continuing passes no name at all, so a conversation you reopen keeps
+the one it already had.
 
 ## Why the app and not just the CLI
 
