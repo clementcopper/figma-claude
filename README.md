@@ -81,6 +81,30 @@ time there is usually nothing to do at all.
 Building it, the render probes and the architecture:
 **[swift-host/README.md](swift-host/README.md)**.
 
+### The Figma menu
+
+Almost everything you would otherwise open a second terminal for sits behind the three dots in the
+toolbar.
+
+<p align="center">
+  <img src="swift-host/menu.png" width="440" alt="The Figma menu open: connection status at the top, then the open Figma files, connection actions, undo, working directory, connection mode and appearance">
+</p>
+
+- **The three lines at the top** are what `fig-status` prints — is Figma running, which CDP port,
+  which mode the daemon is in — except you do not have to ask.
+- **Bound file** lists every Figma file currently open. Picking one pins the daemon to it, so the
+  panel and Claude agree on which file "the open file" means.
+- **Connect** is greyed out in the picture, and that is the normal state: it only becomes available
+  when the way into Figma is genuinely missing. Beside it, restarting or stopping the daemon.
+- **Undo last render** names what it will remove — `(TMP-verify-probe)` here — and removes exactly
+  the nodes the last render created. Nothing else on your canvas is touched.
+- **Prepare this folder** writes the figma-cli rules into the directory this tab is running in, so
+  Claude knows how to drive the CLI there, and creates the folder its output goes to. Once they are
+  written the row reads *Rules up to date* instead, and there is nothing to click.
+- **Mode** switches between Yolo, Safe and Browser and reconnects in the new one — a mode only
+  counts as changed once the connection stands in it.
+- **Appearance** follows macOS, or pins the window to light or dark.
+
 ## Why the app and not just the CLI
 
 The CLI can do everything on its own — it is what does the work. Driving it means two terminals
