@@ -3,7 +3,10 @@
 DEV-NOTES.md
 node_modules/
 .figma-client-*.mjs
-screenshot.png
+# Root-anchored on purpose: `figma-cli export` defaults its output to screenshot.png in the
+# working directory. Unanchored, and with core.ignorecase on, this also swallowed
+# swift-host/Screenshot.png — the README image, which would have shipped as a broken link.
+/screenshot.png
 docs/figma-api/
 *.code-workspace
 

@@ -39,10 +39,15 @@ jobs:
         working-directory: swift-host
     steps:
       - uses: actions/checkout@v4
-      - name: Cache SwiftPM
+      # Only the fetched dependencies, never `.build`. Compiled Swift artifacts record the
+      # absolute path they were built at, so after the repository was renamed — the runner's
+      # checkout moved from work/figma-cli to work/figma-claude — a restored `.build` failed the
+      # whole job with "precompiled file ... was compiled with module cache path ...". The key
+      # hashes Package.resolved, which had not changed, so the poisoned cache was a perfect hit.
+      - name: Cache SwiftPM dependencies
         uses: actions/cache@v4
         with:
-          path: swift-host/.build
+          path: ~/Library/Caches/org.swift.swiftpm
           key: ${{ runner.os }}-spm-${{ hashFiles('swift-host/Package.resolved') }}
           restore-keys: ${{ runner.os }}-spm-
       - run: swift --version

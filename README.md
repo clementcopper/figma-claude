@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="app/build/icon.png" width="104" alt="Figma Claude icon">
+</p>
+
 # Figma Claude
 
 <p align="center">
@@ -12,6 +16,15 @@
 
 <p align="center">
   <b>Claude Code in a window next to Figma &mdash; one that knows what Figma has open and what you have selected.</b>
+</p>
+
+<p align="center">
+  <img src="swift-host/window.png" width="440" alt="The Figma Claude window: the open Figma file in the toolbar, Claude Code running below it, and the ring status bar with context, session, weekly limit and compactions">
+</p>
+
+<p align="center">
+  <sub>The title is the session's own name, the dots are the connection into Figma, the rings are
+  Claude's status line, and the last row is the working directory.</sub>
 </p>
 
 ---
@@ -51,8 +64,6 @@ say:
 Then describe what you want built. Figma updates in front of you.
 
 ## The window
-
-<img src="app/build/icon.png" width="88" align="right" alt="Figma Claude icon">
 
 - **Claude's status line as rings** — context, session, weekly limit and compactions, each a dial
   that turns amber and then red as it fills. Claude Code hands that data to a `statusLine` command,

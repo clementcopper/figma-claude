@@ -7,6 +7,10 @@ is not.
 It is a window around three things: a terminal running Claude Code, Claude's status line drawn as
 rings instead of text, and a live view of what Figma has open and selected.
 
+<p align="center">
+  <img src="window.png" width="420" alt="The Figma Claude window: toolbar with the open Figma file, Claude Code below it, and the ring status bar">
+</p>
+
 ## Building
 
 Xcode's command line tools and nothing else — no Node, no `npm install`, no native module to
