@@ -1,12 +1,15 @@
 ---
 name: upstream-merge
-description: Pull changes from silships/figma-cli into this fork. Use when merging or rebasing on upstream, when `git merge upstream/main` conflicts, or when checking which fork-only files are at risk. Covers the branch layout (the fork's default is v2, not main) and the four files that reliably conflict.
+description: Pull changes from silships/figma-cli into this fork. Use when merging or rebasing on upstream, when `git merge upstream/main` conflicts, or when checking which fork-only files are at risk. Covers the branch layout (the fork's default is master, not main) and the four files that reliably conflict.
 ---
 
 # Pulling from upstream
 
-**The fork's default branch is `v2`, not `main`** — `origin/HEAD -> origin/v2`. Local work sits
-on `v2` tracking `origin/v2`; upstream's default is `main`.
+**The fork's default branch is `master`, not `main`** — `origin/HEAD -> origin/master`. Local work
+sits on `master` tracking `origin/master`; upstream's default is `main`.
+
+`master` is the only branch the fork maintains: one trunk carrying `src/`, `app/` (Electron) and
+`swift-host/`. It was `v2` until 2026-09-03 — see *The branch cleanup* at the end.
 
 ```bash
 git fetch upstream && git merge upstream/main
@@ -57,3 +60,29 @@ before assuming upstream is still quiet.
 
 Check the four PRs sent upstream (#40 connect, #41 `docs <topic>`, #43 render fixes, #44 text
 styles) — anything merged there arrives with the pull and its local copy can go.
+
+## The branch cleanup (2026-09-03)
+
+Seven branches became one. The measurement that decided it:
+
+```
+feat/swift-host  =  v2 + 26 commits      v2 fully contained
+tree difference  =  swift-host/ only
+app/ (Electron)  is in BOTH
+```
+
+The Electron app is a directory, not a branch — and `swift-host/Tools/make-app.sh` reads
+`app/build/icon.icns`, so the two cannot be separated anyway. A second branch beside the trunk
+would have been a copy of the same CLI falling behind; `v2` had already stood still since 22.08.
+
+- `master` — the trunk, created from `feat/swift-host` at `795702a`. Nothing was rewritten.
+- `v2-final` (`6d0eb11`) and `draft-v1` (`bef847d`) — tags, not branches. The old states are kept,
+  not maintained.
+- `feat/docs-topics`, `feat/text-styles`, `fix/connect-non-destructive`,
+  `fix/render-fill-and-error-masking` — **still on `origin`, deliberately**. They carry the open
+  PRs #41, #44, #40, #43; deleting them on origin closes those PRs. Their content is already in
+  `master`. They exist nowhere locally — check one out from `origin/<name>` if a PR needs work.
+
+Watch out: `.github/workflows/test.yml` triggers on `branches: [main]`, a branch this fork has
+never had. CI has therefore never run on a push here, before or after the rename. Adding `master`
+to that list would fix it and cost a small conflict on every upstream merge; left alone for now.
