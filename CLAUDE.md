@@ -146,6 +146,6 @@ merge instead of in every session.
 | `CHANGELOG.md` | why behavior changed — the auto-layout section explains most legacy weirdness |
 | `.claude/MEMORY.md`, `.claude/bugs-and-fixes.md`, `.claude/figma-plugin-api.md` | parser internals, past bugs with root causes, Plugin API notes |
 | `docs/ARCHITECTURE.md`, `docs/TECHNIQUES.md`, `docs/FIGJAM.md` | connection flow, techniques, FigJam |
-| `LEARNINGS.md` | project learnings and dead ends |
+| `LEARNINGS.md` | the stories behind `.claude/rules/*.md`; those rules load by path (`src/**`, `app/**`, `swift-host/**`; `process.md` always). A new finding goes to both: story there, one-liner in the matching rule file |
 | `FEEDBACK.md` | inbox from the panel — what figma-claude ran into using this CLI. Empty it with `/feedback-triage`; a `SessionStart` hook reports the open count |
 | `Sessions/<date>.md` | per-session decision logs (written by the `pre-compact` skill) |

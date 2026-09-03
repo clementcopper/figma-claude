@@ -1,44 +1,48 @@
-# Handoff — 2026-09-02 11:35
+# Handoff — 2026-09-03 11:59
 Arbeitsverzeichnis: /Users/danielmartin/figma-cli
 
 ## Stand
-Zehn Commits auf `feat/swift-host`, alle gepusht, Arbeitsverzeichnis sauber. Vier Panel-Einträge
-aus `FEEDBACK.md` abgearbeitet (`## Open` ist leer). Framelink-MCP verankert und user-scope
-registriert. Die Byte-Identität von `docs/FIGMA-USAGE.md` mit upstream ist aufgegeben. Der
-Swift-Host heißt „Figma Claude", trägt das Icon und seit heute die **Ringleiste** als Statusbar
-— live im Fenster, aus `StatusLineSnapshot` gespeist. Dazu behoben: Resume + ESC hinterließ ein
-totes Terminal, und der Ordnername für Panel-Dokumente war an vier Stellen uneinheitlich.
-439 Prüfungen im Swift-Host, 696 im CLI, alle grün.
+Das Repo heißt jetzt **`clementcopper/figma-claude`**, hat **einen Stamm `master`** (Vorgabe-Branch)
+und ein neu geschriebenes README, das Figma Claude nach vorn stellt — mit Screenshots, Statusleiste,
+Figma-Menü, Tabs und Sessionnamen, dem Auswahlband und einem Vergleich gegen die reine CLI. Der
+Swift-Host steht auf **1.0.0** und hat ein eigenes `swift-host/README.md`. CI läuft seit heute
+überhaupt zum ersten Mal in diesem Fork: Node 18/20/22 auf Linux plus ein macOS-Job, der das
+Swift-Paket baut und `CoreChecks` fährt — letzter Lauf grün. Drei gemeldete Bugs behoben (App
+beendete sich beim Verzeichniswechsel, cwd-Knopf zeigte für alle Tabs dasselbe, Finder-Platzhalter-
+Icon). 475 Swift-Prüfungen, 696 von 697 CLI-Tests, alles gepusht bis `191bb6a`.
 
 ## Mitten drin
-- Nichts halbfertig. Letzter Commit `25a85b9`, App gebaut und laufend (Bundle 11:31).
+- **Nicht von mir und nicht committet:** `.claude/rules/` (vier Dateien, 10:49) und eine geänderte
+  Zeile in `CLAUDE.md`, die darauf verweist. Ich habe die heutigen Learnings in `process.md` und
+  `swift-host.md` ergänzt, aber nichts davon eingecheckt — das ist Daniels Arbeitsstand.
 
 ## Nächster Schritt
-Nichts Angefangenes. Bei neuer Arbeit am Swift-Host:
 ```bash
-cd ~/figma-cli/swift-host && swift run CoreChecks && swift build -c release \
-  && bash Tools/make-app.sh && open "build/Figma Claude.app"
+cd ~/figma-cli && git status --short && git diff CLAUDE.md
+# wenn der Stand passt:
+git add CLAUDE.md .claude/rules && git commit -m "docs: path-scoped rules for the repo" && git push
 ```
 
 ## Schon probiert, geht nicht
-- **`swiftc` direkt gegen `FigmaClaudeCore` linken** geht nicht (`library not found`) — SwiftPM
-  legt keine so benannte Bibliothek ab. Logik, die geprüft werden soll, gehört nach
-  `Sources/FigmaClaudeCore/` und wird über `CoreChecks` gefahren, nicht über eine Wegwerf-Binary.
-- **`FIGMA_PORT=59999` isoliert einen CLI-Aufruf nicht**, solange der Daemon läuft — er hält die
-  CDP-Verbindung. Ein `render` damit landet im echten Figma-Dokument.
-- **`cd swift-host && …` aus dem Repo-Wurzelverzeichnis** schlägt fehl, wenn die Shell schon dort
-  steht; die `&&`-Kette bricht dann still und `make-app.sh` baut aus einem alten Binary.
-- **Aus einer Uhrzeit lässt sich kein Wochentag rekonstruieren** — die alten `weekResetsAt`-Werte
-  (`01:00`) sind nicht reparierbar, sie werden beim nächsten echten Payload ersetzt.
+- **`.build` in den CI-Cache legen.** Swift-Artefakte tragen absolute Pfade; nach der Umbenennung
+  traf der Cache trotzdem (Schlüssel ist `Package.resolved`) und jeder Compile brach.
+- **Den Ordner `~/figma-cli` mit umbenennen.** `~/.figma-ds-cli/bin/figma-cli` zeigt absolut hinein.
+- **Die vier PR-Branches auf `origin` löschen.** Das schließt PRs #40/#41/#43/#44 bei silships.
+- **Einen Probe-Hintergrund über `NSImage.lockFocus` komponieren.** Verwirft den Erscheinungs-
+  Kontext, die Füllung wird immer hell aufgelöst.
+- **Regeln == Geschichten hart prüfen.** Drei Regeln tragen absichtlich je zwei Geschichten; eine
+  Zeile, die im Normalzustand rot ist, wird ignoriert.
 
 ## Was Daniel entschieden hat
-- Ordnername **`Figma Claude` mit Leerzeichen** (nicht `FigmaClaude`) — liegt so auf der Platte.
-- Comp-Ring: **höchstens 3 Segmente**, ab 3 Kompaktierungen alles rot, darüber Randfall.
-- Umgebrochene Zeilen der Statusleiste bleiben **linksbündig**, nur einzeilig wird zentriert.
-- Upstream: Remote und die vier PRs bleiben, nur der Byte-Identitäts-Zwang fällt.
-- Der Framelink-Token wird **nicht** rotiert („ist ok so").
+- Repo umbenannt, **lokaler Ordner bleibt** `~/figma-cli`.
+- Ein Stamm `master`; `v2` und `archive/draft-v1` sind jetzt die Tags `v2-final` und `draft-v1`.
+- Upstream wird **gepickt, nicht gemerged**; `README.md` ist unser Text und wird nie abgeglichen.
+- Swift-Host ist *die* App, Electron in `app/` ist der Vorgänger und wird nicht weiterentwickelt.
+- Version **1.0.0**. Sessionnamen `fc-<figma-datei>-<session-id>`.
+- Im cwd-Knopf steht **immer** der Ordnername; der Figma-Name gibt zuerst nach.
 
 ## Erledigt und vom Tisch
-- Resume-ESC-Fix von Daniel geprüft und bestätigt.
-- `bin/fig-feedback-setup` bringt jetzt auch den SessionStart-Hook mit.
-- Die 477 unfestgeschriebenen Zeilen der anderen Session sind als `a28ecd1` committet.
+- Byte-Identität mit upstream — schon am 02.09. gefallen, heute auch fürs README.
+- `CFBundleVersion` trägt den Git-Sha, LaunchServices liest daraus „17.0". Gemeldet, Daniel hat
+  nicht reagiert; der About-Dialog braucht ihn dort. Nicht weiterverfolgen ohne seine Ansage.
+- Ein zweiter macOS-CI-Job für `app/` (Electron) — nicht gebaut, wird nicht mehr entwickelt.
