@@ -12,7 +12,8 @@
   <br>
   <a href="https://designdone.de"><img src="https://img.shields.io/badge/This_fork_by-designdone.de-E28458" alt="This fork by designdone.de"></a>
   <a href="https://github.com/silships/figma-cli"><img src="https://img.shields.io/badge/Fork_of-silships%2Ffigma--cli-181717?logo=github&logoColor=white" alt="Fork of silships/figma-cli"></a>
-  <a href="app/README.md"><img src="https://img.shields.io/badge/Includes-FigmaClaude_app-1ABCFE" alt="Includes the FigmaClaude app"></a>
+  <a href="swift-host/README.md"><img src="https://img.shields.io/badge/Includes-Figma_Claude_app-1ABCFE" alt="Includes the Figma Claude app"></a>
+  <a href="https://github.com/clementcopper/figma-cli/actions/workflows/test.yml"><img src="https://github.com/clementcopper/figma-cli/actions/workflows/test.yml/badge.svg?branch=master" alt="Tests"></a>
   <a href="https://github.com/nolikzero/claude-terminal-panel"><img src="https://img.shields.io/badge/Panel_UI-claude--terminal--panel-0A66C2?logo=visualstudiocode&logoColor=white" alt="Panel UI from claude-terminal-panel"></a>
 </p>
 
@@ -28,14 +29,15 @@
 >
 > The CLI is [**silships/figma-cli**](https://github.com/silships/figma-cli) by Sil Bormüller
 > (upstream v2.1.2) — everything described below is his work. This fork is kept by
-> [**Clement Copper**](https://github.com/clementcopper); it adds four things and sends the
+> [**Clement Copper**](https://github.com/clementcopper); it adds five things and sends the
 > useful ones back:
 >
 > | | |
 > |---|---|
-> | **[FigmaClaude](app/README.md)** | a macOS app built from this CLI **and** [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel): Claude Code in a window beside Figma, knowing what Figma has open and what is selected |
+> | **[Figma Claude](swift-host/README.md)** | a macOS app built from this CLI **and** [`nolikzero/claude-terminal-panel`](https://github.com/nolikzero/claude-terminal-panel): Claude Code in a window beside Figma, knowing what Figma has open and what is selected. Swift and AppKit, in `swift-host/` |
 > | `bin/fig-start` | connect, then pick among the open Figma files |
 > | `bin/fig-status` | Figma, CDP, daemon and the active file at a glance |
+> | `bin/fig-feedback-setup` | installs the machine-side half on a new machine: the feedback rule and its hooks, the Framelink MCP server, the handoff hook |
 > | non-destructive `connect` | never quits a Figma that is already debuggable |
 >
 > Offered upstream as [#40](https://github.com/silships/figma-cli/pull/40) (connect),
@@ -77,7 +79,7 @@ Don't know git? No problem. Open Claude Code anywhere and paste:
 
 > "Download the figma-cli project from https://github.com/clementcopper/figma-cli into a folder in my home directory, then go into it."
 
-(That is this fork, which includes the FigmaClaude app. For the CLI alone, use the original:
+(That is this fork, which includes the Figma Claude app. For the CLI alone, use the original:
 `https://github.com/silships/figma-cli`.)
 
 (Or, if you prefer: click the green **Code** button on the GitHub page → **Download ZIP** → unzip it.)
@@ -112,7 +114,7 @@ a two-line install:
 ```
 
 *(The marketplace is the original repo's — it teaches Claude Code the CLI. The fork's extras,
-FigmaClaude above all, come from cloning this repo.)*
+Figma Claude above all, come from cloning this repo.)*
 
 That installs a skill that teaches Claude Code how to drive figma-cli (connect
 modes, the render/JSX rules, tokens, verify, a11y). The **CLI itself still needs
@@ -400,11 +402,11 @@ Prefer to keep everything on your machine? figma-cli also works with **local LLM
 
 ---
 
-## FigmaClaude — Claude Code next to Figma
+## Figma Claude — Claude Code next to Figma
 
-<img src="app/build/icon.png" width="96" align="right" alt="FigmaClaude icon">
+<img src="app/build/icon.png" width="96" align="right" alt="Figma Claude icon">
 
-**FigmaClaude is built by [Clement Copper](https://github.com/clementcopper) out of the two
+**Figma Claude is built by [Clement Copper](https://github.com/clementcopper) out of the two
 projects below.** Neither of them does this on its own: one drives Figma, the other is a terminal
 panel for an editor. Putting them in one window — and teaching the panel about Figma — is what
 this app is.
@@ -413,51 +415,56 @@ this app is.
 silships/figma-cli                 the CLI that drives Figma Desktop over CDP
         +
 nolikzero/claude-terminal-panel    the AI terminal panel (via clementcopper's fork)
-        ⇩   combined, ported to Electron and extended by Clement Copper
-FigmaClaude                        app/ in this repo
+        ⇩   combined and rebuilt in Swift and AppKit by Clement Copper
+Figma Claude                       swift-host/ in this repo
 ```
-
-Written for this app, not taken from either source: the Electron shell and the preload shim that
-lets the ported webview run unchanged outside VS Code, the top bar, the working-directory picker,
-the bridge to the CLI daemon (connection dots, reconnect, the Figma selection as prompt context),
-the icon pipeline, and the packaging.
 
 Driving Figma by conversation works; sitting in front of two terminal windows beside Figma to do
-it does not. `app/` is a small macOS app that puts Claude Code in a window of its own, next to
-Figma, with the things a terminal cannot show:
+it does not. `swift-host/` is a small macOS app that puts Claude Code in a window of its own, next
+to Figma, with the things a terminal cannot show:
 
-- **Claude's status line** rendered natively — model, effort, context bar, session and weekly
-  limits, working directory. None of that can be read from the terminal stream; Claude Code
-  hands it to a `statusLine` command, which the app supplies per session, so your own
-  `~/.claude/settings.json` is never touched.
-- **Tabs**, resume and continue a session in place, restart.
-- **A working directory you pick** — Claude Code keeps its session history per directory, so
-  this decides which conversations `--resume` offers.
-- **Figma's state**: two dots for the daemon and the connection into Figma, the open file's
-  name, and one click to reconnect when it drops — falling back to writing `!figma-cli connect`
-  into the input, unsent. With something selected in Figma, a row above the status line puts that
-  selection — names and node ids — into the prompt.
+- **Claude's status line as rings** — context, session, weekly limit and compactions, each a dial
+  that turns amber and then red as it fills. None of that can be read from the terminal stream;
+  Claude Code hands it to a `statusLine` command, which the app supplies per session by invoking
+  its own binary, so your `~/.claude/settings.json` is never touched and nothing has to be on your
+  PATH.
+- **Tabs**, resume and continue a session in place, restart. Each tab gets a name of its own —
+  `fc-<figma file>-<session id>` — so the `/resume` picker can tell them apart.
+- **A working directory you pick** — Claude Code keeps its session history per directory, so this
+  decides which conversations `--resume` offers.
+- **Figma's state**: dots for the daemon and the connection into Figma, the open file's name, and
+  one click to reconnect when it drops. With something selected in Figma, a band above the rings
+  puts that selection — names and node ids — into the prompt.
+
+Building it needs Xcode's command line tools and nothing else — no Node, no `npm install`, no
+native module to rebuild:
 
 ```bash
-cd app
-npm install
-npm run rebuild      # node-pty against Electron's ABI, once per Electron version
-npm run install:app  # builds and puts FigmaClaude.app in /Applications
+cd swift-host
+swift build -c release && bash Tools/make-app.sh
+open "build/Figma Claude.app"
 ```
 
-Details in [app/README.md](app/README.md).
+Details, probes and architecture in [swift-host/README.md](swift-host/README.md).
+
+**The Electron predecessor.** The same app was first built on Electron and still sits in
+[`app/`](app/README.md). It is no longer developed — and it stays in the repo for a second reason:
+`swift-host/Tools/make-app.sh` takes the icon from `app/build/icon.icns`, so both hosts wear the
+same one.
 
 **Credit where it belongs.** The panel's UI is
 [**nolikzero/claude-terminal-panel**](https://github.com/nolikzero/claude-terminal-panel) (MIT,
 © 2025 nolikzero), taken by way of [Clement Copper's
-fork](https://github.com/clementcopper/claude-terminal-panel) of it — the same VS Code panel,
-running in an Electron window instead of an editor. Its webview, stylesheet, message protocol and
-status-line producer are copied byte-identical, so improvements over there come across as a diff;
-[app/PORTED-FROM.md](app/PORTED-FROM.md) lists every file and names the source commit. The Figma
-half is Sil Bormüller's CLI, unchanged. What is new is the combination and everything listed
-above.
+fork](https://github.com/clementcopper/claude-terminal-panel) of it. The Electron host copies its
+webview, stylesheet, message protocol and status-line producer byte-identical, so improvements
+over there come across as a diff; [app/PORTED-FROM.md](app/PORTED-FROM.md) lists every file and
+names the source commit. The Swift host is a second port of that same interface, drawn in AppKit
+rather than a webview — the layout and the behaviour are the panel's, the code is not. The Figma
+half is Sil Bormüller's CLI, unchanged.
 
-macOS only, unsigned (right-click → Open on first launch), and not for the Figma Community —
+macOS 13 or newer, unsigned (right-click → Open on first launch), and not for the Figma Community —
+it needs the local CLI, which the plugin rules do not allow.
+
 it needs the local CLI, which the plugin rules do not allow.
 
 ---
@@ -498,7 +505,7 @@ Figma plugins are slow to build and tied to one UI. AI assistants are great at *
 
 What each connection mode touches (Yolo patches one string in Figma's `app.asar`, Browser and Safe Mode leave the app alone), what the local daemon does, and where credentials live: [SECURITY.md](SECURITY.md). That is also the page to hand to whoever approves tools at your company.
 
-Found a vulnerability in the CLI? Report it privately via [GitHub private vulnerability reporting](https://github.com/silships/figma-cli/security/advisories/new) or sil@intodesignsystems.com, not in a public issue. For anything specific to this fork — FigmaClaude, `bin/`, the connect patch — use [this repo's advisories](https://github.com/clementcopper/figma-cli/security/advisories/new).
+Found a vulnerability in the CLI? Report it privately via [GitHub private vulnerability reporting](https://github.com/silships/figma-cli/security/advisories/new) or sil@intodesignsystems.com, not in a public issue. For anything specific to this fork — Figma Claude, `bin/`, the connect patch — use [this repo's advisories](https://github.com/clementcopper/figma-cli/security/advisories/new).
 
 ---
 
@@ -516,18 +523,19 @@ Three people, three parts. Nothing here is a solo project.
 
 **The terminal panel — [nolikzero](https://github.com/nolikzero)**, author of
 [claude-terminal-panel](https://github.com/nolikzero/claude-terminal-panel) (MIT, © 2025), the VS
-Code extension whose UI FigmaClaude runs: tabs, toolbar, status line, prompt detection. On the
+Code extension whose UI Figma Claude runs: tabs, toolbar, status line, prompt detection. On the
 Marketplace as [`0ly.claude-terminal-panel`](https://marketplace.visualstudio.com/items?itemName=0ly.claude-terminal-panel).
 
-**This fork and FigmaClaude — [Clement Copper](https://github.com/clementcopper)**, interface
+**This fork and Figma Claude — [Clement Copper](https://github.com/clementcopper)**, interface
 designer and design engineer behind [**designdone.de**](https://designdone.de) — interface design
 and design engineering as a monthly subscription: UI and product design, design systems, and the
 front-end work that turns them into something running.
 
 Maintains a [fork of claude-terminal-panel](https://github.com/clementcopper/claude-terminal-panel),
-and built FigmaClaude by combining that panel with this CLI: the Electron shell and preload shim,
-the top bar, the working-directory picker, the bridge to the CLI daemon (connection state,
-reconnect, Figma selection as prompt context), the icon and the packaging. Plus the fork's CLI
+and built Figma Claude by combining that panel with this CLI — first on Electron (`app/`), then
+rebuilt in Swift and AppKit (`swift-host/`), which is the one being developed: the window and its
+toolbar, the ring status line, the working-directory picker, the bridge to the CLI daemon
+(connection state, reconnect, Figma selection as prompt context), the icon and the packaging. Plus the fork's CLI
 additions (`bin/fig-start`, `bin/fig-status`, non-destructive `connect`, `docs <topic>`, text
 styles, the render fixes), which are offered back upstream.
 
@@ -543,4 +551,4 @@ MIT, all three parts:
 - figma-cli — © [Sil Bormüller](https://www.linkedin.com/in/silbormueller)
 - the panel UI in `app/media` and `app/src/host` — © 2025 [nolikzero](https://github.com/nolikzero)
   ([`app/LICENSE-claude-terminal-panel`](app/LICENSE-claude-terminal-panel))
-- this fork and the rest of FigmaClaude — © [Clement Copper](https://github.com/clementcopper)
+- this fork and the rest of Figma Claude — © [Clement Copper](https://github.com/clementcopper)

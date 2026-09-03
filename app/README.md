@@ -1,4 +1,9 @@
-# Claude Panel
+# Claude Panel (Electron — the predecessor)
+
+> **This is the older host.** Figma Claude was rebuilt in Swift and AppKit and now lives in
+> [`swift-host/`](../swift-host/README.md); that is the one being developed. This one still
+> builds and runs, and the repo keeps it — the icon both hosts wear comes from
+> `app/build/icon.icns`. Everything below describes the Electron version.
 
 Claude Code in a window next to Figma, instead of a terminal beside it. Built by
 [Clement Copper](https://github.com/clementcopper) from two projects that each do half of it:
