@@ -81,6 +81,30 @@ time there is usually nothing to do at all.
 Building it, the render probes and the architecture:
 **[swift-host/README.md](swift-host/README.md)**.
 
+## Why the app and not just the CLI
+
+The CLI can do everything on its own — it is what does the work. Driving it means two terminals
+side by side, and the reason is not the daemon: that runs in the background and restarts itself
+whenever a command needs it. It is that Claude Code holds the first terminal, so every question you
+want to ask yourself — `fig-status`, a reconnect, an undo — needs a second one. `bin/fig-start`
+says it outright: *"Connects to Figma and starts the daemon. Launch Claude separately."* What the
+CLI cannot do is tell you anything without being asked, and its answers scroll away.
+
+| In two terminals | In the window |
+|---|---|
+| Is Figma connected? Run `fig-status` and read it, again in a minute | Three dots in the toolbar, polled, always visible |
+| Which file is bound? Retype the command with a different one | The Figma menu lists every open file, a tick on the bound one |
+| Hand Claude the selected layer: read the node id off Figma's inspector and type it | A band above the rings; one click puts names and ids into the prompt |
+| Resume a conversation: `claude --resume`, then pick from a list where several rows read the same | Three buttons — resume, continue, restart — and every tab carries its own name, `fc-<file>-<session id>` |
+| Claude's context and limits: a line of text competing with the output | Four rings — context, session, week, compactions — that turn amber, then red |
+| Switch connection mode: edit the config, connect again | The menu's **Mode** section: Yolo, Safe, Browser. One click, and it reconnects for you |
+| Undo the last render: remember what was made, then say so | **Canvas → Undo last render**, with the name of what it will remove |
+| Working directory: `cd` before you start, and hope it was the right one | A picker in the toolbar — and it is what decides which conversations `--resume` offers |
+
+None of this adds a capability. Every row is the same CLI underneath; the app only puts its state
+where you can see it and its actions where you can reach them. The trade is reach: the CLI runs
+anywhere Node does, including CI and Linux, and the app is macOS 13 or newer.
+
 ## The CLI underneath
 
 `figma-cli` is a command you can use on its own, and Claude uses it constantly:
