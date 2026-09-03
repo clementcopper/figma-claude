@@ -9,6 +9,7 @@ enum TabStateTests {
         activation()
         closing()
         cycling()
+        replacingTheOnlyTab()
     }
 
     static func naming() {
@@ -19,6 +20,29 @@ enum TabStateTests {
         _ = state.append("a"); _ = state.append("b")
         state.close(1)
         Checks.expect(state.nextName(), "Claude 3")
+    }
+
+    /// Replacing the one open tab — what the working-directory picker does.
+    ///
+    /// The order is the whole point. Opening the replacement first means `active` is never nil;
+    /// closing first passes through nil, and in the app that state takes the window with it and
+    /// ends the process before the replacement is ever opened.
+    static func replacingTheOnlyTab() {
+        var right = TabState<String>()
+        right.append("old")
+        let previous = right.activeIndex
+        right.append("new")
+        Checks.expectNotNil(right.active)          // the replacement is up before anything closes
+        if let previous { right.close(previous) }
+        Checks.expect(right.count, 1)
+        Checks.expect(right.active, "new")
+
+        // The order that emptied the window, kept here so the reason is written down rather than
+        // only avoided.
+        var wrong = TabState<String>()
+        wrong.append("old")
+        wrong.close(0)
+        Checks.expectNil(wrong.active)
     }
 
     static func activation() {

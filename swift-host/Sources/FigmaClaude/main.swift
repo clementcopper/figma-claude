@@ -734,11 +734,15 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
         guard updatePanelConfig(["cwd": chosen]) else { return reportConfigWriteFailed() }
         toolbar.setDirectory(chosen)
-        // Replace the active tab so the new directory actually applies.
-        if let index = state.activeIndex {
-            closeTab(at: index)
-        }
+
+        // Replace the active tab so the new directory actually applies — new one first, old one
+        // second. The other way round the panel disappeared: with a single tab open, which is the
+        // normal case, `closeTab` found no active tab left, took the window with it, and
+        // `applicationShouldTerminateAfterLastWindowClosed` ended the app before this line was
+        // reached. With two tabs open it worked, which is why it went unnoticed.
+        let previous = state.activeIndex
         newTab()
+        if let previous { closeTab(at: previous) }
     }
 
 

@@ -25,6 +25,13 @@ enum Checks {
         }
     }
 
+    static func expectNotNil<T>(_ actual: T?, file: String = #fileID, line: Int = #line) {
+        let label = "\(file):\(line)"
+        if actual != nil { passed += 1 } else {
+            failures.append("  \(label)\n     got: nil, expected a value")
+        }
+    }
+
     static func report() -> Never {
         for failure in failures { print("FAIL \(failure)") }
         print("\(passed) passed, \(failures.count) failed")
