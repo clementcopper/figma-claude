@@ -440,9 +440,10 @@ program
 program
   .command('setup')
   .description('Setup Figma for CLI access (alias for init)')
-  .action(() => {
-    // Redirect to init
-    execSync('figma-ds-cli init', { stdio: 'inherit' });
+  .action(async () => {
+    // Same module, same process: the shell-out to `figma-ds-cli init` was "command not
+    // found" from a checkout or an install that only linked `figma-cli`.
+    await program.parseAsync(['init'], { from: 'user' });
   });
 
 // ============ STATUS ============
@@ -455,7 +456,7 @@ program
     const config = loadConfig();
     if (!config.patched && !isDaemonRunning()) {
       console.log(chalk.yellow('\n⚠ First time? Run the setup wizard:\n'));
-      console.log(chalk.cyan('  figma-ds-cli init\n'));
+      console.log(chalk.cyan('  figma-cli init\n'));
       return;
     }
     figmaUse('status');

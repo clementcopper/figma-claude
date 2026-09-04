@@ -5597,6 +5597,7 @@ export const Default: Story = {};
           // Row labels
           rowValues.forEach((val, idx) => {
             const label = figma.createText();
+            label.fontName = { family: 'Inter', style: 'Medium' };
             label.characters = val;
             label.fontSize = 12;
             label.x = 0;
@@ -5608,6 +5609,7 @@ export const Default: Story = {};
           if (colProp) {
             colValues.forEach((val, idx) => {
               const label = figma.createText();
+              label.fontName = { family: 'Inter', style: 'Medium' };
               label.characters = val;
               label.fontSize = 12;
               label.x = 100 + idx * (maxW + gap) + maxW / 2;
