@@ -35,6 +35,14 @@
     .title { font-weight: 600; font-size: 12px; }
     #status { color: #aaa; }
     .hint { font-size: 9px; color: #666; margin-top: 2px; }
+    #tokenRow { display: none; gap: 4px; margin-top: 4px; }
+    #tokenRow.visible { display: flex; }
+    #token {
+      flex: 1; min-width: 0; font: inherit; font-size: 10px; padding: 3px 5px;
+      border: 1px solid #555; border-radius: 3px; background: #1e1e1e; color: #fff;
+    }
+    #save { font: inherit; font-size: 10px; padding: 3px 7px; border: 0; border-radius: 3px;
+      background: #4ECDC4; color: #000; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -44,10 +52,18 @@
     <span id="status">Connecting...</span>
   </div>
   <div class="hint">Keep this window open</div>
+  <div id="tokenRow" class="row">
+    <input id="token" type="password" placeholder="daemon token" spellcheck="false">
+    <button id="save">Save</button>
+  </div>
 
   <script>
     // Scan ports 3456-3460 in PARALLEL for fast connection
     const PORTS = [3456, 3457, 3458, 3459, 3460];
+    // The daemon only completes the /plugin handshake with its session token
+    // (~/.figma-ds-cli/.daemon-token, printed by `connect --safe`). The plugin
+    // main thread keeps it in clientStorage and hands it over on start.
+    let token = null;
     let ws = null;
     let reconnectTimer = null;
     let keepaliveTimer = null;
@@ -59,16 +75,36 @@
       dotEl.className = 'dot ' + state;
     }
 
+    const tokenRow = document.getElementById('tokenRow');
+    const tokenInput = document.getElementById('token');
+    function askForToken(text) {
+      setStatus(text, 'error');
+      tokenRow.classList.add('visible');
+      tokenInput.focus();
+    }
+    document.getElementById('save').onclick = () => {
+      const value = tokenInput.value.trim();
+      if (!value) return;
+      token = value;
+      tokenInput.value = '';
+      tokenRow.classList.remove('visible');
+      parent.postMessage({ pluginMessage: { type: 'save-token', token: value } }, '*');
+      clearTimeout(reconnectTimer);
+      connectParallel();
+    };
+    tokenInput.onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('save').onclick(); };
+
     // Try all ports in parallel, use first successful connection
     function connectParallel() {
       if (ws && ws.readyState === WebSocket.OPEN) return;
+      if (!token) { askForToken('Token needed'); return; }
 
       setStatus('Scanning...', 'connecting');
       let connected = false;
       const attempts = [];
 
       PORTS.forEach(port => {
-        const url = `ws://127.0.0.1:${port}/plugin`;
+        const url = `ws://127.0.0.1:${port}/plugin?token=${encodeURIComponent(token)}`;
         try {
           const socket = new WebSocket(url);
           attempts.push(socket);
@@ -202,6 +238,12 @@
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
+      // Token from clientStorage (or null on first run) — connect, or ask
+      if (msg.type === 'token') {
+        token = msg.token || null;
+        if (token) connectParallel(); else askForToken('Paste the daemon token');
+      }
+
       if (msg.type === 'result') {
         // Send result back to CLI via WebSocket
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -226,8 +268,9 @@
       }
     };
 
-    // Start connection
-    connect();
+    // Start: ask the main thread for the stored token; it answers with
+    // { type: 'token' } and the connection follows from there.
+    parent.postMessage({ pluginMessage: { type: 'get-token' } }, '*');
   </script>
 </body>
 </html>

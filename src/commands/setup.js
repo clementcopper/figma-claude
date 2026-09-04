@@ -659,7 +659,9 @@ program
       console.log(chalk.cyan('  1. ') + chalk.white('Open Figma Desktop and any design file'));
       console.log(chalk.cyan('  2. ') + chalk.white('Go to ') + chalk.yellow('Plugins → Development → Import plugin from manifest'));
       console.log(chalk.cyan('  3. ') + chalk.white('Navigate to: ') + chalk.yellow(process.cwd() + '/plugin/manifest.json'));
-      console.log(chalk.cyan('  4. ') + chalk.white('Click ') + chalk.yellow('Open') + chalk.white(' — plugin is now installed!\n'));
+      console.log(chalk.cyan('  4. ') + chalk.white('Click ') + chalk.yellow('Open') + chalk.white(' — plugin is now installed!'));
+      console.log(chalk.cyan('  5. ') + chalk.white('Paste this token into the plugin window (once, it is remembered):'));
+      console.log(chalk.yellow('     ' + (getDaemonToken() || '(no token — run daemon restart)')) + '\n');
 
       console.log(chalk.white.bold('  EACH SESSION:\n'));
       console.log(chalk.cyan('  → ') + chalk.white('In Figma: ') + chalk.yellow('Plugins → Development → FigCli\n'));

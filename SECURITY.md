@@ -44,6 +44,7 @@ Security review of figma-cli is mostly a question of what the three connection m
 ### Safe Mode (`figma-cli connect --safe`)
 
 - **Modifies nothing.** Communication goes through a Figma plugin you run yourself from Plugins > Development. Choose this one when patching or a debug port is not acceptable on the machine.
+- **The plugin authenticates too.** Its WebSocket handshake (`/plugin?token=…`) carries the same session token as every HTTP request, and a handshake that arrives with a web page's `Origin` is refused even with a valid token — a browser can open a WebSocket to 127.0.0.1 without any CORS preflight, so without this check any open tab could have posed as the plugin and read every command. `connect --safe` prints the token; the plugin stores it in `figma.clientStorage` after the first paste.
 
 ### The local daemon
 

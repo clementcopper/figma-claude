@@ -7,8 +7,8 @@
 
 // Show minimal UI (needed for WebSocket connection)
 figma.showUI(__html__, {
-  width: 160,
-  height: 72,
+  width: 200,
+  height: 100,
   position: { x: -9999, y: 9999 }  // Bottom-left (push to far left)
 });
 
@@ -47,7 +47,19 @@ async function executeCode(code, timeoutMs = 25000) {
 }
 
 // Handle messages from UI (WebSocket bridge)
+const TOKEN_KEY = 'daemonToken';
+
 figma.ui.onmessage = async (msg) => {
+  // The daemon session token lives in clientStorage; the UI iframe has no
+  // storage of its own. Asked for on start, saved when the user pastes it.
+  if (msg.type === 'get-token') {
+    const token = await figma.clientStorage.getAsync(TOKEN_KEY);
+    figma.ui.postMessage({ type: 'token', token: token || null });
+  }
+  if (msg.type === 'save-token') {
+    await figma.clientStorage.setAsync(TOKEN_KEY, msg.token);
+  }
+
   // Single eval
   if (msg.type === 'eval') {
     try {

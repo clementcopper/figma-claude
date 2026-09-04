@@ -10,6 +10,7 @@
  * Security features:
  * - Session token authentication (X-Daemon-Token header)
  * - No CORS headers (blocks cross-origin browser requests)
+ * - The /plugin WebSocket upgrade checks token + Origin (lib/daemon-auth.js)
  * - Host header validation (blocks DNS rebinding)
  * - Idle timeout auto-shutdown (configurable, default 10 minutes)
  */
@@ -21,6 +22,7 @@ import { join, dirname } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
+import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,22 +98,10 @@ try {
  * Returns null if valid, or an error string if rejected
  */
 function validateRequest(req) {
-  // Layer 1: Host header validation (blocks DNS rebinding)
-  const host = req.headers.host || '';
-  if (!host.match(/^(localhost|127\.0\.0\.1)(:\d+)?$/)) {
-    return 'Invalid host header';
-  }
-
-  // Layer 2: Session token (blocks unauthorized local processes)
-  const token = req.headers['x-daemon-token'];
-  if (!SESSION_TOKEN) {
-    return 'No session token configured';
-  }
-  if (token !== SESSION_TOKEN) {
-    return 'Invalid or missing token';
-  }
-
-  return null; // Valid
+  // Host header (blocks DNS rebinding) + session token (blocks other local
+  // processes). The rules live in lib/daemon-auth.js, shared with the
+  // WebSocket upgrade below, and are unit-tested there.
+  return validateHttpRequest(req.headers, SESSION_TOKEN);
 }
 
 // ============ IDLE TIMEOUT ============
@@ -510,8 +500,24 @@ async function handleRequest(req, res) {
 
 const httpServer = createServer(handleRequest);
 
-// WebSocket server for plugin connections
-const wss = new WebSocketServer({ server: httpServer, path: '/plugin' });
+// WebSocket server for plugin connections.
+// `noServer`: the upgrade is accepted by hand so that the same auth as HTTP
+// runs first. Attached to the server directly, ws would complete the
+// handshake for anyone — and a WebSocket from a web page needs no CORS
+// preflight, so any open tab could have become "the plugin" and read every
+// eval the CLI sent.
+const wss = new WebSocketServer({ noServer: true });
+
+httpServer.on('upgrade', (req, socket, head) => {
+  const authError = validateUpgrade(req, SESSION_TOKEN);
+  if (authError) {
+    console.error('[daemon] Plugin upgrade rejected: ' + authError);
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+});
 
 wss.on('connection', (ws) => {
   console.log('[daemon] Plugin connected (Safe Mode)');

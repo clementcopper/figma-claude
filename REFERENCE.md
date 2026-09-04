@@ -501,6 +501,9 @@ node src/index.js connect --safe
 
 Then in Figma: Plugins → Development → FigCli
 
+The first time, the plugin window asks for the daemon token — `connect --safe` prints it (it is
+the content of `~/.figma-ds-cli/.daemon-token`). Paste it once; the plugin remembers it.
+
 ### Differences from Yolo Mode
 
 | Feature | Yolo Mode | Safe Mode |
