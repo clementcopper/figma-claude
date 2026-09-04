@@ -111,7 +111,7 @@ const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [colorName, shades] of Object.entries(colors)) {
   for (const [shade, hex] of Object.entries(shades)) {
-    const existing = existingVars.find(v => v.name === colorName + '/' + shade);
+    const existing = existingVars.find(v => v.name === colorName + '/' + shade && v.variableCollectionId === col.id);
     if (!existing) {
       const v = figma.variables.createVariable(colorName + '/' + shade, col, 'COLOR');
       v.setValueForMode(modeId, hexToRgb(hex));
@@ -415,7 +415,7 @@ const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [colorName, shades] of Object.entries(colors)) {
   for (const [shade, hex] of Object.entries(shades)) {
-    const existing = existingVars.find(v => v.name === colorName + '/' + shade);
+    const existing = existingVars.find(v => v.name === colorName + '/' + shade && v.variableCollectionId === col.id);
     if (!existing) {
       const v = figma.variables.createVariable(colorName + '/' + shade, col, 'COLOR');
       v.setValueForMode(modeId, hexToRgb(hex));
@@ -460,7 +460,7 @@ const modeId = col.modes[0].modeId;
 const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [name, value] of Object.entries(spacings)) {
-  const existing = existingVars.find(v => v.name === 'spacing/' + name);
+  const existing = existingVars.find(v => v.name === 'spacing/' + name && v.variableCollectionId === col.id);
   if (!existing) {
     const v = figma.variables.createVariable('spacing/' + name, col, 'FLOAT');
     v.setValueForMode(modeId, value);
@@ -500,7 +500,7 @@ const modeId = col.modes[0].modeId;
 const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [name, value] of Object.entries(radii)) {
-  const existing = existingVars.find(v => v.name === 'radius/' + name);
+  const existing = existingVars.find(v => v.name === 'radius/' + name && v.variableCollectionId === col.id);
   if (!existing) {
     const v = figma.variables.createVariable('radius/' + name, col, 'FLOAT');
     v.setValueForMode(modeId, value);
@@ -931,7 +931,7 @@ const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [colorName, shades] of Object.entries(colors)) {
   for (const [shade, hex] of Object.entries(shades)) {
-    const existing = existingVars.find(v => v.name === colorName + '/' + shade);
+    const existing = existingVars.find(v => v.name === colorName + '/' + shade && v.variableCollectionId === col.id);
     if (!existing) {
       const v = figma.variables.createVariable(colorName + '/' + shade, col, 'COLOR');
       v.setValueForMode(modeId, hexToRgb(hex));
@@ -961,7 +961,7 @@ const modeId = col.modes[0].modeId;
 const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [name, hex] of Object.entries(colors)) {
-  const existing = existingVars.find(v => v.name === name);
+  const existing = existingVars.find(v => v.name === name && v.variableCollectionId === col.id);
   if (!existing) {
     const v = figma.variables.createVariable(name, col, 'COLOR');
     v.setValueForMode(modeId, hexToRgb(hex));
@@ -986,7 +986,7 @@ const modeId = col.modes[0].modeId;
 const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [name, value] of Object.entries(spacings)) {
-  const existing = existingVars.find(v => v.name === name);
+  const existing = existingVars.find(v => v.name === name && v.variableCollectionId === col.id);
   if (!existing) {
     const v = figma.variables.createVariable(name, col, 'FLOAT');
     v.setValueForMode(modeId, value);
@@ -1011,7 +1011,7 @@ const modeId = col.modes[0].modeId;
 const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [name, value] of Object.entries(typography)) {
-  const existing = existingVars.find(v => v.name === name);
+  const existing = existingVars.find(v => v.name === name && v.variableCollectionId === col.id);
   if (!existing) {
     const v = figma.variables.createVariable(name, col, 'FLOAT');
     v.setValueForMode(modeId, value);
@@ -1036,7 +1036,7 @@ const modeId = col.modes[0].modeId;
 const existingVars = await figma.variables.getLocalVariablesAsync();
 let count = 0;
 for (const [name, value] of Object.entries(radii)) {
-  const existing = existingVars.find(v => v.name === name);
+  const existing = existingVars.find(v => v.name === name && v.variableCollectionId === col.id);
   if (!existing) {
     const v = figma.variables.createVariable(name, col, 'FLOAT');
     v.setValueForMode(modeId, value);
