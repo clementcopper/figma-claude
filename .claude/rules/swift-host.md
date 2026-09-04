@@ -21,6 +21,7 @@ Distilled from `LEARNINGS.md` § Swift host. Stories and measurements there.
 ## Colours, capture, appearance
 
 - **`NSColor.textBackgroundColor.cgColor` freezes the appearance,** and SwiftTerm converts assigned colours immediately; resolve dynamic colours inside `effectiveAppearance.performAsCurrentDrawingAppearance`.
+- **A `layer.backgroundColor` set once in `init` is frozen too.** Fixed-colour surfaces go through `TintedView`, which resolves in `updateLayer`; the effort chip stayed light after a switch to dark.
 - **Anything shown per tab belongs in `show(_:)`.** Four paths bring a tab to the front and all go through it; the folder button, set only at launch and on picking, showed the same directory for every tab.
 - **Finder caches an app's icon through LaunchServices.** `touch` the bundle and `lsregister -f` after building, or `build/` keeps the placeholder while the Dock shows the real one.
 - **`cacheDisplay` gives the view, not the window:** everything outside the glyphs is transparent. `wantsLayer = true` plus a layer background set inside the drawing appearance puts the ground into the capture.
@@ -31,6 +32,9 @@ Distilled from `LEARNINGS.md` § Swift host. Stories and measurements there.
 
 - **SwiftTerm reports the raw `waitpid` status:** exit 1 arrives as 256. Decode with `WIFEXITED`/`WIFSIGNALED` before comparing; every `code == 1` branch was dead.
 - **SwiftTerm's key handling is closed** (`public override`, not `open`); `send(source:data:)` is `open` and is where keystrokes leave for the PTY.
+- **A `timeout` parameter nobody reads is a hang with a name.** `readOutput(_:from:timeout:)` in `ProcessOutput.swift` is the one place a child's deadline is enforced; `runCli` and `LoginShellPath.resolve` go through it.
+- **Scan the transcript's bytes, never split it into lines.** `countCompactions` runs on every status line render: 1 320 ms at 17 MB as a String split, 14 ms as a `Data.range(of:)` scan.
+- **⌘Q never sends `windowWillClose`.** Exit work lives in `applicationWillTerminate`; closing the window arrives there too.
 - **A terminal exiting must not close the app;** write the exit description into the tab and leave it standing, as the Electron host does.
 - **A spawn that adopts a conversation (`--resume`, `-r`, `--continue`, `-c`) passes neither `-n` nor `--session-id`,** or the picked session gets renamed. And Claude Code keeps a session's name in two places (transcript records **and** `custom-title.json` sidecar); sweep both.
 - **A guard that carries two things drops both.** The status-line `--settings` hung off the same `!sessionName.isEmpty` guard as `-n`.
