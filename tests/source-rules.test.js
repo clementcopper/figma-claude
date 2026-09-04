@@ -14,6 +14,13 @@ describe('source rules', () => {
     assert.doesNotMatch(read('src/commands/setup.js'), /execSync\(['"`]figma-ds-cli/);
   });
 
+  it('figma-client uses no synchronous node lookup', () => {
+    // `figma.getNodeById` throws under documentAccess: dynamic-page; 50 call sites had it,
+    // 35 of them in methods nothing called, 14 in methods that are used.
+    const hits = read('src/figma-client.js').split('\n').map((l, i) => (/figma\.getNodeById\(/.test(l) ? i + 1 : null)).filter(Boolean);
+    assert.deepStrictEqual(hits, [], `sync getNodeById at line(s) ${hits.join(', ')}`);
+  });
+
   it('every createText() in figma-client sets fontName before characters', () => {
     // `organizeVariants` loaded Inter Medium and wrote `characters` on a node still set to
     // Inter Regular — "Cannot write to node with unloaded font".

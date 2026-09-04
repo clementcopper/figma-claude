@@ -1981,7 +1981,7 @@ export class FigmaClient {
           if (compId) {
             // Create instance by component ID
             return `
-        const comp${idx} = figma.getNodeById(${JSON.stringify(compId)});
+        const comp${idx} = await figma.getNodeByIdAsync(${JSON.stringify(compId)});
         if (comp${idx} && comp${idx}.type === 'COMPONENT') {
           const el${idx} = comp${idx}.createInstance();
           ${parentVar}.appendChild(el${idx});
@@ -2779,8 +2779,8 @@ export class FigmaClient {
    */
   async getNode(nodeId) {
     return await this.eval(`
-      (function() {
-        const n = figma.getNodeById(${JSON.stringify(nodeId)});
+      (async function() {
+        const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!n) return null;
         return {
           id: n.id,
@@ -2802,8 +2802,8 @@ export class FigmaClient {
    */
   async deleteNode(nodeId) {
     return await this.eval(`
-      (function() {
-        const n = figma.getNodeById(${JSON.stringify(nodeId)});
+      (async function() {
+        const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!n) return { success: false, error: 'Node not found' };
         n.remove();
         return { success: true };
@@ -2816,8 +2816,8 @@ export class FigmaClient {
    */
   async moveNode(nodeId, x, y) {
     return await this.eval(`
-      (function() {
-        const n = figma.getNodeById(${JSON.stringify(nodeId)});
+      (async function() {
+        const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!n) return { success: false, error: 'Node not found' };
         n.x = ${x};
         n.y = ${y};
@@ -2845,8 +2845,8 @@ export class FigmaClient {
   async setSelection(nodeIds) {
     const ids = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
     return await this.eval(`
-      (function() {
-        const nodes = ${JSON.stringify(ids)}.map(id => figma.getNodeById(id)).filter(n => n);
+      (async function() {
+        const nodes = (await Promise.all(${JSON.stringify(ids)}.map(id => figma.getNodeByIdAsync(id)))).filter(n => n);
         figma.currentPage.selection = nodes;
         return nodes.map(n => n.id);
       })()
@@ -2969,8 +2969,8 @@ export class FigmaClient {
    */
   async createComponent(nodeId) {
     return await this.eval(`
-      (function() {
-        const node = figma.getNodeById(${JSON.stringify(nodeId)});
+      (async function() {
+        const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!node) return { error: 'Node not found' };
         const component = figma.createComponentFromNode(node);
         return { id: component.id, name: component.name };
@@ -2983,8 +2983,8 @@ export class FigmaClient {
    */
   async createInstance(componentId, x, y) {
     return await this.eval(`
-      (function() {
-        const comp = figma.getNodeById(${JSON.stringify(componentId)});
+      (async function() {
+        const comp = await figma.getNodeByIdAsync(${JSON.stringify(componentId)});
         if (!comp || comp.type !== 'COMPONENT') return { error: 'Component not found' };
         const instance = comp.createInstance();
         ${x !== undefined ? `instance.x = ${x};` : ''}
@@ -3000,7 +3000,7 @@ export class FigmaClient {
   async exportSVG(nodeId) {
     return await this.eval(`
       (async function() {
-        const node = figma.getNodeById(${JSON.stringify(nodeId)});
+        const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!node) return { error: 'Node not found' };
         const bytes = await node.exportAsync({ format: 'SVG' });
         return { svg: String.fromCharCode.apply(null, bytes) };
@@ -3016,7 +3016,7 @@ export class FigmaClient {
   async swapComponent(instanceId, newComponentKey) {
     return await this.eval(`
       (async function() {
-        const instance = figma.getNodeById(${JSON.stringify(instanceId)});
+        const instance = await figma.getNodeByIdAsync(${JSON.stringify(instanceId)});
         if (!instance || instance.type !== 'INSTANCE') return { error: 'Instance not found' };
 
         const newComponent = await figma.importComponentByKeyAsync(${JSON.stringify(newComponentKey)});
@@ -3036,15 +3036,15 @@ export class FigmaClient {
   async batchRename(nodeIds, pattern, options = {}) {
     const { startNumber = 1, case: textCase = null } = options;
     return await this.eval(`
-      (function() {
+      (async function() {
         const ids = ${JSON.stringify(nodeIds)};
         const pattern = ${JSON.stringify(pattern)};
         let num = ${startNumber};
         const results = [];
 
-        ids.forEach(id => {
-          const node = figma.getNodeById(id);
-          if (!node) return;
+        for (const id of ids) {
+          const node = await figma.getNodeByIdAsync(id);
+          if (!node) continue;
 
           let newName = pattern
             .replace(/{n}/g, num)
@@ -3059,7 +3059,7 @@ export class FigmaClient {
           node.name = newName;
           results.push({ id: node.id, name: newName });
           num++;
-        });
+        }
 
         return results;
       })()
@@ -3163,8 +3163,8 @@ export class FigmaClient {
   async exportToJSX(nodeId, options = {}) {
     const { pretty = true } = options;
     return await this.eval(`
-      (function() {
-        const node = figma.getNodeById(${JSON.stringify(nodeId)});
+      (async function() {
+        const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!node) return { error: 'Node not found' };
 
         function rgbToHex(r, g, b) {
@@ -3317,8 +3317,8 @@ export class FigmaClient {
    */
   async getPath(nodeId) {
     return await this.eval(`
-      (function() {
-        const node = figma.getNodeById(${JSON.stringify(nodeId)});
+      (async function() {
+        const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!node) return { error: 'Node not found' };
         if (!node.vectorPaths) return { error: 'Node has no vector paths' };
 
@@ -3339,8 +3339,8 @@ export class FigmaClient {
    */
   async setPath(nodeId, pathData) {
     return await this.eval(`
-      (function() {
-        const node = figma.getNodeById(${JSON.stringify(nodeId)});
+      (async function() {
+        const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
         if (!node) return { error: 'Node not found' };
         if (node.type !== 'VECTOR') return { error: 'Node is not a vector' };
 
@@ -3405,8 +3405,8 @@ export class FigmaClient {
    */
   async setComponentDescription(componentId, description) {
     return await this.eval(`
-      (function() {
-        const node = figma.getNodeById(${JSON.stringify(componentId)});
+      (async function() {
+        const node = await figma.getNodeByIdAsync(${JSON.stringify(componentId)});
         if (!node) return { error: 'Node not found' };
         if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') {
           return { error: 'Node is not a component' };
