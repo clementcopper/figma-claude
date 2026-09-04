@@ -1,6 +1,7 @@
 // Commands: a11y (extracted from index.js)
 import chalk from 'chalk';
 import { WCAG_SNIPPET } from '../lib/wcag.js';
+import { COLOR_SNIPPET } from '../lib/plugin-color.js';
 import { join } from 'path';
 import {
   program,
@@ -51,12 +52,7 @@ a11y
         return { r: 1, g: 1, b: 1, a: 1 };
       }
 
-      function toHex(c) {
-        const r = Math.round(c.r * 255).toString(16).padStart(2, '0');
-        const g = Math.round(c.g * 255).toString(16).padStart(2, '0');
-        const b = Math.round(c.b * 255).toString(16).padStart(2, '0');
-        return '#' + r + g + b;
-      }
+      ${COLOR_SNIPPET}
 
       const results = [];
 
@@ -177,12 +173,7 @@ a11y
         };
       }
 
-      function toHex(c) {
-        const r = Math.round(c.r * 255).toString(16).padStart(2, '0');
-        const g = Math.round(c.g * 255).toString(16).padStart(2, '0');
-        const b = Math.round(c.b * 255).toString(16).padStart(2, '0');
-        return '#' + r + g + b;
-      }
+      ${COLOR_SNIPPET}
 
       const types = ${JSON.stringify(simType)} === 'all' ? Object.keys(matrices) : [${JSON.stringify(simType)}];
       if (!types.every(t => matrices[t])) return { error: 'Unknown type. Use: protanopia, deuteranopia, tritanopia, achromatopsia, all' };
@@ -690,9 +681,7 @@ a11y
         }
         return { r: 1, g: 1, b: 1, a: 1 };
       }
-      function toHex(c) {
-        return '#' + [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
-      }
+      ${COLOR_SNIPPET}
 
       const interactivePatterns = /button|btn|link|tab|toggle|switch|checkbox|radio|input|select|dropdown|menu|icon-btn|close|nav|click|tap|cta/i;
       const level = ${JSON.stringify(level)};

@@ -14,6 +14,7 @@ import {
   hexToRgb
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
+import { COLOR_SNIPPET } from '../lib/plugin-color.js';
 
 // ============ VARIABLES ============
 
@@ -45,14 +46,7 @@ let col = cols.find(c => c.id === ${JSON.stringify(options.collection)} || c.nam
 if (!col) return 'Collection not found: ' + ${JSON.stringify(options.collection)};
 const modeId = col.modes[0].modeId;
 
-function hexToRgb(hex) {
-  const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16) / 255,
-    g: parseInt(result[2], 16) / 255,
-    b: parseInt(result[3], 16) / 255
-  } : null;
-}
+${COLOR_SNIPPET}
 
 const v = figma.variables.createVariable(${JSON.stringify(name)}, col, ${JSON.stringify(type)});
 ${options.value ? `
@@ -295,10 +289,7 @@ let col = cols.find(c => c.id === ${JSON.stringify(options.collection)} || c.nam
 if (!col) return 'Collection not found: ' + ${JSON.stringify(options.collection)};
 const modeId = col.modes[0].modeId;
 
-function hexToRgb(hex) {
-  const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return result ? { r: parseInt(result[1], 16) / 255, g: parseInt(result[2], 16) / 255, b: parseInt(result[3], 16) / 255 } : null;
-}
+${COLOR_SNIPPET}
 
 let created = 0;
 for (const v of vars) {
@@ -496,10 +487,7 @@ program
 const operations = ${JSON.stringify(operations)};
 const colFilter = ${JSON.stringify(colFilter)};
 
-function hexToRgb(hex) {
-  const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return result ? { r: parseInt(result[1], 16) / 255, g: parseInt(result[2], 16) / 255, b: parseInt(result[3], 16) / 255 } : null;
-}
+${COLOR_SNIPPET}
 
 // Load the variable map once, with the same scoping rules as render.
 const [allCols, allVars] = await Promise.all([

@@ -15,6 +15,7 @@ import {
   hexToRgb
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
+import { COLOR_SNIPPET } from '../lib/plugin-color.js';
 
 // ============ COLLECTIONS ============
 
@@ -99,10 +100,7 @@ tokens
 
     const code = `(async () => {
 const colors = ${JSON.stringify(tailwindColors)};
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 };
-}
+${COLOR_SNIPPET}
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
 let col = cols.find(c => c.name === ${JSON.stringify(options.collection)});
 if (!col) col = figma.variables.createVariableCollection(${JSON.stringify(options.collection)});
@@ -212,10 +210,7 @@ tokens
 const primitives = ${JSON.stringify(primitives)};
 const semanticTokens = ${JSON.stringify(semanticTokens)};
 
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return r ? { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 } : null;
-}
+${COLOR_SNIPPET}
 
 // Step 1: Create primitives collection
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
@@ -317,10 +312,7 @@ return 'Created ' + primCount + ' primitives + ' + semCount + ' semantic tokens 
       const code = `(async () => {
 const colors = ${JSON.stringify(radixColors)};
 
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return r ? { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 } : null;
-}
+${COLOR_SNIPPET}
 
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
 let col = cols.find(c => c.name === 'radix/colors');
@@ -403,10 +395,7 @@ tokens
 
     const code = `(async () => {
 const colors = ${JSON.stringify(shadcnColors)};
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 };
-}
+${COLOR_SNIPPET}
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
 let col = cols.find(c => c.name === ${JSON.stringify(options.collection)});
 if (!col) col = figma.variables.createVariableCollection(${JSON.stringify(options.collection)});
@@ -559,11 +548,7 @@ tokens
 const data = ${JSON.stringify(tokensData)};
 const collectionName = ${JSON.stringify(collectionName)};
 
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  if (!r) return null;
-  return { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 };
-}
+${COLOR_SNIPPET}
 
 function detectType(value) {
   if (typeof value === 'string' && value.startsWith('#')) return 'COLOR';
@@ -805,11 +790,7 @@ tokens
 const data = ${JSON.stringify({ ...tokensData.color, _radii: tokensData.radius })};
 const collectionName = ${JSON.stringify(collectionName)};
 
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  if (!r) return null;
-  return { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 };
-}
+${COLOR_SNIPPET}
 
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
 let col = cols.find(c => c.name === collectionName);
@@ -919,10 +900,7 @@ tokens
     let spinner = ora('Creating Color - Primitives...').start();
     const primitivesCode = `(async () => {
 const colors = ${JSON.stringify(idsColors)};
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 };
-}
+${COLOR_SNIPPET}
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
 let col = cols.find(c => c.name === 'Color - Primitives');
 if (!col) col = figma.variables.createVariableCollection('Color - Primitives');
@@ -950,10 +928,7 @@ return count;
     spinner = ora('Creating Color - Semantic...').start();
     const semanticCode = `(async () => {
 const colors = ${JSON.stringify(idsSemanticColors)};
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  return { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 };
-}
+${COLOR_SNIPPET}
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
 let col = cols.find(c => c.name === 'Color - Semantic');
 if (!col) col = figma.variables.createVariableCollection('Color - Semantic');
@@ -1221,11 +1196,7 @@ tokens
     checkConnectionSync();
 
     const code = `(async () => {
-function hexToRgb(hex) {
-  const r = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
-  if (!r) return null;
-  return { r: parseInt(r[1], 16) / 255, g: parseInt(r[2], 16) / 255, b: parseInt(r[3], 16) / 255 };
-}
+${COLOR_SNIPPET}
 
 const value = ${JSON.stringify(value)};
 let type = '${options.type || ''}';

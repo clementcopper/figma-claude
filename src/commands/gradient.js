@@ -1,5 +1,6 @@
 // Commands: gradient (extracted from index.js)
 import chalk from 'chalk';
+import { COLOR_SNIPPET } from '../lib/plugin-color.js';
 import ora from 'ora';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -175,7 +176,8 @@ gradient
           ${clearChildrenCode(options)}
           __target.clipsContent = true;
           const __base = ${JSON.stringify(recipe.base)};
-          const __hex = (h) => { h = h.replace('#', ''); return { r: parseInt(h.slice(0,2),16)/255, g: parseInt(h.slice(2,4),16)/255, b: parseInt(h.slice(4,6),16)/255 }; };
+          ${COLOR_SNIPPET}
+          const __hex = hexToRgb;
           __target.fills = [{ type:'SOLID', color: __hex(__base), opacity:1, visible:true, blendMode:'NORMAL' }];
           const __blobs = ${JSON.stringify(recipe.blobs)};
           const __blur = Math.round(D * ${recipe.blurFraction});
@@ -258,7 +260,8 @@ gradient
     const code = `
       (async () => {
         await figma.loadAllPagesAsync();
-        const __hex = (h) => { h = h.replace('#', ''); return { r: parseInt(h.slice(0,2),16)/255, g: parseInt(h.slice(2,4),16)/255, b: parseInt(h.slice(4,6),16)/255 }; };
+        ${COLOR_SNIPPET}
+        const __hex = hexToRgb;
         let __target;
         ${options.applyTo ? `
         const __wantId = ${JSON.stringify(options.applyTo)};

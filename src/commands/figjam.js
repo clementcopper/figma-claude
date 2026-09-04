@@ -1,5 +1,6 @@
 // Commands: figjam (extracted from index.js)
 import chalk from 'chalk';
+import { COLOR_SNIPPET } from '../lib/plugin-color.js';
 import ora from 'ora';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
@@ -30,9 +31,7 @@ program
 
       if (!nodes.length || !nodes[0]) return 'No node selected';
 
-      function rgbToHex(r, g, b) {
-        return '#' + [r, g, b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
-      }
+      ${COLOR_SNIPPET}
 
       function nodeToJsx(node, indent = 0) {
         const prefix = '  '.repeat(indent);

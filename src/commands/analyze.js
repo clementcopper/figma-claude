@@ -1,5 +1,6 @@
 // Commands: analyze (extracted from index.js)
 import chalk from 'chalk';
+import { COLOR_SNIPPET } from '../lib/plugin-color.js';
 import {
   program,
   checkConnection,
@@ -85,9 +86,7 @@ analyze
 
     const code = `(async () => {
       const colors = new Map();
-      function rgbToHex(r, g, b) {
-        return '#' + [r, g, b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
-      }
+      ${COLOR_SNIPPET}
       function checkNode(node) {
         if (node.fills && Array.isArray(node.fills)) {
           node.fills.forEach(f => {
