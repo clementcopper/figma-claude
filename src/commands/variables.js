@@ -317,37 +317,49 @@ return 'Created ' + created + ' variables';
     console.log(chalk.green(result || `✓ Created ${vars.length} variables`));
   });
 
-variables
-  .command('delete-all')
-  .description('Delete all local variables and collections')
-  .option('-c, --collection <name>', 'Only delete variables in this collection')
-  .action((options) => {
-    checkConnection();
-    const spinner = ora('Deleting variables...').start();
-
-    const filterCode = options.collection
-      ? `cols = cols.filter(c => c.name.includes(${JSON.stringify(options.collection)}));`
-      : '';
-
-    const code = `(async () => {
+/**
+ * Plugin code for `var delete-all`. Without --yes it only counts what would go; the
+ * collection filter is case-insensitive and matches whole name or substring, the same
+ * rule `var list -c` applies — it used to be case-sensitive here, so `-c shadcn` deleted
+ * nothing when the collection was "Shadcn/primitives" and a typo'd flag deleted everything.
+ */
+export function deleteAllCode({ yes, collection } = {}) {
+  const filterCode = collection
+    ? `const fl = ${JSON.stringify(collection.toLowerCase())};
+cols = cols.filter(c => c.name.toLowerCase() === fl || c.name.toLowerCase().includes(fl));`
+    : '';
+  return `(async () => {
 let cols = await figma.variables.getLocalVariableCollectionsAsync();
 ${filterCode}
-let deleted = 0;
+const vars = await figma.variables.getLocalVariablesAsync();
+let count = 0;
+const lines = [];
 for (const col of cols) {
-  const vars = await figma.variables.getLocalVariablesAsync();
   const colVars = vars.filter(v => v.variableCollectionId === col.id);
-  for (const v of colVars) {
-    v.remove();
-    deleted++;
-  }
-  col.remove();
+  lines.push(col.name + ' (' + colVars.length + ' variables)');
+  ${yes ? 'for (const v of colVars) v.remove(); col.remove();' : ''}
+  count += colVars.length;
 }
-return 'Deleted ' + deleted + ' variables and ' + cols.length + ' collections';
+return ${yes
+    ? "'Deleted ' + count + ' variables and ' + cols.length + ' collections'"
+    : "'Would delete ' + count + ' variables in ' + cols.length + ' collection(s):\\n  ' + lines.join('\\n  ') + '\\nRe-run with --yes to delete.'"};
 })()`;
+}
+
+variables
+  .command('delete-all')
+  .description('Delete all local variables and collections (previews unless --yes)')
+  .option('-c, --collection <name>', 'Only delete variables in this collection (case-insensitive)')
+  .option('-y, --yes', 'Actually delete; without it the command only lists what would go')
+  .action((options) => {
+    checkConnection();
+    const spinner = ora(options.yes ? 'Deleting variables...' : 'Counting variables...').start();
+    const code = deleteAllCode(options);
 
     try {
       const result = figmaEvalSync(code);
-      spinner.succeed(result);
+      if (options.yes) spinner.succeed(result);
+      else { spinner.warn(result); process.exitCode = 1; }
     } catch (error) {
       spinner.fail('Failed to delete variables');
       console.error(chalk.red(error.message));

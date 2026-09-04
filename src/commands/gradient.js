@@ -13,6 +13,17 @@ import {
 
 // ============ GRADIENT ============
 
+
+/**
+ * The target frame's children are the user's; they go only behind --replace.
+ * Without it, a frame that has children is refused with the flag named.
+ */
+export function clearChildrenCode({ replace } = {}) {
+  return replace
+    ? 'for (const c of [...__target.children]) c.remove();'
+    : "if (__target.children.length) throw new Error('Frame has ' + __target.children.length + ' child(ren); pass --replace to clear them');";
+}
+
 const gradient = program
   .command('gradient')
   .description('Extract gradients from images and apply them to nodes');
@@ -22,6 +33,7 @@ gradient
   .description('Extract a gradient or mesh-like gradient from an image (PNG/JPG)')
   .option('--mode <mode>', 'linear (1D, two/three-stop) or mesh (blur-stack approximation)', 'linear')
   .option('--apply-to <nodeId>', 'Apply the extracted gradient to this node. linear: sets fills. mesh: populates the frame with blur-blob children.')
+  .option('--replace', 'Clear the target frame\'s existing children first')
   .option('--direction <dir>', '[linear] Force direction: auto|vertical|horizontal', 'auto')
   .option('--stops <n>', '[linear] Number of color stops (2, 3, or 5)', '3')
   .option('--blur <frac>', '[mesh] Blur radius as fraction of min(W, H). Default 0.38.')
@@ -160,8 +172,7 @@ gradient
           if (__target.type !== 'FRAME') throw new Error('Mesh mode requires a FRAME target; got ' + __target.type);
           const W = __target.width, H = __target.height;
           const D = Math.min(W, H);
-          // Clear existing children
-          for (const c of [...__target.children]) c.remove();
+          ${clearChildrenCode(options)}
           __target.clipsContent = true;
           const __base = ${JSON.stringify(recipe.base)};
           const __hex = (h) => { h = h.replace('#', ''); return { r: parseInt(h.slice(0,2),16)/255, g: parseInt(h.slice(2,4),16)/255, b: parseInt(h.slice(4,6),16)/255 }; };
@@ -199,6 +210,7 @@ gradient
   .command('mesh <colors>')
   .description('Generate a mesh-gradient wallpaper from a color palette (no image needed)')
   .option('--apply-to <frameId>', 'Populate an existing Frame instead of creating a new one')
+  .option('--replace', 'Clear the target frame\'s existing children first')
   .option('--base <hex>', 'Base fill behind the blobs (default: palette average)')
   .option('--size <WxH>', 'Frame size for a new wallpaper', '1920x1080')
   .option('--blur <frac>', 'Blur radius as fraction of min(W, H). Default 0.42.')
@@ -258,7 +270,7 @@ gradient
           if (!__target) throw new Error('Node not found: ' + __wantId);
         }
         if (__target.type !== 'FRAME') throw new Error('Mesh requires a FRAME target; got ' + __target.type);
-        for (const c of [...__target.children]) c.remove();
+        ${clearChildrenCode(options)}
         ` : `
         __target = figma.createFrame();
         __target.name = ${JSON.stringify(options.name || 'Mesh Wallpaper')};

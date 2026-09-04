@@ -237,8 +237,9 @@ figma-cli blocks create dashboard-01     # Create dashboard in Figma
 figma-cli tokens preset shadcn   # 244 primitives + 32 semantic (Light/Dark)
 figma-cli tokens tailwind        # 242 primitive colors only
 figma-cli tokens ds              # IDS Base colors
-figma-cli var delete-all         # Delete all variables
-figma-cli var delete-all -c "primitives"  # Only specific collection
+figma-cli var delete-all         # Preview what would go (nothing is deleted)
+figma-cli var delete-all --yes   # Delete all variables
+figma-cli var delete-all -c "primitives" --yes  # Only that collection (case-insensitive)
 ```
 
 - `tokens preset shadcn` = Full system (primitives + semantic with Light/Dark mode)

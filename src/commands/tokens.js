@@ -1053,10 +1053,30 @@ return count;
     console.log(chalk.gray('  Next: ') + chalk.cyan('figma-ds-cli tokens components') + chalk.gray(' to add UI components\n'));
   });
 
+/**
+ * Plugin code that removes an earlier run's components — or null, when not asked to.
+ * Deleting by name hit any user frame called "Card" or "Input" on the page; now it only
+ * happens behind --replace, and the names are quoted on the way in.
+ */
+export function componentsCleanupCode(names, { replace } = {}) {
+  if (!replace) return null;
+  return `
+const names = ${JSON.stringify(names)};
+let removed = 0;
+figma.currentPage.children.forEach(n => {
+  if (names.includes(n.name)) { n.remove(); removed++; }
+});
+removed
+`;
+}
+
+const IDS_COMPONENT_NAMES = ['Button / Primary', 'Button / Secondary', 'Button / Outline', 'Input', 'Card', 'Badge / Default', 'Badge / Success', 'Badge / Warning', 'Badge / Error'];
+
 tokens
   .command('components')
   .description('Create IDS Base Components (Button, Input, Card, Badge)')
-  .action(async () => {
+  .option('--replace', 'Remove an earlier run\'s components of the same names first')
+  .action(async (options) => {
     checkConnection();
 
     console.log(chalk.cyan('\n  IDS Base Components'));
@@ -1076,20 +1096,16 @@ tokens
       error: '#ef4444'
     };
 
-    // First, clean up any existing IDS components
-    let spinner = ora('Cleaning up existing components...').start();
-    const cleanupCode = `
-const names = ['Button / Primary', 'Button / Secondary', 'Button / Outline', 'Input', 'Card', 'Badge / Default', 'Badge / Success', 'Badge / Warning', 'Badge / Error'];
-let removed = 0;
-figma.currentPage.children.forEach(n => {
-  if (names.includes(n.name)) { n.remove(); removed++; }
-});
-removed
-`;
-    try {
-      const removed = figmaUse(evalArg(cleanupCode), { silent: true });
-      spinner.succeed(`Cleaned up ${removed?.trim() || '0'} old elements`);
-    } catch { spinner.succeed('Ready'); }
+    // Only with --replace: nodes on the user's page are never deleted unasked.
+    let spinner;
+    const cleanupCode = componentsCleanupCode(IDS_COMPONENT_NAMES, options);
+    if (cleanupCode) {
+      spinner = ora('Removing earlier components...').start();
+      try {
+        const removed = figmaUse(evalArg(cleanupCode), { silent: true });
+        spinner.succeed(`Removed ${removed?.trim() || '0'} earlier element(s)`);
+      } catch { spinner.succeed('Ready'); }
+    }
 
     // Step 1: Create frames using JSX render (handles fonts)
     spinner = ora('Creating frames...').start();
