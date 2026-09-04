@@ -9,6 +9,7 @@ import {
   normalizeSpec,
   presetTracks,
   expandStagger,
+  staggerOptionsError,
   PRESETS,
 } from '../src/lib/motion-core.js';
 
@@ -220,4 +221,19 @@ test('expandStagger works with a raw field/from/to instead of a preset', () => {
   const second = spec.tracks.find((t) => t.node === '1:3');
   assert.equal(Math.min(...second.keys.map((k) => k.t)), 0.2);
   assert.equal(second.keys.length, 2);
+});
+
+// `stagger --field opacity` without --from/--to reached expandStagger with NaN and wrote NaN
+// keyframes as a success.
+test('expandStagger refuses a NaN value', () => {
+  assert.throws(() => expandStagger(['1:2'], { field: 'opacity', from: NaN, to: 1, dur: 0.5 }), /from/);
+  assert.throws(() => expandStagger(['1:2'], { field: 'opacity', from: 0, to: undefined, dur: 0.5 }), /to/);
+});
+
+test('staggerOptionsError names the missing option', () => {
+  assert.strictEqual(staggerOptionsError({ preset: 'fade-up' }), null);
+  assert.strictEqual(staggerOptionsError({ field: 'opacity', from: '0', to: '1' }), null);
+  assert.match(staggerOptionsError({}), /--preset or --field/);
+  assert.match(staggerOptionsError({ field: 'opacity', to: '1' }), /--from/);
+  assert.match(staggerOptionsError({ field: 'opacity', from: 'abc', to: '1' }), /--from/);
 });

@@ -19,6 +19,7 @@ import {
   presetTracks,
   expandStagger,
   PRESETS,
+  staggerOptionsError,
 } from '../lib/motion-core.js';
 
 const motion = program
@@ -165,7 +166,7 @@ motion
   .option('-e, --ease <ease>', 'easing: ease-out, gentle, quick, spring, linear, hold', 'ease-out')
   .action(async (id, options) => {
     await checkConnection();
-    if (!options.field) return console.log(chalk.red('✗ --field is required (e.g. --field opacity)')); process.exitCode = 1;
+    if (!options.field) { console.log(chalk.red('✗ --field is required (e.g. --field opacity)')); process.exitCode = 1; return; }
     const spinner = ora('Applying keyframes...').start();
     try {
       const f = mapField(options.field);
@@ -255,8 +256,9 @@ motion
   .action(async (ids, options) => {
     await checkConnection();
     const list = ids.split(',').map((s) => s.trim()).filter(Boolean);
-    if (list.length === 0) return console.log(chalk.red('✗ no node ids given')); process.exitCode = 1;
-    if (!options.preset && !options.field) return console.log(chalk.red('✗ need --preset or --field')); process.exitCode = 1;
+    if (list.length === 0) { console.log(chalk.red('✗ no node ids given')); process.exitCode = 1; return; }
+    const optionsError = staggerOptionsError(options);
+    if (optionsError) { console.log(chalk.red('✗ ' + optionsError)); process.exitCode = 1; return; }
     const spinner = ora(`Staggering ${list.length} nodes...`).start();
     try {
       const opts = options.preset

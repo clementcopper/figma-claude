@@ -267,8 +267,28 @@ export function presetTracks(name, opts = {}) {
  * Expand a stagger into a full spec. opts is either
  * { preset, dur?, at?, ease? } or { field, from, to, dur?, at?, ease? }.
  */
+/**
+ * Why `stagger`'s options cannot run, or null. `--field` needs both `--from` and `--to`
+ * as numbers; the guard used to accept `--field` alone and NaN keyframes were written as a
+ * success.
+ */
+export function staggerOptionsError(options) {
+  if (!options.preset && !options.field) return 'need --preset or --field';
+  if (options.field) {
+    for (const k of ['from', 'to']) {
+      if (options[k] === undefined || !Number.isFinite(Number(options[k]))) return `--field needs a numeric --${k}`;
+    }
+  }
+  return null;
+}
+
 export function expandStagger(ids, opts, step = 0.1) {
   if (!Array.isArray(ids) || ids.length === 0) throw new Error('stagger needs at least one node id');
+  if (!opts.preset) {
+    for (const k of ['from', 'to']) {
+      if (!Number.isFinite(Number(opts[k]))) throw new Error(`stagger: ${k} must be a number, got ${opts[k]}`);
+    }
+  }
   const base = opts.preset
     ? presetTracks(opts.preset, { dur: opts.dur, at: opts.at || 0, ease: opts.ease })
     : [twoKey(opts.field, opts.from, opts.to, opts.dur ?? 0.5, opts.at || 0, opts.ease || 'ease-out')];
