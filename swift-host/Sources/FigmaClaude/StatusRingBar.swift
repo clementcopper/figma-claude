@@ -210,7 +210,7 @@ final class StatusHeadGroup: NSView {
     let stop = StatusStopButton(frame: .zero)
     private let modelLabel = RingLabel(labelWithString: "")
     private let effortLabel = RingLabel(labelWithString: "")
-    private let effortBox = NSView()
+    private let effortBox = TintedView(StatusPalette.disc)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -224,8 +224,6 @@ final class StatusHeadGroup: NSView {
         effortLabel.font = StatusPalette.font(size: 9, weight: .medium)
         effortLabel.textColor = StatusPalette.subtleText
 
-        effortBox.wantsLayer = true
-        effortBox.layer?.backgroundColor = StatusPalette.disc.cgColor
         effortBox.layer?.cornerRadius = 3
         effortBox.translatesAutoresizingMaskIntoConstraints = false
         effortLabel.translatesAutoresizingMaskIntoConstraints = false

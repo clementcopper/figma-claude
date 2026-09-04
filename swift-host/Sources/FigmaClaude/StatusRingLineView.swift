@@ -289,19 +289,40 @@ final class StatusRingLineView: NSView {
     func previewCtxHover() { groups["Ctx"]?.previewHover() }
 }
 
+/// A view painted in one palette colour.
+///
+/// Resolved in `updateLayer`, which AppKit calls again when the appearance changes — a
+/// `layer.backgroundColor = colour.cgColor` set once in `init` freezes whichever mode was current
+/// at that moment. The effort chip was set that way and stayed light after a switch to dark
+/// while everything around it followed.
+class TintedView: NSView {
+    let color: NSColor
+
+    init(_ color: NSColor) {
+        self.color = color
+        super.init(frame: .zero)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = color.cgColor
+    }
+}
+
 /// One hairline in the status bar's own colour.
 ///
 /// An `NSBox` with `boxType = .separator` drew this before. It paints a colour of its own that no
 /// token can reach, and the edge above the band — drawn by `PanelContentView` — was a third one
 /// again: measured 0.851 there against 0.896 here, on a 0.972 ground. Both are
 /// `StatusPalette.separator` now, which is the value read out of the design file.
-final class Hairline: NSView {
+final class Hairline: TintedView {
     static let thickness: CGFloat = 1
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-    }
+    init() { super.init(StatusPalette.separator) }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
@@ -311,11 +332,5 @@ final class Hairline: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         heightAnchor.constraint(equalToConstant: Self.thickness).isActive = true
         return self
-    }
-
-    override var wantsUpdateLayer: Bool { true }
-
-    override func updateLayer() {
-        layer?.backgroundColor = StatusPalette.separator.cgColor
     }
 }
