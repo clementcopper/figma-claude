@@ -286,10 +286,10 @@ program
       // Extract node context from error if available
       const nodeMatch = msg.match(/\[Node: ([^\]]+)\]/);
       if (nodeMatch) {
-        console.log(chalk.red('✗ Render failed at ' + chalk.yellow(nodeMatch[1]) + ':'));
+        console.log(chalk.red('✗ Render failed at ' + chalk.yellow(nodeMatch[1]) + ':')); process.exitCode = 1;
         console.log(chalk.red('  ' + msg.replace(/\[Node: [^\]]+\]\s*/, '')));
       } else {
-        console.log(chalk.red('✗ Render failed: ' + msg));
+        console.log(chalk.red('✗ Render failed: ' + msg)); process.exitCode = 1;
       }
       // Hint for common errors
       if (msg.includes('FILL can only be set on children of auto-layout')) {
@@ -390,7 +390,7 @@ program
         console.log(chalk.green('✓ Rendered'));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Batch render failed: ' + (e.stderr || e.message)));
+      console.log(chalk.red('✗ Batch render failed: ' + (e.stderr || e.message))); process.exitCode = 1;
     }
   });
 
@@ -429,7 +429,7 @@ program
         console.log(chalk.gray('Nothing to undo (nodes already gone).'));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Undo failed: ' + e.message));
+      console.log(chalk.red('✗ Undo failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -463,7 +463,7 @@ program
         console.log(chalk.green(`✓ Figma ${figmaVersion}`));
       }
     } catch {
-      console.log(chalk.red('✗ Figma not found'));
+      console.log(chalk.red('✗ Figma not found')); process.exitCode = 1;
     }
 
     // 4. Figma running?
@@ -471,7 +471,7 @@ program
       if (isFigmaRunning()) {
         console.log(chalk.green('✓ Figma is running'));
       } else {
-        console.log(chalk.red('✗ Figma is not running'));
+        console.log(chalk.red('✗ Figma is not running')); process.exitCode = 1;
       }
     } catch {
       console.log(chalk.gray('  Could not check if Figma is running'));
@@ -484,7 +484,7 @@ program
       if (response.ok) {
         console.log(chalk.green(`✓ Remote debugging enabled (port ${cdpPort})`));
       } else {
-        console.log(chalk.red('✗ Remote debugging port not responding'));
+        console.log(chalk.red('✗ Remote debugging port not responding')); process.exitCode = 1;
       }
     } catch {
       console.log(chalk.red(`✗ Remote debugging not available (port ${cdpPort} closed)`));
@@ -519,7 +519,7 @@ program
       const result = await client.eval('({ file: figma.root.name, page: figma.currentPage.name })');
       console.log(chalk.green(`✓ Connected to "${result.file}" / "${result.page}"`));
     } catch (e) {
-      console.log(chalk.red('✗ Connection failed: ' + e.message));
+      console.log(chalk.red('✗ Connection failed: ' + e.message)); process.exitCode = 1;
     } finally {
       // This opens its OWN CDP socket rather than going through the daemon.
       // Leaving it open kept the event loop alive, so `diagnose` printed its

@@ -172,7 +172,7 @@ program
       const result = await fastEval(code);
 
       if (result.error) {
-        spinner.fail(result.error);
+        spinner.fail(result.error); process.exitCode = 1;
         return;
       }
 
@@ -183,7 +183,7 @@ program
       });
 
     } catch (error) {
-      spinner.fail('Failed: ' + error.message);
+      spinner.fail('Failed: ' + error.message); process.exitCode = 1;
     }
   });
 
@@ -449,7 +449,7 @@ program
       const analysis = await fastEval(analysisCode);
 
       if (analysis.error) {
-        spinner.fail(analysis.error);
+        spinner.fail(analysis.error); process.exitCode = 1;
         return;
       }
 
@@ -596,7 +596,7 @@ program
       const result = await fastEval(createCode);
 
       if (result.error) {
-        spinner.fail(result.error);
+        spinner.fail(result.error); process.exitCode = 1;
         return;
       }
 
@@ -607,7 +607,7 @@ program
       }
 
     } catch (error) {
-      spinner.fail('Failed: ' + error.message);
+      spinner.fail('Failed: ' + error.message); process.exitCode = 1;
     }
   });
 

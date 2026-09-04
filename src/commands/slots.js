@@ -67,13 +67,13 @@ ${NORMALIZE_EMPTY_SLOT}
     try {
       const result = await fastEval(code);
       if (result.error) {
-        console.log(chalk.red('✗ ' + result.error));
+        console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1;
       } else {
         console.log(chalk.green(`✓ Created slot "${result.slotName}" in component "${result.componentName}"`));
         console.log(chalk.gray(`  ID: ${result.slotId}`));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Failed: ' + e.message));
+      console.log(chalk.red('✗ Failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -135,7 +135,7 @@ slot
     try {
       const result = await fastEval(code);
       if (result.error) {
-        console.log(chalk.red('✗ ' + result.error));
+        console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1;
       } else {
         console.log(chalk.cyan(`\nSlots in "${result.componentName}" (${result.componentId}):`));
 
@@ -158,7 +158,7 @@ slot
         }
       }
     } catch (e) {
-      console.log(chalk.red('✗ Failed: ' + e.message));
+      console.log(chalk.red('✗ Failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -227,12 +227,12 @@ slot
     try {
       const result = await fastEval(code);
       if (result.error) {
-        console.log(chalk.red('✗ ' + result.error));
+        console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1;
       } else {
         console.log(chalk.green(`✓ Set ${result.preferredCount} preferred component(s) for slot "${result.slotKey}"`));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Failed: ' + e.message));
+      console.log(chalk.red('✗ Failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -284,13 +284,13 @@ slot
     try {
       const result = await fastEval(code);
       if (result.error) {
-        console.log(chalk.red('✗ ' + result.error));
+        console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1;
       } else {
         console.log(chalk.green(`✓ Reset slot "${result.slotName}"`));
         console.log(chalk.gray(`  Children: ${result.beforeCount} → ${result.afterCount}`));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Failed: ' + e.message));
+      console.log(chalk.red('✗ Failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -410,13 +410,13 @@ ${NORMALIZE_EMPTY_SLOT}
     try {
       const result = await fastEval(code);
       if (result.error) {
-        console.log(chalk.red('✗ ' + result.error));
+        console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1;
       } else {
         console.log(chalk.green(`✓ Converted frame to slot "${result.slotName}" in "${result.componentName}"`));
         console.log(chalk.gray(`  Slot ID: ${result.slotId}`));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Failed: ' + e.message));
+      console.log(chalk.red('✗ Failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -455,7 +455,7 @@ slot
         slot.appendChild(newText);
         added = { type: 'text', content: ${JSON.stringify(options.text)} };`;
     } else {
-      console.log(chalk.red('✗ Specify --component, --frame, or --text'));
+      console.log(chalk.red('✗ Specify --component, --frame, or --text')); process.exitCode = 1;
       return;
     }
 
@@ -478,13 +478,13 @@ slot
     try {
       const result = await fastEval(code);
       if (result.error) {
-        console.log(chalk.red('✗ ' + result.error));
+        console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1;
       } else {
         console.log(chalk.green(`✓ Added ${result.added.type} to slot "${result.slotName}"`));
         console.log(chalk.gray(`  Children: ${result.childCount}`));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Failed: ' + e.message));
+      console.log(chalk.red('✗ Failed: ' + e.message)); process.exitCode = 1;
     }
   });
 

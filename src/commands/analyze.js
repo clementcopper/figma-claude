@@ -68,7 +68,7 @@ program
         });
       }
     } catch (e) {
-      console.log(chalk.red('✗ Lint failed: ' + e.message));
+      console.log(chalk.red('✗ Lint failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -117,7 +117,7 @@ analyze
         });
       }
     } catch (e) {
-      console.log(chalk.red('✗ Analyze failed: ' + e.message));
+      console.log(chalk.red('✗ Analyze failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -159,7 +159,7 @@ analyze
         });
       }
     } catch (e) {
-      console.log(chalk.red('✗ Analyze failed: ' + e.message));
+      console.log(chalk.red('✗ Analyze failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -201,7 +201,7 @@ analyze
         result.paddings.forEach(p => console.log(`  ${p.value}px (${p.count}x)`));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Analyze failed: ' + e.message));
+      console.log(chalk.red('✗ Analyze failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -248,7 +248,7 @@ analyze
         });
       }
     } catch (e) {
-      console.log(chalk.red('✗ Analyze failed: ' + e.message));
+      console.log(chalk.red('✗ Analyze failed: ' + e.message)); process.exitCode = 1;
     }
   });
 

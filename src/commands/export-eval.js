@@ -315,8 +315,9 @@ function printEvalResult(code, result) {
 
 /** A lost connection reached the terminal as `spawnSync /bin/sh ETIMEDOUT` — a shell, not a state. */
 function printEvalError(error) {
+  process.exitCode = 1;
   const { lines } = explainEvalError(error && error.message, { panel: inPanel() });
-  console.log(chalk.red('✗ ' + lines[0]));
+  console.log(chalk.red('✗ ' + lines[0])); process.exitCode = 1;
   for (const line of lines.slice(1)) console.log(chalk.gray('  ' + line));
 }
 
@@ -333,14 +334,14 @@ program
     // If --file option provided, read code from file
     if (options.file) {
       if (!existsSync(options.file)) {
-        console.log(chalk.red('✗ File not found: ' + options.file));
+        console.log(chalk.red('✗ File not found: ' + options.file)); process.exitCode = 1;
         return;
       }
       jsCode = readFileSync(options.file, 'utf8');
     }
 
     if (!jsCode) {
-      console.log(chalk.red('✗ No code provided. Use: eval "code" or eval --file /path/to/script.js'));
+      console.log(chalk.red('✗ No code provided. Use: eval "code" or eval --file /path/to/script.js')); process.exitCode = 1;
       return;
     }
 
@@ -388,7 +389,7 @@ program
   .action(async (file, options) => {
     await checkConnection();
     if (!existsSync(file)) {
-      console.log(chalk.red('✗ File not found: ' + file));
+      console.log(chalk.red('✗ File not found: ' + file)); process.exitCode = 1;
       return;
     }
     const code = readFileSync(file, 'utf8');

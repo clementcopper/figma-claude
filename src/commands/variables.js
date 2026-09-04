@@ -263,7 +263,7 @@ return 'Created ' + totalSwatches + ' color swatches';
       const result = await fastEval(code);
       spinner.succeed(result || 'Created color palette');
     } catch (error) {
-      spinner.fail('Failed to create palette');
+      spinner.fail('Failed to create palette'); process.exitCode = 1;
       console.error(chalk.red(error.message));
     }
   });
@@ -362,7 +362,7 @@ variables
       if (options.yes) spinner.succeed(result);
       else { spinner.warn(result); process.exitCode = 1; }
     } catch (error) {
-      spinner.fail('Failed to delete variables');
+      spinner.fail('Failed to delete variables'); process.exitCode = 1;
       console.error(chalk.red(error.message));
     }
   });

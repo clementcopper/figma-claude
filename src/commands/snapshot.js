@@ -242,7 +242,7 @@ addScopeFlags(program
       }
 
       if (out.ok) spinner.succeed('All contracts hold');
-      else spinner.fail('Contract violated');
+      else spinner.fail('Contract violated'); process.exitCode = 1;
 
       // ---- report: snapshot
       if (snapResult) {

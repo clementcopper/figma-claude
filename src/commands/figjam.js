@@ -98,7 +98,7 @@ program
           console.log(result);
         }
       } catch (e) {
-        console.log(chalk.red('✗ Export failed: ' + e.message));
+        console.log(chalk.red('✗ Export failed: ' + e.message)); process.exitCode = 1;
       }
     } else {
       let cmd = 'npx --yes figma-use export jsx';
@@ -165,7 +165,7 @@ program
           console.log(output);
         }
       } catch (e) {
-        console.log(chalk.red('✗ Export failed: ' + e.message));
+        console.log(chalk.red('✗ Export failed: ' + e.message)); process.exitCode = 1;
       }
     } else {
       let cmd = 'npx --yes figma-use export storybook';
@@ -284,7 +284,7 @@ figjam
       const result = await client.createSticky(text, parseFloat(options.x), parseFloat(options.y), options.color);
       spinner.succeed(`Sticky created: ${result.id} at (${result.x}, ${result.y})`);
     } catch (error) {
-      spinner.fail('Failed to create sticky: ' + error.message);
+      spinner.fail('Failed to create sticky: ' + error.message); process.exitCode = 1;
     } finally {
       client.close();
     }
@@ -313,7 +313,7 @@ figjam
       );
       spinner.succeed(`Shape created: ${result.id} at (${result.x}, ${result.y})`);
     } catch (error) {
-      spinner.fail('Failed to create shape: ' + error.message);
+      spinner.fail('Failed to create shape: ' + error.message); process.exitCode = 1;
     } finally {
       client.close();
     }
@@ -333,7 +333,7 @@ figjam
       const result = await client.createText(content, parseFloat(options.x), parseFloat(options.y), parseFloat(options.size));
       spinner.succeed(`Text created: ${result.id} at (${result.x}, ${result.y})`);
     } catch (error) {
-      spinner.fail('Failed to create text: ' + error.message);
+      spinner.fail('Failed to create text: ' + error.message); process.exitCode = 1;
     } finally {
       client.close();
     }
@@ -349,12 +349,12 @@ figjam
     try {
       const result = await client.createConnector(startId, endId);
       if (result.error) {
-        spinner.fail(result.error);
+        spinner.fail(result.error); process.exitCode = 1;
       } else {
         spinner.succeed(`Connector created: ${result.id}`);
       }
     } catch (error) {
-      spinner.fail('Failed to create connector: ' + error.message);
+      spinner.fail('Failed to create connector: ' + error.message); process.exitCode = 1;
     } finally {
       client.close();
     }
@@ -372,10 +372,10 @@ figjam
       if (result.deleted) {
         spinner.succeed(`Node ${nodeId} deleted`);
       } else {
-        spinner.fail(result.error || 'Node not found');
+        spinner.fail(result.error || 'Node not found'); process.exitCode = 1;
       }
     } catch (error) {
-      spinner.fail('Failed to delete node: ' + error.message);
+      spinner.fail('Failed to delete node: ' + error.message); process.exitCode = 1;
     } finally {
       client.close();
     }
@@ -391,12 +391,12 @@ figjam
     try {
       const result = await client.moveNode(nodeId, parseFloat(x), parseFloat(y));
       if (result.error) {
-        spinner.fail(result.error);
+        spinner.fail(result.error); process.exitCode = 1;
       } else {
         spinner.succeed(`Node ${result.id} moved to (${result.x}, ${result.y})`);
       }
     } catch (error) {
-      spinner.fail('Failed to move node: ' + error.message);
+      spinner.fail('Failed to move node: ' + error.message); process.exitCode = 1;
     } finally {
       client.close();
     }
@@ -412,12 +412,12 @@ figjam
     try {
       const result = await client.updateText(nodeId, text);
       if (result.error) {
-        spinner.fail(result.error);
+        spinner.fail(result.error); process.exitCode = 1;
       } else {
         spinner.succeed(`Node ${result.id} text updated`);
       }
     } catch (error) {
-      spinner.fail('Failed to update text: ' + error.message);
+      spinner.fail('Failed to update text: ' + error.message); process.exitCode = 1;
     } finally {
       client.close();
     }

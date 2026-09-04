@@ -36,7 +36,7 @@ daemon
       if (details.running) {
         console.log(chalk.green('✓ Daemon:    ') + 'Running on port ' + DAEMON_PORT);
       } else if (details.authFailed) {
-        console.log(chalk.red('✗ Daemon:    ') + 'Running but authentication failed (403)');
+        console.log(chalk.red('✗ Daemon:    ') + 'Running but authentication failed (403)'); process.exitCode = 1;
       } else if (details.error) {
         console.log(chalk.yellow('○ Daemon:    ') + 'Not responding');
       } else {
@@ -75,7 +75,7 @@ daemon
       if (details.running) {
         console.log(chalk.green('✓ Daemon is running on port ' + DAEMON_PORT));
       } else if (details.authFailed) {
-        console.log(chalk.red('✗ Daemon running but auth failed (token mismatch)'));
+        console.log(chalk.red('✗ Daemon running but auth failed (token mismatch)')); process.exitCode = 1;
         console.log(chalk.gray('  Fix: node src/index.js daemon restart'));
         console.log(chalk.gray('  Debug: node src/index.js daemon status --debug'));
       } else {
@@ -110,10 +110,10 @@ daemon
     if (newDetails.running) {
       console.log(chalk.green('✓ Daemon started on port ' + DAEMON_PORT));
     } else if (newDetails.authFailed) {
-      console.log(chalk.red('✗ Daemon started but auth failed'));
+      console.log(chalk.red('✗ Daemon started but auth failed')); process.exitCode = 1;
       console.log(chalk.gray('  Run: node src/index.js daemon diagnose'));
     } else {
-      console.log(chalk.red('✗ Failed to start daemon'));
+      console.log(chalk.red('✗ Failed to start daemon')); process.exitCode = 1;
       console.log(chalk.gray('  Run: node src/index.js daemon diagnose'));
     }
   });
@@ -140,10 +140,10 @@ daemon
     if (details.running) {
       console.log(chalk.green('✓ Daemon restarted with fresh token'));
     } else if (details.authFailed) {
-      console.log(chalk.red('✗ Daemon running but auth failed'));
+      console.log(chalk.red('✗ Daemon running but auth failed')); process.exitCode = 1;
       console.log(chalk.gray('  Try: node src/index.js daemon diagnose'));
     } else {
-      console.log(chalk.red('✗ Failed to restart daemon'));
+      console.log(chalk.red('✗ Failed to restart daemon')); process.exitCode = 1;
       console.log(chalk.gray('  Try: node src/index.js daemon diagnose'));
     }
   });
@@ -165,12 +165,12 @@ daemon
       const response = await fetch(`http://localhost:${DAEMON_PORT}/reconnect`, { headers: reconnHeaders });
       const result = await response.json();
       if (result.error) {
-        console.log(chalk.red('✗ Reconnect failed: ' + result.error));
+        console.log(chalk.red('✗ Reconnect failed: ' + result.error)); process.exitCode = 1;
       } else {
         console.log(chalk.green('✓ Reconnected to Figma'));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Failed: ' + e.message));
+      console.log(chalk.red('✗ Failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
@@ -268,9 +268,9 @@ daemon
     if (details.running) {
       console.log(chalk.green('✓ Daemon is healthy'));
     } else if (details.authFailed) {
-      console.log(chalk.red('✗ Token mismatch - run: node src/index.js daemon restart'));
+      console.log(chalk.red('✗ Token mismatch - run: node src/index.js daemon restart')); process.exitCode = 1;
     } else if (!tokenStatus.tokenFileExists) {
-      console.log(chalk.red('✗ No token - run: node src/index.js connect'));
+      console.log(chalk.red('✗ No token - run: node src/index.js connect')); process.exitCode = 1;
     } else {
       console.log(chalk.yellow('○ Daemon not running - run: node src/index.js connect'));
     }

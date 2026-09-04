@@ -87,7 +87,7 @@ blocksCmd
       const nodeId = await block.create(context);
       spinner.succeed(`Created ${block.name} (${nodeId})`);
     } catch (e) {
-      spinner.fail(`Failed to create ${block.name}: ${e.message}`);
+      spinner.fail(`Failed to create ${block.name}: ${e.message}`); process.exitCode = 1;
     }
   });
 
@@ -414,7 +414,7 @@ propCmd
     let parsedDefault = defaultValue;
     if (apiType === 'BOOLEAN') parsedDefault = defaultValue === 'true' || defaultValue === '1';
     if (apiType === 'VARIANT') {
-      console.error(chalk.red('✗'), 'VARIANT properties cannot be added directly. Create variants by:');
+      console.error(chalk.red('✗'), 'VARIANT properties cannot be added directly. Create variants by:'); process.exitCode = 1;
       console.error('  1. Render multiple components (one per variant)');
       console.error('  2. Convert each: figma-cli node to-component <id>');
       console.error('  3. Combine: figma-cli component combine <id1,id2,id3> --name "MyComponent"');

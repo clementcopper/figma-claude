@@ -85,7 +85,7 @@ program
         if (!options.type) {
           const detectedType = detectSourceType(source, content.slice(0, 2048));
           if (!detectedType || detectedType === 'designmd') {
-            console.error(chalk.red('✗'), `Unrecognized format: ${source}`);
+            console.error(chalk.red('✗'), `Unrecognized format: ${source}`); process.exitCode = 1;
             _printSupportedFormats();
             process.exit(1);
           }
@@ -222,7 +222,7 @@ program.action(async () => {
           spinner.succeed('Figma ready (no patch needed)');
         }
       } catch (error) {
-        spinner.fail('Patch failed: ' + error.message);
+        spinner.fail('Patch failed: ' + error.message); process.exitCode = 1;
         if ((error.message.includes('EPERM') || error.message.includes('permission') || error.message.includes('access') || error.message.includes('App Management')) && process.platform === 'darwin') {
           console.log(chalk.yellow('\n  ⚠️  Your terminal needs "App Management" permission to patch Figma.\n'));
           console.log(chalk.gray('  1. Open System Settings → Privacy & Security → App Management'));
@@ -382,7 +382,7 @@ program
           spinner.succeed('Figma ready (no patch needed)');
         }
       } catch (error) {
-        spinner.fail('Patch failed: ' + error.message);
+        spinner.fail('Patch failed: ' + error.message); process.exitCode = 1;
         if ((error.message.includes('EPERM') || error.message.includes('permission') || error.message.includes('access') || error.message.includes('App Management')) && process.platform === 'darwin') {
           console.log(chalk.yellow('\n  ⚠️  Your terminal needs "App Management" permission to patch Figma.\n'));
           console.log(chalk.gray('  1. Open System Settings → Privacy & Security → App Management'));
@@ -510,7 +510,7 @@ program
       console.log(chalk.gray('  Remote debugging is now blocked by default.'));
       console.log(chalk.gray('  Run "node src/index.js connect" to re-enable it.'));
     } catch (err) {
-      spinner.fail(`Failed to unpatch: ${err.message}`);
+      spinner.fail(`Failed to unpatch: ${err.message}`); process.exitCode = 1;
     }
   });
 
@@ -554,7 +554,7 @@ async function connectBrowser(config) {
         startBrowserApp(browser.path, port, profileDir);
         spinner.succeed(`Launched ${browser.name} with a dedicated debug profile`);
       } catch (e) {
-        spinner.fail('Could not launch a browser automatically');
+        spinner.fail('Could not launch a browser automatically'); process.exitCode = 1;
       }
     } else {
       spinner.warn('No Chromium-based browser found automatically');
@@ -643,11 +643,11 @@ program
         if (isDaemonRunning()) {
           daemonSpinner.succeed('Daemon running in Safe Mode');
         } else {
-          daemonSpinner.fail('Daemon failed to start');
+          daemonSpinner.fail('Daemon failed to start'); process.exitCode = 1;
           return;
         }
       } catch (e) {
-        daemonSpinner.fail('Daemon failed: ' + e.message);
+        daemonSpinner.fail('Daemon failed: ' + e.message); process.exitCode = 1;
         return;
       }
 
@@ -723,7 +723,7 @@ program
         config.patched = true;
         saveConfig(config);
       } catch (err) {
-        patchSpinner.fail('Setup failed');
+        patchSpinner.fail('Setup failed'); process.exitCode = 1;
 
         // macOS 13+ needs "App Management" to modify another app's bundle
         if (process.platform === 'darwin') {

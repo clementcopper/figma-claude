@@ -130,11 +130,11 @@ return { duration: spec.duration, results };
 }
 
 function reportApply(res, spinner) {
-  if (printGuardError(res)) { spinner.fail('Motion not available'); return false; }
+  if (printGuardError(res)) { spinner.fail('Motion not available'); process.exitCode = 1; return false; }
   const ok = res.results.filter((r) => !r.error);
   const bad = res.results.filter((r) => r.error);
   if (ok.length === 0) {
-    spinner.fail('No tracks applied');
+    spinner.fail('No tracks applied'); process.exitCode = 1;
     for (const b of bad) printTargetError(b, b.reqId);
     return false;
   }
@@ -165,7 +165,7 @@ motion
   .option('-e, --ease <ease>', 'easing: ease-out, gentle, quick, spring, linear, hold', 'ease-out')
   .action(async (id, options) => {
     await checkConnection();
-    if (!options.field) return console.log(chalk.red('✗ --field is required (e.g. --field opacity)'));
+    if (!options.field) return console.log(chalk.red('✗ --field is required (e.g. --field opacity)')); process.exitCode = 1;
     const spinner = ora('Applying keyframes...').start();
     try {
       const f = mapField(options.field);
@@ -189,14 +189,14 @@ motion
         ];
         normalized = normalizeSpec({ tracks: [{ node: id, field: options.field, keys }] });
       } else {
-        spinner.fail('Need --keys or both --from and --to');
+        spinner.fail('Need --keys or both --from and --to'); process.exitCode = 1;
         return;
       }
 
       const res = await runApply(normalized);
       reportApply(res, spinner);
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -214,7 +214,7 @@ motion
       const res = await runApply(normalized);
       reportApply(res, spinner);
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -237,7 +237,7 @@ motion
       const res = await runApply(normalized);
       reportApply(res, spinner);
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -255,8 +255,8 @@ motion
   .action(async (ids, options) => {
     await checkConnection();
     const list = ids.split(',').map((s) => s.trim()).filter(Boolean);
-    if (list.length === 0) return console.log(chalk.red('✗ no node ids given'));
-    if (!options.preset && !options.field) return console.log(chalk.red('✗ need --preset or --field'));
+    if (list.length === 0) return console.log(chalk.red('✗ no node ids given')); process.exitCode = 1;
+    if (!options.preset && !options.field) return console.log(chalk.red('✗ need --preset or --field')); process.exitCode = 1;
     const spinner = ora(`Staggering ${list.length} nodes...`).start();
     try {
       const opts = options.preset
@@ -273,7 +273,7 @@ motion
       const res = await runApply(normalized);
       reportApply(res, spinner);
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -288,14 +288,14 @@ motion
       const res = await fastEval(evalBody(
         `return figma.motion.figmaAnimationStyles().map(s => ({ styleId: s.styleId, name: s.name, description: s.description }));`
       ));
-      if (printGuardError(res)) { spinner.fail('Motion not available'); return; }
+      if (printGuardError(res)) { spinner.fail('Motion not available'); process.exitCode = 1; return; }
       spinner.succeed(`${res.length} animation styles`);
       for (const s of res) {
         const short = String(s.name).replace(/^motion\.preset_name\./, '');
         console.log(chalk.gray(`  ${short.padEnd(12)} ${chalk.dim(s.name)}`));
       }
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -329,16 +329,16 @@ if (tl && tl.duration < end) node.setTimelineDuration(tl.id, end);
 return { nodeId: node.id, nodeName: node.name, descended: r.descended || false, fromName: r.fromName, styleName: def.name, appliedStyleId: applied };
 `;
       const res = await fastEval(evalBody(body));
-      if (printTargetError(res, id)) { spinner.fail('Could not apply style'); return; }
+      if (printTargetError(res, id)) { spinner.fail('Could not apply style'); process.exitCode = 1; return; }
       if (res.error === 'STYLE_NOT_FOUND') {
-        spinner.fail(`No style matching "${name}"`);
+        spinner.fail(`No style matching "${name}"`); process.exitCode = 1;
         console.log(chalk.gray('  Available: ' + res.available.map((n) => n.replace(/^motion\.preset_name\./, '')).join(', ')));
         return;
       }
       const via = res.descended ? chalk.gray(` (via "${res.fromName}")`) : '';
       spinner.succeed(`Applied style "${res.styleName.replace(/^motion\.preset_name\./, '')}" to ${res.nodeName}${via}`);
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -361,12 +361,12 @@ ${setDur != null ? `if (tl) node.setTimelineDuration(tl.id, ${setDur});` : ''}
 return { nodeId: node.id, timelines: node.timelines };
 `;
       const res = await fastEval(evalBody(body));
-      if (printTargetError(res, id)) { spinner.fail('No timeline'); return; }
+      if (printTargetError(res, id)) { spinner.fail('No timeline'); process.exitCode = 1; return; }
       const tl = (res.timelines || [])[0];
       if (setDur != null) spinner.succeed(`Timeline set to ${tl ? tl.duration : setDur}s`);
       else spinner.succeed(`Timeline: ${tl ? tl.duration + 's' : 'none'}`);
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -390,7 +390,7 @@ return {
 };
 `;
       const res = await fastEval(evalBody(body));
-      if (printTargetError(res, id)) { spinner.fail('Nothing to inspect'); return; }
+      if (printTargetError(res, id)) { spinner.fail('Nothing to inspect'); process.exitCode = 1; return; }
       spinner.succeed(`Motion on ${res.nodeName}${res.descended ? chalk.gray(` (via "${res.fromName}")`) : ''}`);
       console.log(JSON.stringify({
         timelines: res.timelines,
@@ -398,7 +398,7 @@ return {
         animationStyles: res.animationStyles,
       }, null, 2));
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });
 
@@ -437,10 +437,10 @@ if (arg.styles) {
 return { nodeId: node.id, nodeName: node.name };
 `;
       const res = await fastEval(evalBody(body));
-      if (printTargetError(res, id)) { spinner.fail('Nothing to clear'); return; }
+      if (printTargetError(res, id)) { spinner.fail('Nothing to clear'); process.exitCode = 1; return; }
       const what = options.styles ? 'styles' : options.field ? `field ${options.field}` : 'all tracks';
       spinner.succeed(`Cleared ${what} on ${res.nodeName}`);
     } catch (e) {
-      spinner.fail(e.message);
+      spinner.fail(e.message); process.exitCode = 1;
     }
   });

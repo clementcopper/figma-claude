@@ -114,7 +114,7 @@ return 'Created ' + count + ' color variables in ' + ${JSON.stringify(options.co
       const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created Tailwind palette');
     } catch (error) {
-      spinner.fail('Failed to create palette');
+      spinner.fail('Failed to create palette'); process.exitCode = 1;
       console.error(error.message);
     }
   });
@@ -278,7 +278,7 @@ return 'Created ' + primCount + ' primitives + ' + semCount + ' semantic tokens 
         console.log(chalk.gray('    • shadcn/semantic   - 32 semantic tokens (Light/Dark mode)\n'));
         console.log(chalk.gray('  Usage: Apply "Light" or "Dark" mode to any frame'));
       } catch (error) {
-        spinner.fail('Failed to add shadcn');
+        spinner.fail('Failed to add shadcn'); process.exitCode = 1;
         console.error(chalk.red(error.message));
       }
 
@@ -341,7 +341,7 @@ return 'Created ' + count + ' Radix color variables';
         console.log(chalk.gray('  Colors: gray, slate, red, orange, amber, yellow,'));
         console.log(chalk.gray('          green, teal, cyan, blue, indigo, violet, pink'));
       } catch (error) {
-        spinner.fail('Failed to add Radix colors');
+        spinner.fail('Failed to add Radix colors'); process.exitCode = 1;
         console.error(chalk.red(error.message));
       }
 
@@ -418,7 +418,7 @@ return 'Created ' + count + ' shadcn color variables in ' + ${JSON.stringify(opt
       const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created shadcn primitives (231 colors)');
     } catch (error) {
-      spinner.fail('Failed to create shadcn colors');
+      spinner.fail('Failed to create shadcn colors'); process.exitCode = 1;
       console.error(error.message);
     }
   });
@@ -462,7 +462,7 @@ return 'Created ' + count + ' spacing variables';
       const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created spacing scale');
     } catch (error) {
-      spinner.fail('Failed to create spacing scale');
+      spinner.fail('Failed to create spacing scale'); process.exitCode = 1;
     }
   });
 
@@ -503,7 +503,7 @@ return 'Created ' + count + ' radius variables';
       const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Created border radii');
     } catch (error) {
-      spinner.fail('Failed to create radii');
+      spinner.fail('Failed to create radii'); process.exitCode = 1;
     }
   });
 
@@ -608,7 +608,7 @@ return 'Imported ' + count + ' tokens into ' + collectionName;
       const result = figmaUse(evalArg(code), { silent: true });
       spinner.succeed(result?.trim() || 'Tokens imported');
     } catch (error) {
-      spinner.fail('Failed to import tokens');
+      spinner.fail('Failed to import tokens'); process.exitCode = 1;
       console.error(error.message);
     }
   });
@@ -663,7 +663,7 @@ tokens
     try {
       const r = await daemonExec('eval', { code });
       if (r.error) {
-        console.error(chalk.red('✗'), r.error);
+        console.error(chalk.red('✗'), r.error); process.exitCode = 1;
         console.error(chalk.gray('  Available: ' + (r.available || []).join(', ')));
         process.exit(1);
       }
@@ -770,7 +770,7 @@ tokens
         spinner.succeed(`Created ${totals.createdCount} variable(s), wired ${totals.aliasCount} alias(es) across ${collNames.length} collection(s)`);
         if (totals.unresolved) console.log(chalk.yellow(`  ⚠ ${totals.unresolved} alias value(s) unresolved (target outside this file / type mismatch)`));
       } catch (error) {
-        spinner.fail('Failed to import variable collections');
+        spinner.fail('Failed to import variable collections'); process.exitCode = 1;
         console.error(error.message);
         process.exit(1);
       }
@@ -843,7 +843,7 @@ return 'Imported ' + count + ' tokens into ' + collectionName;
       const result = await daemonExec('eval', { code });
       spinner.succeed(result || 'Tokens imported');
     } catch (error) {
-      spinner.fail('Failed to import tokens');
+      spinner.fail('Failed to import tokens'); process.exitCode = 1;
       console.error(error.message);
       process.exit(1);
     }
@@ -932,7 +932,7 @@ return count;
     try {
       const result = figmaUse(evalArg(primitivesCode), { silent: true });
       spinner.succeed(`Color - Primitives (${result?.trim() || '33'} variables)`);
-    } catch { spinner.fail('Color - Primitives failed'); }
+    } catch { spinner.fail('Color - Primitives failed'); process.exitCode = 1; }
 
     // Create Color - Semantic
     spinner = ora('Creating Color - Semantic...').start();
@@ -961,7 +961,7 @@ return count;
     try {
       const result = figmaUse(evalArg(semanticCode), { silent: true });
       spinner.succeed(`Color - Semantic (${result?.trim() || '13'} variables)`);
-    } catch { spinner.fail('Color - Semantic failed'); }
+    } catch { spinner.fail('Color - Semantic failed'); process.exitCode = 1; }
 
     // Create Spacing
     spinner = ora('Creating Spacing...').start();
@@ -986,7 +986,7 @@ return count;
     try {
       const result = figmaUse(evalArg(spacingCode), { silent: true });
       spinner.succeed(`Spacing (${result?.trim() || '7'} variables)`);
-    } catch { spinner.fail('Spacing failed'); }
+    } catch { spinner.fail('Spacing failed'); process.exitCode = 1; }
 
     // Create Typography
     spinner = ora('Creating Typography...').start();
@@ -1011,7 +1011,7 @@ return count;
     try {
       const result = figmaUse(evalArg(typographyCode), { silent: true });
       spinner.succeed(`Typography (${result?.trim() || '12'} variables)`);
-    } catch { spinner.fail('Typography failed'); }
+    } catch { spinner.fail('Typography failed'); process.exitCode = 1; }
 
     // Create Border Radii
     spinner = ora('Creating Border Radii...').start();
@@ -1036,7 +1036,7 @@ return count;
     try {
       const result = figmaUse(evalArg(radiiCode), { silent: true });
       spinner.succeed(`Border Radii (${result?.trim() || '6'} variables)`);
-    } catch { spinner.fail('Border Radii failed'); }
+    } catch { spinner.fail('Border Radii failed'); process.exitCode = 1; }
 
     // Small delay to let spinner render
     await new Promise(r => setTimeout(r, 100));
@@ -1128,7 +1128,7 @@ tokens
         await client.render(jsx);
       }
       spinner.succeed('9 frames created');
-    } catch (e) { spinner.fail('Frame creation failed: ' + e.message); }
+    } catch (e) { spinner.fail('Frame creation failed: ' + e.message); process.exitCode = 1; }
 
     // Step 2: Convert to components one by one with positioning
     spinner = ora('Converting to components...').start();

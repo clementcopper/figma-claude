@@ -140,7 +140,7 @@ create
       spinner.succeed(`Created icon: ${name}`);
       console.log(chalk.gray(`  Position: (${result.x}, ${result.y}), Size: ${result.width}x${result.height}px`));
     } catch (error) {
-      spinner.fail('Error creating icon');
+      spinner.fail('Error creating icon'); process.exitCode = 1;
       console.error(chalk.red(error.message));
     }
   });
@@ -206,7 +206,7 @@ create
       spinner.succeed('Image created from URL');
       if (result) console.log(chalk.gray(result.trim()));
     } catch (e) {
-      spinner.fail('Failed to create image: ' + e.message);
+      spinner.fail('Failed to create image: ' + e.message); process.exitCode = 1;
     }
   });
 

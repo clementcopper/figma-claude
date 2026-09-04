@@ -105,7 +105,7 @@ program
       // Cleanup
       try { unlinkSync(tempFile); } catch {}
     } catch (e) {
-      spinner.fail('Failed: ' + e.message);
+      spinner.fail('Failed: ' + e.message); process.exitCode = 1;
     }
   });
 
@@ -207,7 +207,7 @@ const { chromium } = require('playwright');
       // Cleanup
       try { unlinkSync(scriptPath); } catch {}
     } catch (e) {
-      spinner.fail('Analysis failed: ' + e.message);
+      spinner.fail('Analysis failed: ' + e.message); process.exitCode = 1;
     }
   });
 
@@ -560,7 +560,7 @@ ${[...fonts].map(f => {
       // Cleanup
       try { unlinkSync(scriptPath); } catch {}
     } catch (e) {
-      spinner.fail('Recreation failed: ' + e.message);
+      spinner.fail('Recreation failed: ' + e.message); process.exitCode = 1;
       if (process.env.DEBUG) console.error(e);
     }
   });
@@ -580,7 +580,7 @@ program
     const apiKey = options.apiKey || process.env.REMOVEBG_API_KEY || config.removebgApiKey;
 
     if (!apiKey) {
-      console.log(chalk.red('✗ Remove.bg API key required\n'));
+      console.log(chalk.red('✗ Remove.bg API key required\n')); process.exitCode = 1;
       console.log(chalk.white.bold('How to get your API key (free, 50 images/month):\n'));
       console.log(chalk.gray('  1. Go to ') + chalk.cyan('https://www.remove.bg/api'));
       console.log(chalk.gray('  2. Click "Get API Key" and sign up'));
@@ -673,7 +673,7 @@ program
       const result = figmaUse(evalArg(code), { silent: true });
 
       if (result && result.includes('Error:')) {
-        spinner.fail(result.trim());
+        spinner.fail(result.trim()); process.exitCode = 1;
       } else {
         spinner.succeed('Background removed!');
         if (result) console.log(chalk.gray(result.trim()));
@@ -682,7 +682,7 @@ program
       // Cleanup
       try { unlinkSync(tempInput); } catch {}
     } catch (e) {
-      spinner.fail('Failed: ' + e.message);
+      spinner.fail('Failed: ' + e.message); process.exitCode = 1;
     }
   });
 
