@@ -923,10 +923,13 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             sawOutput: tab.view.sawOutput))
     }
 
-    // MARK: - NSWindowDelegate
-
     /// A window position is only worth remembering if it is written down before the app dies.
-    func windowWillClose(_ notification: Notification) {
+    ///
+    /// Called from `applicationWillTerminate`, not from `windowWillClose`: ⌘Q goes through
+    /// `NSApplication.terminate` and never closes the window, so a save hung on the close
+    /// delegate was skipped on the most common way out. Closing the window ends the app too
+    /// (`applicationShouldTerminateAfterLastWindowClosed`), so both paths arrive here.
+    func saveWindowBounds() {
         // The *content* rect, not the frame: the frame carries the title bar, and handing that
         // back to `NSWindow(contentRect:)` on the next launch made the window 28 points taller
         // every time it was opened. It looked like it settled only because it was hitting the
@@ -934,8 +937,6 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let f = window.contentRect(forFrameRect: window.frame)
         saveBounds(Bounds(x: window.frame.origin.x, y: window.frame.origin.y,
                           width: f.width, height: f.height))
-        watcher.stop()
-        NSApp.terminate(nil)
     }
 }
 
@@ -1026,6 +1027,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        controller?.saveWindowBounds()
+    }
 }
 
 // Claude Code invokes this same binary as its `statusLine` command and pushes the session data
