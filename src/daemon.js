@@ -17,7 +17,7 @@
 
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { readFileSync, statSync, writeFileSync, unlinkSync, readdirSync } from 'fs';
+import { readFileSync, statSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -31,45 +31,55 @@ let FigmaClient = null;
 let lastModTime = 0;
 let lastTempFile = null;
 
+// Serialised: two concurrent requests used to both pass the mtime test, and the second's
+// cleanup unlinked the file the first was importing (ERR_MODULE_NOT_FOUND, then a fall back to
+// the STALE module). One reload at a time; the copy is named with its pid as well, so a
+// second daemon on another port cannot delete this one's copy.
+let reloading = null;
 async function getFigmaClient() {
-  try {
-    const stat = statSync(figmaClientPath);
-    const modTime = stat.mtimeMs;
+  if (reloading) await reloading;
+  let stat;
+  try { stat = statSync(figmaClientPath); } catch { stat = null; }
+  const modTime = stat ? stat.mtimeMs : 0;
+  if (FigmaClient && modTime <= lastModTime) return FigmaClient;
 
-    // Reload if file changed or never loaded
-    if (!FigmaClient || modTime > lastModTime) {
-      // Clean up old temp files in project directory (keeps node_modules accessible)
-      try {
-        const oldFiles = readdirSync(__dirname).filter(f => f.startsWith('.figma-client-') && f.endsWith('.mjs'));
-        for (const f of oldFiles) {
-          try { unlinkSync(join(__dirname, f)); } catch {}
-        }
-      } catch {}
-
-      // Copy to temp file in same directory (so imports resolve correctly)
-      const tempFile = join(__dirname, `.figma-client-${modTime}.mjs`);
-      const content = readFileSync(figmaClientPath, 'utf8');
-      writeFileSync(tempFile, content);
+  reloading = (async () => {
+    try {
+      const tempFile = join(__dirname, `.figma-client-${modTime}.${process.pid}.mjs`);
+      // Drop OUR earlier copy only — never a file another process may be importing.
+      if (lastTempFile && lastTempFile !== tempFile) { try { unlinkSync(lastTempFile); } catch {} }
+      // Copy next to the original so its relative imports resolve
+      writeFileSync(tempFile, readFileSync(figmaClientPath, 'utf8'));
       lastTempFile = tempFile;
-
-      // Import from temp file
-      const tempUrl = pathToFileURL(tempFile).href;
-      const module = await import(tempUrl);
+      const module = await import(pathToFileURL(tempFile).href);
       FigmaClient = module.FigmaClient;
-
       const wasReload = lastModTime > 0;
       lastModTime = modTime;
-      if (wasReload) console.log('[daemon] Hot-reloaded figma-client.js');
+      if (wasReload) {
+        console.log('[daemon] Hot-reloaded figma-client.js');
+        // The cached CDP client is an instance of the OLD class; drop it so the next
+        // request builds one from the reloaded module.
+        if (cdpClient) { try { cdpClient.close(); } catch {} cdpClient = null; }
+      }
+    } catch (e) {
+      // A read-only install (global npm) cannot take the copy; import the module once
+      // and stop trying — every request used to log this error and retry the write.
+      if (!FigmaClient) {
+        console.error('[daemon] Hot-reload unavailable (' + e.message + '); loading figma-client.js once');
+        FigmaClient = (await import('./figma-client.js')).FigmaClient;
+      }
+      lastModTime = Number.MAX_SAFE_INTEGER;
+    } finally {
+      reloading = null;
     }
-  } catch (e) {
-    console.error('[daemon] Hot-reload error:', e.message);
-    // Fallback: just import normally
-    if (!FigmaClient) {
-      const module = await import('./figma-client.js');
-      FigmaClient = module.FigmaClient;
-    }
-  }
+  })();
+  await reloading;
   return FigmaClient;
+}
+
+/** Remove this daemon's hot-reload copy (called on shutdown). */
+function removeHotReloadCopy() {
+  if (lastTempFile) { try { unlinkSync(lastTempFile); } catch {} lastTempFile = null; }
 }
 
 const PORT = parseInt(process.env.DAEMON_PORT) || 3456;
@@ -309,9 +319,6 @@ function getMode() {
 // ============ HTTP SERVER ============
 
 async function handleRequest(req, res) {
-  // Reset idle timer on every request
-  resetIdleTimer();
-
   // SECURITY: No CORS headers (blocks all cross-origin browser requests)
 
   // Block preflight requests (browsers send OPTIONS before cross-origin POST)
@@ -328,6 +335,10 @@ async function handleRequest(req, res) {
     res.end(JSON.stringify({ error: 'Unauthorized: ' + authError }));
     return;
   }
+
+  // Only an authenticated request counts as activity — before, a stream of 403s from any
+  // local process kept the daemon alive forever.
+  resetIdleTimer();
 
   // Health check
   if (req.url === '/health') {
@@ -369,9 +380,31 @@ async function handleRequest(req, res) {
 
   // Execute command
   if (req.url === '/exec' && req.method === 'POST') {
+    // utf8 via setEncoding: a StringDecoder keeps a multi-byte character whole across chunk
+    // boundaries (`body += chunk` decoded each Buffer on its own, so an umlaut on a 64 KB
+    // boundary turned into U+FFFD inside the file). Capped, and with an error listener so an
+    // aborted upload cannot raise an unhandled 'error' on the request.
+    const MAX_BODY_BYTES = 64 * 1024 * 1024;
     let body = '';
-    req.on('data', chunk => body += chunk);
+    let received = 0;
+    let tooLarge = false;
+    req.setEncoding('utf8');
+    req.on('error', (e) => console.error('[daemon] request error:', e.message));
+    req.on('data', chunk => {
+      received += Buffer.byteLength(chunk);
+      if (received > MAX_BODY_BYTES) {
+        if (!tooLarge) {
+          tooLarge = true;
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Request body over ${MAX_BODY_BYTES / 1024 / 1024} MB` }));
+          req.destroy();
+        }
+        return;
+      }
+      body += chunk;
+    });
     req.on('end', async () => {
+      if (tooLarge) return;
       const MAX_RETRIES = 2;
       let lastError;
 
@@ -521,6 +554,9 @@ httpServer.on('upgrade', (req, socket, head) => {
 
 wss.on('connection', (ws) => {
   console.log('[daemon] Plugin connected (Safe Mode)');
+  // A reopened plugin tab replaces the old socket; close the old one so its late 'close'
+  // cannot be mistaken for ours (see the identity check in the close handler).
+  if (pluginWs && pluginWs !== ws) { try { pluginWs.close(); } catch {} }
   pluginWs = ws;
   resetIdleTimer(); // Plugin connection counts as activity
 
@@ -571,6 +607,9 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    // Only the live socket's close means "plugin gone": the handler used to null `pluginWs`
+    // for ANY socket, so an old tab's delayed close killed the new tab's connection.
+    if (pluginWs !== ws) return;
     console.log('[daemon] Plugin disconnected');
     pluginWs = null;
 
@@ -619,6 +658,7 @@ process.on('SIGINT', shutdown);
 function shutdown() {
   console.log('[daemon] Shutting down...');
   if (idleTimer) clearTimeout(idleTimer);
+  removeHotReloadCopy();
   if (cdpClient) cdpClient.close();
   if (pluginWs) pluginWs.close();
   httpServer.close(() => process.exit(0));

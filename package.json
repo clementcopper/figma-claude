@@ -15,6 +15,7 @@
   },
   "files": [
     "src",
+    "!src/.figma-client-*.mjs",
     "bin",
     "plugin"
   ],
