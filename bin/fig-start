@@ -30,23 +30,24 @@ get_daemon_token() {
     fi
 }
 
+# JSON via node, not python3: macOS has not shipped python3 since 12.3, and every call here
+# was silenced with 2>/dev/null — so on a machine without it the repo path was never read and
+# fig-start reported "No Figma files detected" instead. node is the one hard dependency.
 get_repo_path() {
     if [ -f "$CONFIG_FILE" ]; then
-        python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('repoPath',''))" 2>/dev/null
+        node -e 'try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).repoPath || "") } catch {}' "$CONFIG_FILE" 2>/dev/null
     fi
 }
 
+# The path travels as an argument (argv), never spliced into the program text: an apostrophe
+# in it was a SyntaxError before, and anything else in it was code.
 save_repo_path() {
     mkdir -p "$CONFIG_DIR"
-    python3 -c "
-import json, os
-path = '$CONFIG_FILE'
-cfg = {}
-if os.path.exists(path):
-    with open(path) as f: cfg = json.load(f)
-cfg['repoPath'] = '$1'
-with open(path, 'w') as f: json.dump(cfg, f, indent=2)
-"
+    node -e '
+const fs = require("fs"); const [path, repo] = process.argv.slice(1);
+let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(path, "utf8")); } catch {}
+cfg.repoPath = repo; fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
+' "$CONFIG_FILE" "$1"
 }
 
 # ── Arrow-key selector (same UX as fancoolo-start) ──
@@ -140,7 +141,9 @@ REPO_PATH=$(get_repo_path)
 
 if [ -z "$REPO_PATH" ] || [ ! -d "$REPO_PATH" ]; then
     # Try to find it relative to this script
-    SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+    # Through the symlink npm puts in <prefix>/bin, or "$0/.." is /usr/local and the repo is never found.
+    SELF="$0"; while [ -L "$SELF" ]; do SELF="$(readlink "$SELF")"; done
+    SCRIPT_DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
     if [ -f "$SCRIPT_DIR/src/index.js" ]; then
         REPO_PATH="$SCRIPT_DIR"
         save_repo_path "$REPO_PATH"
@@ -188,7 +191,7 @@ else
     # ── Yolo Mode: CDP-based connection ──
     # Check if CDP is already accessible (avoid killing/restarting Figma)
     CDP_OK=false
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
+    if curl -s --max-time 3 -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
         CDP_OK=true
     fi
 
@@ -197,7 +200,7 @@ else
         DAEMON_OK=false
         DAEMON_TOKEN=$(get_daemon_token)
         if [ -n "$DAEMON_TOKEN" ]; then
-            if curl -s -o /dev/null -w "%{http_code}" -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:3456/health 2>/dev/null | grep -q "200"; then
+            if curl -s --max-time 3 -o /dev/null -w "%{http_code}" -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:${DAEMON_PORT:-3456}/health 2>/dev/null | grep -q "200"; then
                 DAEMON_OK=true
             fi
         fi
@@ -208,7 +211,7 @@ else
             for i in $(seq 1 5); do
                 sleep 1
                 NEW_TOKEN=$(get_daemon_token)
-                if [ -n "$NEW_TOKEN" ] && curl -s -H "X-Daemon-Token: $NEW_TOKEN" http://localhost:3456/health 2>/dev/null | grep -q '"status":"ok"'; then
+                if [ -n "$NEW_TOKEN" ] && curl -s --max-time 3 -H "X-Daemon-Token: $NEW_TOKEN" http://localhost:${DAEMON_PORT:-3456}/health 2>/dev/null | grep -q '"status":"ok"'; then
                     break
                 fi
             done
@@ -241,7 +244,7 @@ if (s === false) { try { patchFigma(); } catch(e) { process.stderr.write(e.messa
         echo -e "  Waiting for Figma to start..."
         for i in $(seq 1 15); do
             sleep 2
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
+            if curl -s --max-time 3 -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
                 break
             fi
         done
@@ -266,15 +269,17 @@ if (s === false) { try { patchFigma(); } catch(e) { process.stderr.write(e.messa
     FILE_TITLES=()
     while IFS= read -r title; do
         FILE_TITLES+=("$title")
-    done < <(echo "$FILES_JSON" | python3 -c "
-import json, sys
-files = json.load(sys.stdin)
-for f in files:
-    t = f.get('title', 'Untitled')
-    # Clean up Figma title format (remove ' – Figma' suffix)
-    t = t.replace(' – Figma', '').replace(' - Figma', '')
-    print(t)
-" 2>/dev/null)
+    done < <(echo "$FILES_JSON" | node -e '
+let raw = ""; process.stdin.on("data", d => raw += d).on("end", () => {
+  let files = []; try { files = JSON.parse(raw); } catch {}
+  for (const f of files) {
+    let t = f.title || "Untitled";
+    // Clean up Figma title format (remove " – Figma" suffix)
+    t = t.replace(" – Figma", "").replace(" - Figma", "");
+    console.log(t);
+  }
+});
+' 2>/dev/null)
 
     if [ ${#FILE_TITLES[@]} -eq 0 ]; then
         echo -e "  ${YELLOW}No Figma files detected.${NC} Open a file in Figma first."
@@ -312,18 +317,18 @@ for f in files:
     DAEMON_TOKEN=$(get_daemon_token)
     DAEMON_HEALTH=""
     if [ -n "$DAEMON_TOKEN" ]; then
-        DAEMON_HEALTH=$(curl -s -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:3456/health 2>/dev/null)
+        DAEMON_HEALTH=$(curl -s --max-time 3 -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:${DAEMON_PORT:-3456}/health 2>/dev/null)
     fi
 
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
+    if curl -s --max-time 3 -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
         CDP_ICON="✓"; CDP_COLOR="$GREEN"; CDP_VAL="port ${CDP_PORT}"
     else
         CDP_ICON="✗"; CDP_COLOR="$RED";   CDP_VAL="not reachable"
     fi
 
     if echo "$DAEMON_HEALTH" | grep -q '"status":"ok"'; then
-        DAEMON_MODE=$(echo "$DAEMON_HEALTH" | python3 -c "import json,sys; d=json.load(sys.stdin); print('CDP' if d.get('cdp') else ('Plugin' if d.get('plugin') else 'unknown'))" 2>/dev/null)
-        DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port 3456 (${DAEMON_MODE})"
+        DAEMON_MODE=$(echo "$DAEMON_HEALTH" | node -e 'let r=""; process.stdin.on("data", d => r += d).on("end", () => { let d = {}; try { d = JSON.parse(r) } catch {} process.stdout.write(d.cdp ? "CDP" : d.plugin ? "Plugin" : "unknown") })' 2>/dev/null)
+        DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port ${DAEMON_PORT:-3456} (${DAEMON_MODE})"
     else
         DAEMON_ICON="✗"; DAEMON_COLOR="$RED";   DAEMON_VAL="not running"
     fi

@@ -22,7 +22,7 @@ get_daemon_token() {
 get_repo_path() {
     local config_file="$HOME/.figma-cli/config.json"
     if [ -f "$config_file" ]; then
-        python3 -c "import json; print(json.load(open('$config_file')).get('repoPath',''))" 2>/dev/null
+        node -e 'try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).repoPath || "") } catch {}' "$config_file" 2>/dev/null
     fi
 }
 
@@ -60,7 +60,7 @@ else
 fi
 
 # ── CDP ──
-if curl -s -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
+if curl -s --max-time 3 -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
     CDP_ICON="✓"; CDP_COLOR="$GREEN"; CDP_VAL="port ${CDP_PORT}"
 else
     CDP_ICON="✗"; CDP_COLOR="$RED"; CDP_VAL="not reachable"
@@ -70,14 +70,10 @@ fi
 DAEMON_TOKEN=$(get_daemon_token)
 DAEMON_ICON="○"; DAEMON_COLOR="$YELLOW"; DAEMON_VAL="not running"
 if [ -n "$DAEMON_TOKEN" ]; then
-    DAEMON_HEALTH=$(curl -s -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:3456/health 2>/dev/null)
+    DAEMON_HEALTH=$(curl -s --max-time 3 -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:${DAEMON_PORT:-3456}/health 2>/dev/null)
     if echo "$DAEMON_HEALTH" | grep -q '"status":"ok"'; then
-        DAEMON_MODE=$(echo "$DAEMON_HEALTH" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-print('CDP' if d.get('cdp') else ('Plugin' if d.get('plugin') else 'unknown'))
-" 2>/dev/null)
-        DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port 3456 (${DAEMON_MODE})"
+        DAEMON_MODE=$(echo "$DAEMON_HEALTH" | node -e 'let r=""; process.stdin.on("data", d => r += d).on("end", () => { let d = {}; try { d = JSON.parse(r) } catch {} process.stdout.write(d.cdp ? "CDP" : d.plugin ? "Plugin" : "unknown") })' 2>/dev/null)
+        DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port ${DAEMON_PORT:-3456} (${DAEMON_MODE})"
     fi
 fi
 
@@ -86,14 +82,12 @@ FILE_ICON=" "; FILE_COLOR="$NC"; FILE_VAL="—"
 if [ -n "$CLI" ] && [ -n "$DAEMON_TOKEN" ]; then
     FILES_JSON=$(node "$CLI" files 2>/dev/null)
     if [ -n "$FILES_JSON" ] && ! echo "$FILES_JSON" | grep -q '"error"'; then
-        ACTIVE=$(echo "$FILES_JSON" | python3 -c "
-import json,sys
-files=json.load(sys.stdin)
-if files:
-    t=files[0].get('title','Untitled')
-    t=t.replace(' \u2013 Figma','').replace(' - Figma','')
-    print(t)
-" 2>/dev/null)
+        ACTIVE=$(echo "$FILES_JSON" | node -e '
+let r = ""; process.stdin.on("data", d => r += d).on("end", () => {
+  let files = []; try { files = JSON.parse(r) } catch {}
+  if (files.length) process.stdout.write((files[0].title || "Untitled").replace(" – Figma", "").replace(" - Figma", ""));
+});
+' 2>/dev/null)
         if [ -n "$ACTIVE" ]; then
             FILE_ICON=" "; FILE_COLOR="$NC"; FILE_VAL="$ACTIVE"
         fi
