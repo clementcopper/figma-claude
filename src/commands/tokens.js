@@ -738,7 +738,7 @@ tokens
         // Order matters — every variable must exist before aliases are wired,
         // so ALL create-chunks run before ANY alias-chunk.
         const chunks = chunkVariableTokens(realVars, VAR_IMPORT_CHUNK);
-        const totals = { createdCount: 0, aliasCount: 0, unresolved: 0 };
+        const totals = { createdCount: 0, aliasCount: 0, unresolved: 0, skippedColors: 0, skipped: [] };
         const countVars = (chunk) =>
           Object.values(chunk).reduce((a, c) => a + Object.keys(c.variables || {}).length, 0);
 
@@ -754,6 +754,8 @@ tokens
               totals.createdCount += r.createdCount || 0;
               totals.aliasCount += r.aliasCount || 0;
               totals.unresolved += r.unresolved || 0;
+              totals.skippedColors += r.skippedColors || 0;
+              totals.skipped.push(...(r.skipped || []));
             }
           } catch (e) {
             const size = countVars(chunk);
@@ -766,6 +768,10 @@ tokens
         for (let i = 0; i < chunks.length; i++) await runChunk(chunks[i], ['alias'], 'Wiring aliases', i);
         spinner.succeed(`Created ${totals.createdCount} variable(s), wired ${totals.aliasCount} alias(es) across ${collNames.length} collection(s)`);
         if (totals.unresolved) console.log(chalk.yellow(`  ⚠ ${totals.unresolved} alias value(s) unresolved (target outside this file / type mismatch)`));
+        if (totals.skippedColors) {
+          console.log(chalk.yellow(`  ⚠ ${totals.skippedColors} colour value(s) not set — use #rrggbb: ${totals.skipped.slice(0, 5).join('; ')}${totals.skipped.length > 5 ? '; …' : ''}`));
+          process.exitCode = 1;
+        }
       } catch (error) {
         spinner.fail('Failed to import variable collections'); process.exitCode = 1;
         console.error(error.message);

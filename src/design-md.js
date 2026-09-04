@@ -397,7 +397,9 @@ export function variableImportCode(variables, { passes = ['create', 'alias'] } =
   const DO_CREATE = ${doCreate};
   const DO_ALIAS = ${doAlias};
   const hexToRgba = (hex) => {
-    const m = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})?$/i.exec(String(hex).trim());
+    let h = String(hex).trim().replace(/^#/, '');
+    if (/^[a-f\\d]{3}$/i.test(h)) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; // #fff from a hand-written DESIGN.md
+    const m = /^([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})?$/i.exec(h);
     if (!m) return null;
     return { r: parseInt(m[1], 16) / 255, g: parseInt(m[2], 16) / 255, b: parseInt(m[3], 16) / 255, a: m[4] != null ? parseInt(m[4], 16) / 255 : 1 };
   };
@@ -410,6 +412,8 @@ export function variableImportCode(variables, { passes = ['create', 'alias'] } =
 
   const ctx = {};
   let createdCount = 0, aliasCount = 0, unresolved = 0;
+  // A colour the parser cannot read used to leave the variable at its default, silently.
+  const skipped = [];
 
   // PASS 1 — collections, modes, variables, non-alias values
   for (const [collName, coll] of Object.entries(VARS)) {
@@ -438,7 +442,7 @@ export function variableImportCode(variables, { passes = ['create', 'alias'] } =
         if (modeId == null) continue;
         if (val && typeof val === 'object' && 'alias' in val) continue; // pass 2
         try {
-          if (type === 'COLOR') { const rgba = hexToRgba(val); if (rgba) v.setValueForMode(modeId, rgba); }
+          if (type === 'COLOR') { const rgba = hexToRgba(val); if (rgba) v.setValueForMode(modeId, rgba); else skipped.push(vName + ': ' + val); }
           else if (type === 'FLOAT') { if (typeof val === 'number') v.setValueForMode(modeId, val); }
           else if (type === 'BOOLEAN') v.setValueForMode(modeId, !!val);
           else v.setValueForMode(modeId, String(val));
@@ -486,6 +490,6 @@ export function variableImportCode(variables, { passes = ['create', 'alias'] } =
     }
   }
 
-  return JSON.stringify({ collections: Object.keys(VARS).length, createdCount, aliasCount, unresolved });
+  return JSON.stringify({ collections: Object.keys(VARS).length, createdCount, aliasCount, unresolved, skippedColors: skipped.length, skipped: skipped.slice(0, 20) });
 })()`;
 }
