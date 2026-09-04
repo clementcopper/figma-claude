@@ -14,6 +14,21 @@ describe('source rules', () => {
     assert.doesNotMatch(read('src/commands/setup.js'), /execSync\(['"`]figma-ds-cli/);
   });
 
+  it('the read-out commands all take --json', () => {
+    // A panel session parses output; find/get/tree/bindings/spec/sizes/combos printed prose only.
+    const want = { 'node-ops.js': ['tree', 'bindings'], 'canvas-ops.js': ['find', 'get'], 'spec.js': ['spec'], 'variants.js': ['sizes', 'combos'] };
+    const missing = [];
+    for (const [file, cmds] of Object.entries(want)) {
+      const src = read('src/commands/' + file);
+      for (const cmd of cmds) {
+        const at = src.indexOf(`.command('${cmd}`);
+        const block = src.slice(at, src.indexOf('.action(', at));
+        if (at < 0 || !/\.option\('--json'/.test(block)) missing.push(`${file}: ${cmd}`);
+      }
+    }
+    assert.deepStrictEqual(missing, []);
+  });
+
   it('figma-client uses no synchronous node lookup', () => {
     // `figma.getNodeById` throws under documentAccess: dynamic-page; 50 call sites had it,
     // 35 of them in methods nothing called, 14 in methods that are used.

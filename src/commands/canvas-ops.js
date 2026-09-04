@@ -1354,8 +1354,9 @@ else {
 
 program
   .command('get [nodeId]')
-  .description('Get properties of node or selection')
-  .action((nodeId) => {
+  .description('Get properties of node or selection (pretty JSON; --json for one line)')
+  .option('--json', 'One-line JSON instead of pretty-printed')
+  .action((nodeId, options) => {
     checkConnectionSync();
     const nodeSelector = nodeId
       ? `const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});`
@@ -1380,7 +1381,7 @@ return JSON.stringify({
   fills: node.fills?.length,
   strokes: node.strokes?.length,
   children: node.children?.length
-}, null, 2);
+}${options.json ? '' : ', null, 2'});
 })()`;
     figmaUse(evalArg(code), { silent: false });
   });
@@ -1392,8 +1393,9 @@ program
   .description('Find nodes by name (partial match)')
   .option('-t, --type <type>', 'Filter by type (FRAME, TEXT, RECTANGLE, etc.)')
   .option('-l, --limit <n>', 'Limit results', '20')
-  .action((name, options) => {
-    checkConnectionSync();
+  .option('--json', 'Print the matches as a JSON array of { id, name, type }')
+  .action(async (name, options) => {
+    await checkConnection();
     let code = `(function() {
 const results = [];
 function search(node) {
@@ -1406,8 +1408,15 @@ function search(node) {
   }
 }
 search(figma.currentPage);
-return results.length === 0 ? 'No nodes found matching ' + ${JSON.stringify(name)} : results.slice(0, ${options.limit}).map(r => r.id + ' [' + r.type + '] ' + r.name).join('\\n');
+return results.slice(0, ${options.limit});
 })()`;
-    figmaUse(evalArg(code), { silent: false });
+    try {
+      const results = await fastEval(code);
+      if (options.json) { console.log(JSON.stringify(results || [])); return; }
+      if (!results || results.length === 0) { console.log('No nodes found matching ' + name); return; }
+      for (const r of results) console.log(r.id + ' [' + r.type + '] ' + r.name);
+    } catch (e) {
+      handleEvalError(e);
+    }
   });
 

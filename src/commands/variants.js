@@ -19,6 +19,7 @@ program
   .description('Generate Small/Medium/Large size variants from a component')
   .option('-b, --base <size>', 'Which size is the source: small, medium, large', 'medium')
   .option('-g, --gap <n>', 'Gap between variants', '40')
+  .option('--json', 'Print { count, components } as JSON')
   .action(async (nodeId, options) => {
     await checkConnection();
     const spinner = ora('Analyzing component...').start();
@@ -177,6 +178,7 @@ program
         return;
       }
 
+      if (options.json) { spinner.stop(); console.log(JSON.stringify(result)); return; }
       spinner.succeed(`Created ${result.count} size variants`);
 
       result.components.forEach(c => {
@@ -370,6 +372,7 @@ program
   .option('--no-labels', 'Skip row/column labels')
   .option('--no-boolean', 'Skip boolean properties')
   .option('--dry-run', 'Show combinations without creating instances')
+  .option('--json', 'Print the properties and combinations (dry run) or the created components as JSON')
   .action(async (nodeId, options) => {
     await checkConnection();
     const spinner = ora('Analyzing component properties...').start();
@@ -466,6 +469,7 @@ program
       spinner.text = `Found ${totalCombos} combinations for ${analysis.properties.length} properties`;
 
       if (options.dryRun) {
+        if (options.json) { spinner.stop(); console.log(JSON.stringify({ properties: analysis.properties, total: totalCombos, combinations })); return; }
         spinner.succeed(`${totalCombos} combinations (dry run)`);
         console.log(chalk.cyan('\nProperties:'));
         analysis.properties.forEach(p => {
@@ -600,6 +604,7 @@ program
       }
 
       const labelInfo = result.labels > 0 ? ` with ${result.labels} labels` : '';
+      if (options.json) { spinner.stop(); console.log(JSON.stringify(result)); return; }
       spinner.succeed(`Created ${result.count} components in ${result.gridSize} grid${labelInfo}`);
       if (result.components && result.components.length > 0) {
         console.log(chalk.gray(`  ${result.components.map(c => c.name).join(', ')}${result.count > 3 ? ', ...' : ''}`));

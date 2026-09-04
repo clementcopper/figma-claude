@@ -26,6 +26,7 @@ node
   .description('Show node tree structure')
   .option('-d, --depth <n>', 'Max depth', '3')
   .option('-l, --limit <n>', 'Max lines to print before truncating (0 = no cap)', '400')
+  .option('--json', 'Print { lines, shown, total } as JSON')
   .action(async (nodeId, options) => {
     await checkConnection();
 
@@ -57,16 +58,17 @@ node
         }
       }
       printNode(root);
-      return { text: lines.join('\\n'), shown: lines.length, total };
+      return { text: lines.join('\\n'), lines, shown: lines.length, total };
     })()`;
 
     try {
       const result = await fastEval(code);
       if (result?.error) {
-        console.log(chalk.red('✗ ' + result.error));
+        console.log(options.json ? JSON.stringify({ ok: false, error: result.error }) : chalk.red('✗ ' + result.error));
         process.exitCode = 1;
         return;
       }
+      if (options.json) { console.log(JSON.stringify({ lines: result.lines, shown: result.shown, total: result.total })); return; }
       console.log(result.text);
       if (result.total > result.shown) {
         console.log(chalk.yellow(
@@ -83,7 +85,8 @@ node
 node
   .command('bindings [nodeId]')
   .description('Show variable bindings for node')
-  .action(async (nodeId) => {
+  .option('--json', 'Print the bindings as JSON')
+  .action(async (nodeId, options) => {
     await checkConnection();
 
     // Native in both modes (see to-component below).
@@ -134,9 +137,10 @@ node
     try {
       const out = await fastEval(code);
       if (out?.error) {
-        console.log(chalk.yellow('○ ' + out.error));
+        console.log(options.json ? JSON.stringify({ ok: false, error: out.error }) : chalk.yellow('○ ' + out.error));
         return;
       }
+      if (options.json) { console.log(JSON.stringify(out.results)); return; }
       for (const r of out.results) {
         console.log(chalk.cyan(`\n${r.name} (${r.id}):`));
         const entries = Object.entries(r.bindings);

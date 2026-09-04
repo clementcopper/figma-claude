@@ -48,6 +48,7 @@ program
   .option('-f, --file <path>', 'DESIGN.md to read (default: auto-locate in cwd / subdirs)')
   .option('--check <nodeId>', 'Measure this node and ENFORCE the spec (exit 1 on violation)')
   .option('--tolerance <px>', 'Dimension tolerance in px for --check', '2')
+  .option('--json', 'JSON only: { spec } in digest mode, { spec, node, pass, rules } with --check')
   .action(async (component, options) => {
     const file = locateDesignMd(options.file);
     if (!file) {
@@ -62,6 +63,7 @@ program
     }
 
     if (!options.check) {
+      if (options.json) { console.log(JSON.stringify({ spec })); return; }
       // Digest mode — compact authoritative spec, no structure dump.
       const axisLines = Object.entries(spec.axes).map(([k, v]) => `  ${k}: ${v.join(', ')}`);
       console.log(chalk.bold(spec.name) + chalk.gray(`  (${spec.variants} variants${spec.page ? ` · ${spec.page}` : ''})`));
@@ -91,6 +93,10 @@ program
       process.exit(1);
     }
     const { pass, rules } = checkConformance(spec, measured, { tolerance: parseFloat(options.tolerance) });
+    if (options.json) {
+      console.log(JSON.stringify({ spec: spec.name, node: options.check, pass, rules }));
+      process.exit(pass ? 0 : 1);
+    }
     console.log(chalk.bold(`Conformance: ${spec.name} vs ${options.check}`));
     for (const r of rules) {
       const mark = r.ok ? chalk.green('✓') : r.warn ? chalk.yellow('⚠') : chalk.red('✗');
