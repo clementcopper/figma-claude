@@ -476,8 +476,6 @@ program
 
       // Determine grid layout
       const gap = parseInt(options.gap) || 40;
-      const labelHeight = options.labels !== false ? 30 : 0;
-      const labelWidth = options.labels !== false ? 120 : 0;
       const colProp = analysis.properties[analysis.properties.length - 1];
       const rowProps = analysis.properties.slice(0, -1);
       const numCols = colProp.options.length;

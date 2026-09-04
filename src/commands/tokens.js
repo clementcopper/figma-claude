@@ -646,7 +646,7 @@ tokens
         collection: r.name,
         total: r.names.length,
         only_here: r.names.filter(n => resolved.every((r2, j) => i === j || !sets[j].has(n))).sort(),
-        missing_here: [...intersection.length > 0 ? new Set() : new Set()].sort(),
+        missing_here: [], // filled in below, once every collection's names are known
       }));
       // For each collection, also compute "missing here that others have"
       const allNames = new Set();
