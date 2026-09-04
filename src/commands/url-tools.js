@@ -567,6 +567,21 @@ ${[...fonts].map(f => {
 
 // ============ REMOVE BACKGROUND ============
 
+/**
+ * Plugin code that exports the target (by id, or the selection) as PNG at 2x and returns
+ * the bytes. `remove-bg` used to ask the removed figma-use binary for this export, so the
+ * file never appeared and the command always ended in "Select an image or frame first".
+ */
+export function removeBgExportCode(nodeId) {
+  return `(async () => {
+const node = ${nodeId ? `await figma.getNodeByIdAsync(${JSON.stringify(nodeId)})` : 'figma.currentPage.selection[0]'};
+if (!node) return { error: ${nodeId ? "'Node not found: ' + " + JSON.stringify(nodeId) : "'Nothing selected — select an image or frame first'"} };
+if (!('exportAsync' in node)) return { error: 'Node cannot be exported: ' + node.type };
+const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
+return { name: node.name, bytes: Array.from(bytes) };
+})()`;
+}
+
 program
   .command('remove-bg [nodeId]')
   .alias('removebg')
@@ -598,21 +613,12 @@ program
     const spinner = ora('Exporting selected image...').start();
 
     try {
-      const tempInput = join(tmpdir(), 'figma-cli-removebg-input.png');
-
-      // Export selected node as PNG
-      let exportCmd = 'export png --scale 2 --output "' + tempInput + '"';
-      if (nodeId) exportCmd += ' --node "' + nodeId + '"';
-      const exportResult = figmaUse(exportCmd, { silent: true });
-
-      if (!existsSync(tempInput)) {
-        throw new Error('Export failed. Select an image or frame first.');
-      }
+      const exported = await fastEval(removeBgExportCode(nodeId));
+      if (!exported || exported.error) throw new Error(exported ? exported.error : 'Export returned nothing');
 
       spinner.text = 'Removing background via remove.bg...';
 
-      // Read image and send to Remove.bg API
-      const imageBuffer = readFileSync(tempInput);
+      const imageBuffer = Buffer.from(exported.bytes);
       const base64Image = imageBuffer.toString('base64');
 
       const response = await fetch('https://api.remove.bg/v1.0/removebg', {

@@ -8,9 +8,7 @@ import { FigmaClient } from '../figma-client.js';
 import {
   program,
   checkConnection,
-  fastEval,
-  isInSafeMode,
-  runFigmaUse
+  fastEval
 } from '../lib/cli-core.js';
 
 // ============ EXPORT ============
@@ -23,94 +21,84 @@ program
   .action(async (nodeId, options) => {
     await checkConnection();
 
-    if (await isInSafeMode()) {
-      const code = `(async () => {
-        const targetId = ${JSON.stringify(nodeId || null)};
-        const nodes = targetId
-          ? [await figma.getNodeByIdAsync(targetId)]
-          : figma.currentPage.selection;
+    // Native in both modes; the figma-use binary this once shelled out to is gone.
+    const code = `(async () => {
+      const targetId = ${JSON.stringify(nodeId || null)};
+      const nodes = targetId
+        ? [await figma.getNodeByIdAsync(targetId)]
+        : figma.currentPage.selection;
 
-        if (!nodes.length || !nodes[0]) return 'No node selected';
+      if (!nodes.length || !nodes[0]) return 'No node selected';
 
-        function rgbToHex(r, g, b) {
-          return '#' + [r, g, b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+      function rgbToHex(r, g, b) {
+        return '#' + [r, g, b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+      }
+
+      function nodeToJsx(node, indent = 0) {
+        const prefix = '  '.repeat(indent);
+        const props = [];
+
+        // Name
+        if (node.name && !node.name.startsWith('Frame') && !node.name.startsWith('Rectangle')) {
+          props.push('name="' + node.name.replace(/"/g, '\\\\"') + '"');
         }
 
-        function nodeToJsx(node, indent = 0) {
-          const prefix = '  '.repeat(indent);
-          const props = [];
+        // Size
+        if (node.width) props.push('w={' + Math.round(node.width) + '}');
+        if (node.height) props.push('h={' + Math.round(node.height) + '}');
 
-          // Name
-          if (node.name && !node.name.startsWith('Frame') && !node.name.startsWith('Rectangle')) {
-            props.push('name="' + node.name.replace(/"/g, '\\\\"') + '"');
-          }
+        // Fill
+        if (node.fills && node.fills.length > 0 && node.fills[0].type === 'SOLID') {
+          const c = node.fills[0].color;
+          props.push('bg="' + rgbToHex(c.r, c.g, c.b) + '"');
+        }
 
-          // Size
-          if (node.width) props.push('w={' + Math.round(node.width) + '}');
-          if (node.height) props.push('h={' + Math.round(node.height) + '}');
+        // Corner radius
+        if (node.cornerRadius && node.cornerRadius > 0) {
+          props.push('rounded={' + Math.round(node.cornerRadius) + '}');
+        }
 
-          // Fill
-          if (node.fills && node.fills.length > 0 && node.fills[0].type === 'SOLID') {
+        // Auto-layout
+        if (node.layoutMode === 'HORIZONTAL') props.push('flex="row"');
+        if (node.layoutMode === 'VERTICAL') props.push('flex="col"');
+        if (node.itemSpacing) props.push('gap={' + Math.round(node.itemSpacing) + '}');
+        if (node.paddingTop) props.push('p={' + Math.round(node.paddingTop) + '}');
+
+        // Text
+        if (node.type === 'TEXT') {
+          const textProps = [];
+          if (node.fontSize) textProps.push('size={' + Math.round(node.fontSize) + '}');
+          if (node.fills && node.fills[0] && node.fills[0].color) {
             const c = node.fills[0].color;
-            props.push('bg="' + rgbToHex(c.r, c.g, c.b) + '"');
+            textProps.push('color="' + rgbToHex(c.r, c.g, c.b) + '"');
           }
-
-          // Corner radius
-          if (node.cornerRadius && node.cornerRadius > 0) {
-            props.push('rounded={' + Math.round(node.cornerRadius) + '}');
-          }
-
-          // Auto-layout
-          if (node.layoutMode === 'HORIZONTAL') props.push('flex="row"');
-          if (node.layoutMode === 'VERTICAL') props.push('flex="col"');
-          if (node.itemSpacing) props.push('gap={' + Math.round(node.itemSpacing) + '}');
-          if (node.paddingTop) props.push('p={' + Math.round(node.paddingTop) + '}');
-
-          // Text
-          if (node.type === 'TEXT') {
-            const textProps = [];
-            if (node.fontSize) textProps.push('size={' + Math.round(node.fontSize) + '}');
-            if (node.fills && node.fills[0] && node.fills[0].color) {
-              const c = node.fills[0].color;
-              textProps.push('color="' + rgbToHex(c.r, c.g, c.b) + '"');
-            }
-            return prefix + '<Text ' + textProps.join(' ') + '>' + (node.characters || '') + '</Text>';
-          }
-
-          // Frame with children
-          if ('children' in node && node.children.length > 0) {
-            const childJsx = node.children.map(c => nodeToJsx(c, indent + 1)).join('\\n');
-            return prefix + '<Frame ' + props.join(' ') + '>\\n' + childJsx + '\\n' + prefix + '</Frame>';
-          }
-
-          return prefix + '<Frame ' + props.join(' ') + ' />';
+          return prefix + '<Text ' + textProps.join(' ') + '>' + (node.characters || '') + '</Text>';
         }
 
-        return nodeToJsx(nodes[0]);
-      })()`;
-
-      try {
-        const result = await fastEval(code);
-        if (options.output) {
-          writeFileSync(options.output, result);
-          console.log(chalk.green(`✓ Exported to ${options.output}`));
-        } else {
-          console.log(result);
+        // Frame with children
+        if ('children' in node && node.children.length > 0) {
+          const childJsx = node.children.map(c => nodeToJsx(c, indent + 1)).join('\\n');
+          return prefix + '<Frame ' + props.join(' ') + '>\\n' + childJsx + '\\n' + prefix + '</Frame>';
         }
-      } catch (e) {
-        console.log(chalk.red('✗ Export failed: ' + e.message)); process.exitCode = 1;
+
+        return prefix + '<Frame ' + props.join(' ') + ' />';
       }
-    } else {
-      let cmd = 'npx --yes figma-use export jsx';
-      if (nodeId) cmd += ` ${JSON.stringify(nodeId)}`;
-      if (options.pretty) cmd += ' --pretty';
+
+      return nodeToJsx(nodes[0]);
+    })()`;
+
+    try {
+      const result = await fastEval(code);
       if (options.output) {
-        cmd += ` > ${JSON.stringify(options.output)}`;
-        runFigmaUse(cmd, { stdio: 'inherit' });
+        writeFileSync(options.output, result);
+        console.log(chalk.green(`✓ Exported to ${options.output}`));
       } else {
-        runFigmaUse(cmd);
+        console.log(result);
       }
+    } catch (e) {
+      console.log(chalk.red('✗ Export failed: ' + e.message)); process.exitCode = 1;
     }
+
   });
 
 program
@@ -120,63 +108,54 @@ program
   .action(async (nodeId, options) => {
     await checkConnection();
 
-    if (await isInSafeMode()) {
-      const code = `(async () => {
-        const components = [];
-        function findComponents(node) {
-          if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
-            components.push({
-              id: node.id,
-              name: node.name,
-              type: node.type,
-              width: Math.round(node.width),
-              height: Math.round(node.height)
-            });
-          }
-          if ('children' in node) node.children.forEach(c => findComponents(c));
+    // Native in both modes; the figma-use binary this once shelled out to is gone.
+    const code = `(async () => {
+      const components = [];
+      function findComponents(node) {
+        if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+          components.push({
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            width: Math.round(node.width),
+            height: Math.round(node.height)
+          });
         }
-        figma.currentPage.children.forEach(c => findComponents(c));
-        return components;
-      })()`;
-
-      try {
-        const components = await fastEval(code);
-        if (!components.length) {
-          console.log(chalk.yellow('No components found on current page'));
-          return;
-        }
-
-        let output = '// Storybook stories generated from Figma\n';
-        output += 'import React from "react";\n\n';
-
-        components.forEach(c => {
-          const safeName = c.name.replace(/[^a-zA-Z0-9]/g, '');
-          output += `export const ${safeName} = () => (\n`;
-          output += `  <div style={{ width: ${c.width}, height: ${c.height} }}>\n`;
-          output += `    {/* ${c.name} - ID: ${c.id} */}\n`;
-          output += `  </div>\n`;
-          output += `);\n\n`;
-        });
-
-        if (options.output) {
-          writeFileSync(options.output, output);
-          console.log(chalk.green(`✓ Exported ${components.length} components to ${options.output}`));
-        } else {
-          console.log(output);
-        }
-      } catch (e) {
-        console.log(chalk.red('✗ Export failed: ' + e.message)); process.exitCode = 1;
+        if ('children' in node) node.children.forEach(c => findComponents(c));
       }
-    } else {
-      let cmd = 'npx --yes figma-use export storybook';
-      if (nodeId) cmd += ` ${JSON.stringify(nodeId)}`;
+      figma.currentPage.children.forEach(c => findComponents(c));
+      return components;
+    })()`;
+
+    try {
+      const components = await fastEval(code);
+      if (!components.length) {
+        console.log(chalk.yellow('No components found on current page'));
+        return;
+      }
+
+      let output = '// Storybook stories generated from Figma\n';
+      output += 'import React from "react";\n\n';
+
+      components.forEach(c => {
+        const safeName = c.name.replace(/[^a-zA-Z0-9]/g, '');
+        output += `export const ${safeName} = () => (\n`;
+        output += `  <div style={{ width: ${c.width}, height: ${c.height} }}>\n`;
+        output += `    {/* ${c.name} - ID: ${c.id} */}\n`;
+        output += `  </div>\n`;
+        output += `);\n\n`;
+      });
+
       if (options.output) {
-        cmd += ` > ${JSON.stringify(options.output)}`;
-        runFigmaUse(cmd, { stdio: 'inherit' });
+        writeFileSync(options.output, output);
+        console.log(chalk.green(`✓ Exported ${components.length} components to ${options.output}`));
       } else {
-        runFigmaUse(cmd);
+        console.log(output);
       }
+    } catch (e) {
+      console.log(chalk.red('✗ Export failed: ' + e.message)); process.exitCode = 1;
     }
+
   });
 
 // ============ FIGJAM ============

@@ -79,7 +79,6 @@ export const COMMAND_MODULES = {
   verify: ['export-eval'],
   eval: ['export-eval'],
   run: ['export-eval'],
-  raw: ['export-eval'],
   lint: ['analyze'],
   analyze: ['analyze'],
   a11y: ['a11y'],

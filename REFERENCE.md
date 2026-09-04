@@ -241,16 +241,6 @@ Lint rules: `no-default-names`, `no-deeply-nested`, `no-empty-frames`, `prefer-a
 
 Presets: `recommended`, `strict`, `accessibility`, `design-system`
 
-## XPath Queries
-
-```bash
-node src/index.js raw query "//FRAME"
-node src/index.js raw query "//COMPONENT"
-node src/index.js raw query "//*[contains(@name, 'Button')]"
-node src/index.js raw select "1:234"
-node src/index.js raw export "1:234" --scale 2
-```
-
 ## Website Recreation
 
 ```bash

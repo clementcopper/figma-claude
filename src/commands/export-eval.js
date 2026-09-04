@@ -408,13 +408,3 @@ program
     }
   });
 
-// ============ PASSTHROUGH ============
-
-program
-  .command('raw <command...>')
-  .description('Run raw figma-use command')
-  .action((command) => {
-    checkConnectionSync();
-    figmaUse(command.join(' '));
-  });
-
