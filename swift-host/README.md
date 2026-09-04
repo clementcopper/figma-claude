@@ -41,7 +41,7 @@ fixed.
 ## Checks
 
 ```bash
-swift run CoreChecks     # 470 cases, no window, no Figma
+swift run CoreChecks     # every ported case, no window, no Figma
 ```
 
 **XCTest needs a full Xcode**; with only the command line tools `swift test` stops at "XCTest not
@@ -77,13 +77,15 @@ B=".build/release/FigmaClaude"          # or the binary inside the bundle, see b
 
 $B --render-chrome [tabs] [--width N] [--hover] [--selection]   # /tmp/chrome.png
 $B --render-rings  [path] [--bar]                               # the ring bar at five widths
-$B --render-statusline [width] [path] [--danger] [--marker N] [--empty] [--no-selection]
 $B --render-about  [path]                                       # the About panel
-$B --render-menurows [path]                                     # the Figma menu's rows
+$B --render-menurows                                            # the Figma menu's rows, /tmp/menurows.png
 
 $B --print-menu                # the Figma menu as text, the same rows `fig-status` prints
 $B --print-statusline [tabId]  # what the status row would draw, and what it was built from
 $B --print-about               # the About panel as text, with the real CLI lookup
+
+$B --probe-selection           # does the status band grow when a selection lands (real window)
+$B --probe-late-label [width]  # the toolbar labels after the first poll arrives late
 
 $B --appearance light|dark     # forces the palette on any of the render probes
 ```

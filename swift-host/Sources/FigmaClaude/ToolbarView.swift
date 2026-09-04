@@ -89,12 +89,8 @@ final class ToolbarView: NSView {
 
     private func iconButton(_ symbols: [String], _ tooltip: String, _ action: Selector) -> HoverButton {
         let button = HoverButton()
-        let (image, used) = symbolImage(symbols, describing: tooltip)
-        button.image = image
-        // Which name actually resolved, so a missing symbol is visible rather than an empty
-        // square — the two `trianglehead` ones need macOS 15 and this machine runs 13.
-        FileHandle.standardError.write(
-            "[icon] \(symbols[0]) → \(used ?? "none")\n".data(using: .utf8)!)
+        // The first name the running macOS knows — the two `trianglehead` ones need macOS 15.
+        button.image = symbolImage(symbols, describing: tooltip).image
         button.imagePosition = .imageOnly
         button.bezelStyle = .inline
         button.isBordered = false
@@ -208,9 +204,6 @@ final class ToolbarView: NSView {
         }
     }
 
-    /// The folder name alone. The full path stays in the tooltip: it answers "which Business",
-    /// which the name cannot, but it is evidence rather than a control and does not belong in a
-    /// button that has to stay narrow.
     /// Where the icon and the title sit inside the cwd button — the padding claim is otherwise
     /// squinting at a screenshot.
     func measureCwd() -> String { "cwd " + cwdButton.measure() }
@@ -221,6 +214,9 @@ final class ToolbarView: NSView {
         cwdButton.previewHover = true
     }
 
+    /// The folder name alone. The full path stays in the tooltip: it answers "which Business",
+    /// which the name cannot, but it is evidence rather than a control and does not belong in a
+    /// button that has to stay narrow.
     func setDirectory(_ path: String) {
         cwdButton.text = (path as NSString).lastPathComponent
         cwdButton.toolTip = path + " — click to choose another"

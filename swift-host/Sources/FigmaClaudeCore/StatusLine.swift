@@ -146,14 +146,12 @@ public func countCompactions(_ transcriptPath: String) -> (total: Int, auto: Int
 
 // MARK: - Formatting, kept pure so the row can be asserted rather than looked at
 
-/// Integers from 100k up, one decimal below — the same rule the panel uses, so the number does
-/// not jitter between `99.8k` and `100k` on every render.
+/// `254k`, `64,7k`, `1M`. Integers from 100k up: below that a tenth still says something, above
+/// it the number would only jitter between "99,8k" and "100k" on every render. Millions get their
+/// own unit — a 1M window written as "1000k" is four characters of noise in the one place on
+/// screen that is read at a glance.
 public func formatTokens(_ tokens: Int) -> String {
-    // Millions get their own unit: a 1M window written as "1000k" is four characters of noise
-    // in the one place on screen that is read at a glance.
     if tokens >= 1_000_000 { return decimalUnit(Double(tokens) / 1_000_000, "M") }
-    // Integers from 100k up: below that a tenth still says something, above it the number would
-    // only jitter between "99,8k" and "100k" on every render.
     if tokens >= 100_000 { return "\(Int((Double(tokens) / 1000).rounded()))k" }
     if tokens >= 1_000 { return decimalUnit(Double(tokens) / 1000, "k") }
     return String(tokens)
@@ -250,9 +248,9 @@ public func contextFillLevel(_ usedPercent: Double, marker: Double) -> StatusLev
     return .normal
 }
 
-/// The second row, as text. Returns nil when there is nothing to say.
-/// The second row, split so each piece can be coloured for what it is. Compactions are a count,
-/// not a limit — colouring them red because the week is nearly spent says the wrong thing.
+/// The limits row as text, split so each piece can be coloured for what it is — compactions are
+/// a count, not a limit, and colouring them red because the week is nearly spent says the wrong
+/// thing. Nil when there is nothing to say. Printed by `--print-statusline`.
 public func secondaryRowText(_ snapshot: StatusLineSnapshot,
                              now: Date = Date()) -> (left: String, compacted: String, week: String)? {
     var left = ""
@@ -400,16 +398,13 @@ public func resolvedSnapshot(_ written: StatusLineSnapshot,
 
 // MARK: - Writing and reading the snapshot file
 
-/// Writes through a temporary file and renames: a half-written snapshot must never be what the
-/// window reads.
+/// `.atomic` writes a temporary file beside the target and renames it over: a half-written
+/// snapshot is never what the window reads.
 public func writeSnapshot(_ snapshot: StatusLineSnapshot, dir: String, tabId: String) throws {
     try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true,
                                             attributes: [.posixPermissions: 0o700])
-    let data = try JSONEncoder().encode(snapshot)
-    let temp = "\(dir)/.\(tabId).tmp"
-    try data.write(to: URL(fileURLWithPath: temp), options: .atomic)
-    _ = try? FileManager.default.removeItem(atPath: "\(dir)/\(tabId).json")
-    try FileManager.default.moveItem(atPath: temp, toPath: "\(dir)/\(tabId).json")
+    try JSONEncoder().encode(snapshot)
+        .write(to: URL(fileURLWithPath: "\(dir)/\(tabId).json"), options: .atomic)
 }
 
 public func readSnapshot(dir: String, tabId: String) -> StatusLineSnapshot? {

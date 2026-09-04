@@ -95,10 +95,6 @@ public func applyResetWindow(_ snapshot: LimitFields, now: Double) -> LimitField
 /// How long a process may live and still count as "died on startup".
 private let immediateMs: Double = 1000
 
-/// One shape of failure deserves more than a number: the process died instantly, with code 1, and
-/// never printed a thing. `[Process exited with code 1]` on its own reads like a broken `claude`
-/// or a broken PATH, and both send you looking in the wrong place. The one cause seen so far is a
-/// stale instance — the bundle in /Applications replaced while the app was running.
 /// What a `waitpid` status actually says.
 ///
 /// SwiftTerm hands `processTerminated` the raw status from `waitpid(shellPid, &n, WNOHANG)`
@@ -118,6 +114,10 @@ public func exitStatus(waitStatus: Int32) -> (code: Int32, signal: Int32?) {
     return (code: (waitStatus >> 8) & 0xff, signal: nil)
 }
 
+/// One shape of failure deserves more than a number: the process died instantly, with code 1, and
+/// never printed a thing. `[Process exited with code 1]` on its own reads like a broken `claude`
+/// or a broken PATH, and both send you looking in the wrong place. The one cause seen so far is a
+/// stale instance — the bundle in /Applications replaced while the app was running.
 public func describePtyExit(code: Int32, msSinceSpawn: Double, sawOutput: Bool) -> String {
     let line = "\r\n[Process exited with code \(code)]\r\n"
 

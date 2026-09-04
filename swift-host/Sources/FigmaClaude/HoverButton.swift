@@ -7,51 +7,6 @@ import FigmaClaudeCore
 /// icons gives no sign that any of them can be pressed. This adds the thing that was missing:
 /// a rounded field on hover, stronger while held.
 class HoverButton: NSButton {
-    /// Padding, carried in the button's own size rather than by drawing the hover field larger
-    /// than the button. Drawn outwards, the field of a text button reached into the gap beside
-    /// it: 8 points of spacing became 1 point between two highlights.
-    var horizontalPadding: CGFloat = 0 {
-        didSet {
-            if horizontalPadding > 0, !(cell is PaddedCell) {
-                let padded = PaddedCell()
-                padded.title = title
-                padded.image = image
-                padded.imagePosition = imagePosition
-                padded.font = font
-                padded.isBordered = false
-                padded.target = target
-                padded.action = action
-                padded.lineBreakMode = lineBreakMode
-                cell = padded
-            }
-            (cell as? PaddedCell)?.padding = horizontalPadding
-            invalidateIntrinsicContentSize()
-        }
-    }
-    var minimumHeight: CGFloat = 0 { didSet { invalidateIntrinsicContentSize() } }
-
-    /// `NSButtonCell` lays an image out flush against the leading edge and ignores any extra
-    /// width there — measured on the cwd button: bounds 84 wide, image at 0…19, title 19…84. So
-    /// the padding has to be put back into the cell's own geometry rather than into the size.
-    private final class PaddedCell: NSButtonCell {
-        var padding: CGFloat = 0
-
-        override func imageRect(forBounds rect: NSRect) -> NSRect {
-            super.imageRect(forBounds: rect).offsetBy(dx: padding, dy: 0)
-        }
-
-        override func titleRect(forBounds rect: NSRect) -> NSRect {
-            super.titleRect(forBounds: rect).offsetBy(dx: padding, dy: 0)
-        }
-    }
-
-    override var intrinsicContentSize: NSSize {
-        var size = super.intrinsicContentSize
-        size.width += horizontalPadding * 2
-        size.height = max(size.height, minimumHeight)
-        return size
-    }
-
     private var hovering = false { didSet { needsDisplay = true } }
     /// Forces the hover field on for the render probe — a still image has no pointer, and the
     /// padding is exactly what could not be checked otherwise.
@@ -81,12 +36,6 @@ class HoverButton: NSButton {
         pressed = true
         super.mouseDown(with: event)
         pressed = false
-    }
-
-    /// The title has to be re-measured when it changes, or the padding is computed for the
-    /// previous folder name.
-    override var title: String {
-        didSet { invalidateIntrinsicContentSize() }
     }
 
     override func draw(_ dirtyRect: NSRect) {

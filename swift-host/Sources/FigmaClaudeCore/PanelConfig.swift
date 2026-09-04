@@ -42,28 +42,23 @@ public struct PanelConfig: Decodable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        func string(_ key: CodingKeys, _ fallback: String) -> String {
-            (try? container.decodeIfPresent(String.self, forKey: key)) .flatMap { $0 } ?? fallback
-        }
-        func flag(_ key: CodingKeys, _ fallback: Bool) -> Bool {
-            (try? container.decodeIfPresent(Bool.self, forKey: key)).flatMap { $0 } ?? fallback
-        }
-        func number(_ key: CodingKeys, _ fallback: Double) -> Double {
-            (try? container.decodeIfPresent(Double.self, forKey: key)).flatMap { $0 } ?? fallback
+        // Missing key or wrong type both fall back — `try?` already flattens the double optional.
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            (try? container.decodeIfPresent(T.self, forKey: key)) ?? fallback
         }
 
-        command = string(.command, "claude")
-        args = (try? container.decodeIfPresent([String].self, forKey: .args)).flatMap { $0 } ?? []
-        shell = string(.shell, "")
-        env = (try? container.decodeIfPresent([String: String].self, forKey: .env)).flatMap { $0 } ?? [:]
-        directMode = flag(.directMode, true)
-        cwd = string(.cwd, "")
-        statusLine = flag(.statusLine, true)
-        figmaFile = string(.figmaFile, "")
-        figmaCli = string(.figmaCli, "")
-        theme = string(.theme, "system")
-        figmaMode = string(.figmaMode, "yolo")
-        contextMarker = number(.contextMarker, 60)
+        command = value(.command, "claude")
+        args = value(.args, [])
+        shell = value(.shell, "")
+        env = value(.env, [:])
+        directMode = value(.directMode, true)
+        cwd = value(.cwd, "")
+        statusLine = value(.statusLine, true)
+        figmaFile = value(.figmaFile, "")
+        figmaCli = value(.figmaCli, "")
+        theme = value(.theme, "system")
+        figmaMode = value(.figmaMode, "yolo")
+        contextMarker = value(.contextMarker, 60)
     }
 
     public static let path = NSHomeDirectory() + "/.figma-ds-cli/panel.json"
@@ -116,8 +111,10 @@ public func updatePanelConfig(_ patch: [String: Any], path: String = PanelConfig
 
     let directory = (path as NSString).deletingLastPathComponent
     try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    // Atomic: a crash between truncate and write would otherwise leave an empty panel.json,
+    // which the next launch reads as "no working directory".
     do {
-        try out.write(to: URL(fileURLWithPath: path))
+        try out.write(to: URL(fileURLWithPath: path), options: .atomic)
     } catch {
         return false
     }

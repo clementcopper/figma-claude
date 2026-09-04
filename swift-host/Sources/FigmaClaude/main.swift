@@ -1,11 +1,10 @@
-// Spike: does SwiftTerm carry Claude Code well enough to replace the Electron host?
-//
-// Step 0 answered the throughput and display questions; since then it has grown the parts of the
-// panel that are pure logic — spawn options, the Figma poll, window bounds, and now tabs. It is
-// still not the app: no toolbar, no status line, no Figma buttons.
+// The app: a window around a terminal running Claude Code, the ring status bar, and the Figma
+// toolbar. The pure logic lives in `FigmaClaudeCore`; this file wires it to AppKit.
 //
 //     .build/release/FigmaClaude                    the configured command, in the configured cwd
 //     .build/release/FigmaClaude /bin/zsh -lc "…"   an explicit command, used by Tools/
+//     .build/release/FigmaClaude --statusline       the status line producer (no window)
+//     .build/release/FigmaClaude --render-…         the probes, see README
 
 import AppKit
 import SwiftTerm
@@ -25,67 +24,20 @@ let appDisplayName: String = {
     return "Figma Claude"
 }()
 
-/// Wall-clock from the first byte of a burst to the last, printed to stderr.
+/// The terminal of one tab, with the two hooks the panel needs around the PTY stream.
 ///
-/// A burst is "output with no gap longer than `idleGap`" — a crude definition, but the same one
-/// applied to both hosts, and the comparison is what matters, not the absolute number.
-final class ThroughputMeter {
-    private var burstStart: Date?
-    private var lastData: Date?
-    private var bytes = 0
-    private let idleGap: TimeInterval = 0.35
-    private var timer: Timer?
-
-    /// `dataReceived` runs on the reader queue, and a `Timer` scheduled there never fires — no
-    /// run loop. Hopping to main is what makes the measurement exist at all.
-    func record(_ count: Int) {
-        if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.record(count) }
-            return
-        }
-        let now = Date()
-        if burstStart == nil {
-            burstStart = now
-            bytes = 0
-        }
-        lastData = now
-        bytes += count
-
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: idleGap, repeats: false) { [weak self] _ in
-            self?.finish()
-        }
-    }
-
-    private func finish() {
-        guard let start = burstStart, let end = lastData else { return }
-        let seconds = end.timeIntervalSince(start)
-        let kb = Double(bytes) / 1024
-        // Sub-millisecond bursts are keystroke echo, not something worth a line.
-        if seconds > 0.01 {
-            FileHandle.standardError.write(
-                String(format: "[spike] burst: %.1f KB in %.3f s (%.1f MB/s)\n",
-                       kb, seconds, kb / 1024 / max(seconds, 0.0001)).data(using: .utf8)!)
-        }
-        burstStart = nil
-        bytes = 0
-    }
-}
-
 /// `dataReceived` is where `LocalProcess` hands the PTY output over — the only place the bytes
-/// are visible before SwiftTerm swallows them. Timing it in the delegate measured nothing,
-/// because the delegate never sees the data.
+/// are visible before SwiftTerm swallows them; the delegate never sees the data.
 ///
 /// `Unhandle selector noop:` on stdout comes from SwiftTerm's own `doCommand(by:)` default branch
 /// and means AppKit had no binding for a chord. Control keys are not affected — `keyDown` handles
-/// those before `interpretKeyEvents`. What reached `noop:` in the first spike were ⌘-chords,
-/// because there was no menu bar for them to hit; there is one now.
+/// those before `interpretKeyEvents`. ⌘-chords reached `noop:` while there was no menu bar for
+/// them to hit; there is one now.
 ///
 /// Worth knowing either way: `keyDown`, `flagsChanged` and `doCommand` are all `public override`
 /// rather than `open`, so none of SwiftTerm's key handling can be corrected from outside the
 /// module. Anything that needs changing there means forking the package.
-final class MeteredTerminalView: LocalProcessTerminalView {
-    let meter = ThroughputMeter()
+final class PanelTerminalView: LocalProcessTerminalView {
     var sawOutput = false
     /// Called with everything the process writes, so the prompt detector can watch the tail.
     var onOutput: ((String) -> Void)?
@@ -94,7 +46,6 @@ final class MeteredTerminalView: LocalProcessTerminalView {
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
         sawOutput = true
-        meter.record(slice.count)
         if let onOutput {
             let text = String(decoding: slice, as: UTF8.self)
             DispatchQueue.main.async { onOutput(text) }
@@ -204,15 +155,19 @@ final class PanelContentView: NSView {
 
     override var isFlipped: Bool { false }
 
+    /// The strip runs from under the toolbar to the bottom edge, so the status line ends at it
+    /// rather than passing underneath. One place for the split, read by `layout` and `draw`.
+    private var bandWidths: (strip: CGFloat, left: CGFloat) {
+        let strip = min(TabStripView.stripWidth, bounds.width)
+        return (strip, max(0, bounds.width - strip - lineWidth))
+    }
+
     override func layout() {
         super.layout()
         guard let toolbar, let strip, let terminal, let statusLine else { return }
 
         let width = bounds.width
-        // The strip runs from under the toolbar to the bottom edge, so the status line ends at
-        // it rather than passing underneath.
-        let stripWidth = min(TabStripView.stripWidth, width)
-        let leftWidth = max(0, width - stripWidth - lineWidth)
+        let (stripWidth, leftWidth) = bandWidths
 
         // Width first, then ask how tall it needs to be. Asked the other way round the status
         // line answers for a zero-width column, where its text wraps — measured a 1387-point
@@ -235,31 +190,24 @@ final class PanelContentView: NSView {
         topEdge.frame = NSRect(x: 0, y: statusHeight, width: width, height: lineWidth)
     }
 
+    /// Two of the three separators. The third — the status bar's top edge — is `topEdge`, a
+    /// subview: drawn here it ran only as far as the strip and in the system colour, measured
+    /// 0.851 against the 0.896 of the hairline inside the bar.
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let stripWidth = min(TabStripView.stripWidth, bounds.width)
-        let leftWidth = max(0, bounds.width - stripWidth - lineWidth)
-        let statusHeight = statusLine?.frame.height ?? 0
-
         NSColor.separatorColor.setFill()
         // Under the toolbar, across the whole width.
         bounds.divided(atDistance: ToolbarView.barHeight + lineWidth, from: .maxYEdge)
             .slice.divided(atDistance: lineWidth, from: .minYEdge).slice.fill()
         // Left of the strip, from the toolbar down to the bottom edge.
-        NSRect(x: leftWidth, y: 0, width: lineWidth,
+        NSRect(x: bandWidths.left, y: 0, width: lineWidth,
                height: bounds.height - ToolbarView.barHeight - lineWidth).fill()
-
-        // The status bar's top edge is `topEdge`, a subview — see the property. It used to be a
-        // third `fill()` here, in the system separator colour, running only as far as the strip:
-        // measured 0.851 against the 0.896 of the hairline inside the bar, which is what made the
-        // bar look framed by two different lines.
-        _ = statusHeight
     }
 }
 
 /// One tab: its terminal, its name, and where it started.
 final class TerminalTab {
-    let view: MeteredTerminalView
+    let view: PanelTerminalView
     let name: String
     let cwd: String
     /// What the status line producer names its file after. Not the display name: that changes
@@ -269,7 +217,7 @@ final class TerminalTab {
 
     /// `id` is carried over when a tab is respawned: the status line is keyed on it, and a new
     /// one would point the row at a tab that no longer exists.
-    init(view: MeteredTerminalView, name: String, cwd: String, id: String? = nil) {
+    init(view: PanelTerminalView, name: String, cwd: String, id: String? = nil) {
         self.view = view
         self.name = name
         self.cwd = cwd
@@ -281,16 +229,12 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     let window: NSWindow
     private let tabStrip = TabStripView()
     private let toolbar = ToolbarView()
-    // The ring design replaces the bar. `StatusLineView` stays in the tree for now — the render
-    // probe still measures it, and its marker work is not lost by being unused.
     /// What to start instead when a tab exits with code 1 — see `ExitRecovery`.
     private var exitRecovery = ExitRecovery()
 
     private let statusLine = StatusRingLineView()
     private var statusWatcher: StatusLineWatcher!
     private var prompts: PromptDetector!
-    /// Tabs whose process is being replaced on purpose — their exit is not worth reporting.
-    private var respawning: Set<String> = []
     /// An action that touches the daemon or Figma is running; the menu is read-only until it ends.
     private var figmaBusy = false
     /// Whether the "should clear" toast has already fired for the current crossing of the
@@ -437,11 +381,6 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
         if saved.x == nil { window.center() }
         window.makeKeyAndOrderFront(nil)
-
-        let got = window.contentRect(forFrameRect: window.frame)
-        FileHandle.standardError.write(String(
-            format: "[spike] content asked %.0f×%.0f, got %.0f×%.0f\n",
-            frame.width, frame.height, got.width, got.height).data(using: .utf8)!)
     }
 
     /// This same binary, invoked as Claude Code's status line command. Nothing else has to be
@@ -468,12 +407,9 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let sessionId = UUID().uuidString.lowercased()
         let sessionName = panelSessionName(file: file, cwd: cwd, sessionId: sessionId)
         let name = state.nextName()
-        let view = MeteredTerminalView(frame: container.bounds)
-        let tab = TerminalTab(view: view, name: name, cwd: cwd)
+        let tab = TerminalTab(view: makeTerminalView(), name: name, cwd: cwd)
+        let view = tab.view
         let environment = panelEnvironment(config: config, tabId: tab.id)
-
-        view.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        view.processDelegate = self
         view.onOutput = { [weak self] text in self?.prompts.onData(tab.id, text) }
         view.onInput = { [weak self] in self?.prompts.onUserInput(tab.id) }
 
@@ -485,7 +421,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         } else {
             guard let resolved = whichOnPath(config.command, path: environment["PATH"] ?? "") else {
                 FileHandle.standardError.write(
-                    "[spike] \(config.command) is not on the PATH this window sees\n".data(using: .utf8)!)
+                    "\(config.command) is not on the PATH this window sees\n".data(using: .utf8)!)
                 return
             }
             executable = resolved
@@ -493,10 +429,6 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
                                   sessionId: sessionId,
                                   statusLineCommand: Self.statusLineCommand)
         }
-
-        FileHandle.standardError.write(
-            ("[spike] tab \(name): \(executable) \(args.joined(separator: " ")) " +
-             "cwd=\(cwd) figma=\(snapshot.status.tooltip)\n").data(using: .utf8)!)
 
         state.append(tab)
         show(tab)
@@ -562,14 +494,13 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         refreshTabBar()
     }
 
-    /// Where the window size goes missing, if it does. Cheap enough to leave in while the
-    /// layout is still moving.
-
-
-    func traceSize(_ what: String) {
-        let c = window.contentRect(forFrameRect: window.frame)
-        FileHandle.standardError.write(String(format: "[spike] %@: content %.0f×%.0f\n",
-                                              what, c.width, c.height).data(using: .utf8)!)
+    /// A terminal view the way every tab wants it. `onOutput`/`onInput` are set by the caller,
+    /// because they carry the tab id.
+    private func makeTerminalView() -> PanelTerminalView {
+        let view = PanelTerminalView(frame: container.bounds)
+        view.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        view.processDelegate = self
+        return view
     }
 
     private func refreshTabBar() {
@@ -594,7 +525,10 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let mode = FigmaMode(rawValue: PanelConfig.load().figmaMode) ?? .yolo
         var restartFigma = false
 
-        if mode == .yolo, !isCdpReachable(port: cdpPort), isFigmaRunning() {
+        // From the poll, like the menu: the two answers are at most 2.5 s old, and asking again
+        // here would spawn `pgrep` and wait on a socket on the main thread.
+        let snapshot = watcher.snapshot
+        if mode == .yolo, !snapshot.cdpOk, snapshot.figmaRunning {
             let ask = NSAlert()
             ask.messageText = "Restart Figma to open the debug port?"
             ask.informativeText =
@@ -834,14 +768,13 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
                                   statusLineCommand: Self.statusLineCommand)
         args.append(contentsOf: extraArgs)
 
-        respawning.insert(old.id)
+        // The old process's exit arrives later, on the main queue — by then `state` no longer
+        // holds its view and `processTerminated` finds no tab for it, so it is not reported.
         old.view.terminate()
         old.view.removeFromSuperview()
         prompts.forget(old.id)
 
-        let view = MeteredTerminalView(frame: container.bounds)
-        view.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        view.processDelegate = self
+        let view = makeTerminalView()
         view.onOutput = { [weak self] text in self?.prompts.onData(old.id, text) }
         view.onInput = { [weak self] in self?.prompts.onUserInput(old.id) }
 
@@ -851,7 +784,6 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         view.startProcess(executable: executable, args: args,
                           environment: environment.map { "\($0.key)=\($0.value)" },
                           currentDirectory: old.cwd)
-        respawning.remove(old.id)
         refreshTabBar()
     }
 
@@ -972,9 +904,8 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     /// that (`app/src/main.ts:738`): it posts the line into the terminal and leaves everything
     /// standing, which is what lets you read why it exited and press Restart.
     func processTerminated(source: TerminalView, exitCode: Int32?) {
+        // A view no longer in `state` was replaced or closed on purpose; its exit is not news.
         guard let index = state.tabs.firstIndex(where: { $0.view === source }) else { return }
-        // A deliberate respawn ends the old process on purpose; saying so would be noise.
-        guard !respawning.contains(state.tabs[index].id) else { return }
 
         let tab = state.tabs[index]
         // SwiftTerm hands the raw waitpid status through, so an exit of 1 arrives as 256. That is
@@ -1001,25 +932,6 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
     // MARK: - NSWindowDelegate
 
-    /// Three guesses at what shrank the window were all wrong, so this asks instead: who is on
-    /// the stack the first time it resizes itself.
-    /// The window derives its own frame from the layout — the stack trace named
-    /// `_changeWindowFrameFromConstraintsIfNecessary` — and with nothing in the chrome preferring
-    /// a width it lands on the smallest legal one: 272 points for a saved 380. Neither
-    /// `contentMinSize`, a low-priority width, nor taking the content view out of Auto Layout
-    /// changed that.
-    ///
-    /// So the size is re-asserted once, after that first pass. It only fires while a restore is
-    /// pending, and never during a drag, so it cannot fight the user.
-    /// Only while the user is dragging. Following every resize would mean writing the window's
-    /// own shrink back as the target and cementing it — which is exactly what happened.
-    /// The bands are positioned by frame, so a resize needs nothing but a fresh layout pass —
-    /// which AppKit already schedules. Kept for the window-size trace while the layout settles.
-    func windowDidResize(_ notification: Notification) {
-        window.contentView?.needsLayout = true
-    }
-
-
     /// A window position is only worth remembering if it is written down before the app dies.
     func windowWillClose(_ notification: Notification) {
         // The *content* rect, not the frame: the frame carries the title bar, and handing that
@@ -1027,10 +939,6 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         // every time it was opened. It looked like it settled only because it was hitting the
         // top of the screen.
         let f = window.contentRect(forFrameRect: window.frame)
-        FileHandle.standardError.write(String(
-            format: "[spike] closing with content %.0f×%.0f (min %.0f×%.0f)\n",
-            f.width, f.height, window.contentMinSize.width, window.contentMinSize.height)
-                .data(using: .utf8)!)
         saveBounds(Bounds(x: window.frame.origin.x, y: window.frame.origin.y,
                           width: f.width, height: f.height))
         watcher.stop()
@@ -1307,15 +1215,16 @@ if CommandLine.arguments.contains("--print-about") {
     _ = NSApplication.shared
     let path = LoginShellPath.resolve() ?? ProcessInfo.processInfo.environment["PATH"] ?? ""
     let cli = resolveCli(appRoot: Bundle.main.bundlePath, configured: PanelConfig.load().figmaCli)
+    let version = figmaCliVersion()
     print("PATH      \(path)")
     print("figma-cli \(cli.isUsable ? ([cli.file] + cli.args).joined(separator: " ") : "not found")")
-    print("version   \(figmaCliVersion() ?? "nil")")
+    print("version   \(version ?? "nil")")
     let info = Bundle.main.infoDictionary
     print("bundle    \(info?["CFBundleShortVersionString"] as? String ?? "—") " +
           "(\(aboutBuild(commit: info?["CFBundleVersion"] as? String))) " +
           "\(info?["FCBuildDate"] as? String ?? "—")")
     print("---")
-    print(aboutCredits(cliVersion: figmaCliVersion(), buildDate: info?["FCBuildDate"] as? String))
+    print(aboutCredits(cliVersion: version, buildDate: info?["FCBuildDate"] as? String))
     exit(0)
 }
 
@@ -1360,21 +1269,6 @@ if let index = CommandLine.arguments.firstIndex(of: "--render-rings") {
     } else {
         RingProbe.run(to: path)
     }
-    exit(0)
-}
-
-if let index = CommandLine.arguments.firstIndex(of: "--render-statusline") {
-    _ = NSApplication.shared
-    applyProbeAppearance()
-    let width = CommandLine.arguments.count > index + 1
-        ? Double(CommandLine.arguments[index + 1]) ?? 546 : 546
-    // An optional path after the width, so two probe runs can be compared instead of overwriting
-    // each other. Anything starting with `--` there is a flag, not a path.
-    let path = CommandLine.arguments.count > index + 2
-        && !CommandLine.arguments[index + 2].hasPrefix("--")
-        ? CommandLine.arguments[index + 2] : "/tmp/statusline.png"
-    RenderProbe.run(width: width, to: path,
-                    danger: CommandLine.arguments.contains("--danger"))
     exit(0)
 }
 

@@ -1,11 +1,10 @@
 import AppKit
 import FigmaClaudeCore
 
-/// The status line in its ring form: the main row, and the working directory under it.
+/// The status line: the Figma selection band, the ring row, and the working directory under it.
 ///
-/// A view of its own rather than a rewrite of `StatusLineView`, so the bar version and the marker
-/// work on it stay intact while this one is judged. What each ring shows is decided in
-/// `statusRings` (pure, in Core); this only puts the answers on screen.
+/// What each ring shows is decided in `statusRings` (pure, in Core); this only puts the answers
+/// on screen. It replaced a bar-and-marker version (git: `a28ecd1`, `StatusLineView.swift`).
 final class StatusRingLineView: NSView {
     /// The percentage the context ring fills against. Set as a number, not dragged.
     var contextThreshold: Double = defaultContextThreshold {

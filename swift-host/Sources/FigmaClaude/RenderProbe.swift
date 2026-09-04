@@ -61,7 +61,7 @@ enum RenderProbe {
         // could never show a dark-mode fault.
         let column = TerminalColumn()
         column.appearance = NSApp.effectiveAppearance
-        let real = MeteredTerminalView(frame: .zero)
+        let real = PanelTerminalView(frame: .zero)
         real.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         TerminalColumn.matchBackground(real, in: column)
         column.addSubview(real)
@@ -191,89 +191,6 @@ enum RenderProbe {
         FileHandle.standardError.write("[probe] wrote \(path)\n".data(using: .utf8)!)
     }
 
-    static func run(width: CGFloat, to path: String, danger: Bool = false) {
-        let view = StatusLineView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
-        view.widthAnchor.constraint(equalToConstant: width).isActive = true
-        view.layoutSubtreeIfNeeded()
-
-        var snapshot = StatusLineSnapshot()
-        snapshot.model = "Opus 5"
-        snapshot.effort = "high"
-        snapshot.cwd = "~/Documents/DMA/Designdone/Business"
-        snapshot.totalTokens = 1_000_000
-        snapshot.usedTokens = 64_700
-        snapshot.usedPercent = danger ? 95 : 6
-        snapshot.sessionPercent = danger ? 85 : 41
-        snapshot.sessionResetsAt = Date().timeIntervalSince1970 + 7800
-        snapshot.sessionResetsInMin = 130
-        snapshot.weekPercent = danger ? 91 : 12
-        snapshot.compacted = 3
-        snapshot.compactBudget = 5
-        view.render(snapshot)
-        // `--marker 95` puts the handle at the edges, where a centred tag would hang out of the
-        // window — the case the horizontal clamp exists for.
-        if let index = CommandLine.arguments.firstIndex(of: "--marker"),
-           CommandLine.arguments.count > index + 1,
-           let value = Double(CommandLine.arguments[index + 1]) {
-            view.contextMarker = value
-        }
-        // `--no-selection` renders the state the band is hidden in, which is the one that must
-        // not leave a gap.
-        if !CommandLine.arguments.contains("--no-selection") {
-            view.renderSelection([SelectedNode(id: "287:1495", name: "Hero", type: "FRAME")])
-        }
-        view.layoutSubtreeIfNeeded()
-        // Size to content: the whole point of dropping the fixed height.
-        let fitting = view.fittingSize
-        view.frame = NSRect(x: 0, y: 0, width: width, height: fitting.height)
-        view.layoutSubtreeIfNeeded()
-
-        // `--empty` is the launch state: a tab whose Claude Code has not written a status line
-        // yet. The bar is hidden there, so the handle must be too — this is the state where it
-        // used to be drawn against a zero-width bar, at the left edge, until the first snapshot
-        // arrived and it jumped to the marker.
-        if CommandLine.arguments.contains("--empty") {
-            view.render(nil)
-            view.layoutSubtreeIfNeeded()
-        }
-
-        // The handle is placed in `viewWillDraw`, which has not run yet — measuring before it
-        // would report the position of an earlier pass, which is how the 35-point offset stayed
-        // invisible in the first place.
-        view.placeMarkerNow()
-        FileHandle.standardError.write(
-            ("[probe] " + view.measureMarkerDot() + "\n").data(using: .utf8)!)
-        // `--handle` after the final layout, the way a real hover lands on a laid-out bar: the
-        // percent tag positions itself from the bar's real width.
-        if CommandLine.arguments.contains("--handle") {
-            view.previewMarkerHandle()
-            FileHandle.standardError.write(
-                ("[probe] handle " + view.measureMarkerHandle() + "\n").data(using: .utf8)!)
-        }
-
-        FileHandle.standardError.write(("[probe] " + view.measureContextRow() + "\n").data(using: .utf8)!)
-
-        // The tag is meant to overhang the band's top edge, and `view.bounds` would cut off
-        // exactly the thing the picture has to prove. Render through a canvas with headroom so the
-        // overhang is in the PNG.
-        let headroom: CGFloat = CommandLine.arguments.contains("--handle") ? 24 : 0
-        let canvas = NSView(frame: NSRect(x: 0, y: 0, width: width,
-                                          height: view.frame.height + headroom))
-        canvas.wantsLayer = true
-        canvas.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        canvas.addSubview(view)
-
-        guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return }
-        canvas.cacheDisplay(in: canvas.bounds, to: rep)
-        guard let data = rep.representation(using: .png, properties: [:]) else { return }
-        try? data.write(to: URL(fileURLWithPath: path))
-        FileHandle.standardError.write("[probe] wrote \(path) at \(Int(width))×\(Int(canvas.frame.height))\n".data(using: .utf8)!)
-    }
-
-    /// Reproduces the "squashed figma button at launch" bug: the toolbar lays itself out with an
-    /// empty label, then the first poll sets the label afterwards (async). Without a re-balance the
-    /// label's width stays at its first, empty budget until a resize forces a fresh layout.
-    ///
     /// The About panel as the app opens it.
     ///
     /// AppKit builds the panel lazily and lays it out on the run loop, so a capture taken right
@@ -309,14 +226,6 @@ enum RenderProbe {
                    view.effectiveAppearance.name.rawValue).data(using: .utf8)!)
 
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        // Two separate traps, both of which showed up as a blank dark render:
-        //   1. `cacheDisplay` resolves dynamic colours against the *current* drawing appearance,
-        //      not the window's — so the labels came out in the wrong mode.
-        //   2. The panel's background belongs to the window, not to the content view, so what
-        //      `cacheDisplay` returns is transparent behind the text. In dark mode that is white
-        //      text on nothing, which a PNG viewer shows as an empty page.
-        // Hence: draw in the window's appearance, then lay the result over the window's own
-        // background colour.
         // Two traps, both of which showed up as a blank dark render:
         //   1. `cacheDisplay` resolves dynamic colours against the *current* drawing appearance,
         //      not the window's, so the labels came out in the wrong mode.
@@ -337,8 +246,12 @@ enum RenderProbe {
         FileHandle.standardError.write("[probe] wrote \(path)\n".data(using: .utf8)!)
     }
 
-    /// Measures `measureRow()` after the labels arrive late. The report must show both `labels on`
-    /// AND the figma text reaching past the marker — a visible but truncated label is still the bug.
+    /// Reproduces the "squashed figma button at launch" bug: the toolbar lays itself out with an
+    /// empty label, then the first poll sets the label afterwards (async). Without a re-balance the
+    /// label's width stays at its first, empty budget until a resize forces a fresh layout.
+    ///
+    /// The report must show both `labels on` AND the figma text reaching past the marker — a
+    /// visible but truncated label is still the bug.
     static func lateLabelBudget(width: CGFloat) {
         let toolbar = ToolbarView(frame: NSRect(x: 0, y: 0, width: width,
                                                 height: ToolbarView.barHeight))

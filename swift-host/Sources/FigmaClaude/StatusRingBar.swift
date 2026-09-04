@@ -297,7 +297,6 @@ final class StatusRingRow: NSView {
     /// their own edges.
     static let verticalPadding: CGFloat = 8
 
-    static var debugFrames = false
     private var items: [NSView] = []
 
     func setItems(_ views: [NSView]) {
@@ -377,10 +376,6 @@ final class StatusRingRow: NSView {
 
             for index in row {
                 let size = items[index].fittingSize
-                if StatusRingRow.debugFrames {
-                    print(String(format: "  [row] item %d  x %.0f  y %.0f  %.0f×%.0f",
-                                 index, x, y + (tallest - size.height) / 2, size.width, size.height))
-                }
                 items[index].frame = NSRect(x: x, y: y + (tallest - size.height) / 2,
                                             width: size.width, height: size.height)
                 x += size.width + StatusRingRow.columnGap

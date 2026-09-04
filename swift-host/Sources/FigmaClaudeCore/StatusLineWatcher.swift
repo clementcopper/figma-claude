@@ -89,17 +89,12 @@ public final class StatusLineWatcher {
         }
     }
 
-    /// Through a temporary file and a rename, like `writeSnapshot` — a half-written file must
-    /// never be what another window reads.
+    /// Atomic, like `writeSnapshot` — a half-written file must never be what another window reads.
     private func write<T: Encodable>(_ value: T, to name: String) {
         guard let data = try? JSONEncoder().encode(value) else { return }
         try? FileManager.default.createDirectory(atPath: lastDir, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
-        let temp = "\(lastDir)/.\(name).tmp"
-        guard (try? data.write(to: URL(fileURLWithPath: temp), options: .atomic)) != nil
-        else { return }
-        _ = try? FileManager.default.removeItem(atPath: "\(lastDir)/\(name)")
-        try? FileManager.default.moveItem(atPath: temp, toPath: "\(lastDir)/\(name)")
+        try? data.write(to: URL(fileURLWithPath: "\(lastDir)/\(name)"), options: .atomic)
     }
 
     private func scan() {
