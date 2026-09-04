@@ -1,5 +1,6 @@
 // Commands: a11y (extracted from index.js)
 import chalk from 'chalk';
+import { WCAG_SNIPPET } from '../lib/wcag.js';
 import { join } from 'path';
 import {
   program,
@@ -26,18 +27,7 @@ a11y
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
-      function luminance(r, g, b) {
-        const [rs, gs, bs] = [r, g, b].map(c => {
-          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-        });
-        return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
-      }
-
-      function contrastRatio(l1, l2) {
-        const lighter = Math.max(l1, l2);
-        const darker = Math.min(l1, l2);
-        return (lighter + 0.05) / (darker + 0.05);
-      }
+      ${WCAG_SNIPPET}
 
       function getSolidColor(node) {
         if (node.fills && Array.isArray(node.fills)) {
@@ -61,15 +51,6 @@ a11y
         return { r: 1, g: 1, b: 1, a: 1 };
       }
 
-      function blendOnWhite(fg, bg) {
-        const a = fg.a;
-        return {
-          r: fg.r * a + bg.r * (1 - a),
-          g: fg.g * a + bg.g * (1 - a),
-          b: fg.b * a + bg.b * (1 - a)
-        };
-      }
-
       function toHex(c) {
         const r = Math.round(c.r * 255).toString(16).padStart(2, '0');
         const g = Math.round(c.g * 255).toString(16).padStart(2, '0');
@@ -84,11 +65,7 @@ a11y
           const textColor = getSolidColor(node);
           if (!textColor) return;
           const bgColor = getBgColor(node);
-          const fg = blendOnWhite(textColor, { r: 1, g: 1, b: 1 });
-          const bg = blendOnWhite(bgColor, { r: 1, g: 1, b: 1 });
-          const l1 = luminance(fg.r, fg.g, fg.b);
-          const l2 = luminance(bg.r, bg.g, bg.b);
-          const ratio = contrastRatio(l1, l2);
+          const { ratio, fg, bg } = textContrast(textColor, bgColor);
           const fontSize = typeof node.fontSize === 'number' ? node.fontSize : 16;
           const fontWeight = node.fontWeight || 400;
           const isLarge = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700);
@@ -394,6 +371,8 @@ a11y
 
       if ('children' in root) {
         for (const child of root.children) traverse(child);
+      } else {
+        traverse(root);
       }
 
       const passing = results.filter(r => r.pass);
@@ -509,6 +488,8 @@ a11y
 
       if ('children' in root) {
         for (const child of root.children) traverse(child);
+      } else {
+        traverse(root);
       }
 
       const withIssues = results.filter(r => r.issues.length > 0);
@@ -602,6 +583,8 @@ a11y
 
       if ('children' in root) {
         for (const child of root.children) traverse(child);
+      } else {
+        traverse(root);
       }
 
       // Sort by reading order: top-to-bottom, then left-to-right (with 20px row tolerance)
@@ -686,14 +669,8 @@ a11y
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
-      // --- Helpers ---
-      function luminance(r, g, b) {
-        const [rs, gs, bs] = [r, g, b].map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-        return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
-      }
-      function contrastRatio(l1, l2) {
-        return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-      }
+      // --- Helpers (contrast maths shared with a11y contrast, see src/lib/wcag.js) ---
+      ${WCAG_SNIPPET}
       function getSolidColor(node) {
         if (node.fills && Array.isArray(node.fills)) {
           for (const fill of node.fills) {
@@ -731,9 +708,7 @@ a11y
           const textColor = getSolidColor(node);
           if (textColor) {
             const bgColor = getBgColor(node);
-            const l1 = luminance(textColor.r * textColor.a + (1 - textColor.a), textColor.g * textColor.a + (1 - textColor.a), textColor.b * textColor.a + (1 - textColor.a));
-            const l2 = luminance(bgColor.r, bgColor.g, bgColor.b);
-            const ratio = contrastRatio(l1, l2);
+            const { ratio } = textContrast(textColor, bgColor);
             const fontSize = typeof node.fontSize === 'number' ? node.fontSize : 16;
             const fontWeight = node.fontWeight || 400;
             const isLarge = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700);
@@ -799,6 +774,8 @@ a11y
 
       if ('children' in root) {
         for (const child of root.children) traverse(child);
+      } else {
+        traverse(root);
       }
 
       const errors = issues.filter(i => i.severity === 'error');
