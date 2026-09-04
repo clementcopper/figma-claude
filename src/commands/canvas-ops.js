@@ -13,6 +13,7 @@ import {
   hexToRgb
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
+import { parseHexColor, invalidColorMessage } from '../lib/color.js';
 
 // ============ CANVAS ============
 
@@ -457,6 +458,28 @@ program
     console.log(typeof res === 'string' ? res : JSON.stringify(res));
   });
 
+/**
+ * Plugin code for `set text`: load every font the node uses, then write. `t.fontName` is
+ * `figma.mixed` on a text with more than one style run, and loading that Symbol rejected —
+ * for every target in the loop, not only the mixed one.
+ */
+export function setTextCode(text, selectorCode) {
+  return `(async () => {
+      ${selectorCode}
+      if (targets.length === 0) throw new Error('No text nodes matched');
+      const results = [];
+      for (const t of targets) {
+        const fonts = t.fontName === figma.mixed
+          ? [...new Set(t.getRangeAllFontNames(0, t.characters.length).map(f => JSON.stringify(f)))].map(f => JSON.parse(f))
+          : [t.fontName];
+        for (const f of fonts) await figma.loadFontAsync(f);
+        t.characters = ${JSON.stringify(text)};
+        results.push({ id: t.id, name: t.name });
+      }
+      return results;
+    })()`;
+}
+
 // ============ SET ============
 
 const set = program
@@ -469,6 +492,9 @@ set
   .option('-n, --node <id>', 'Node ID (uses selection if not set)')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern> (case-insensitive)')
   .action(async (color, options) => {
+    if (!color.startsWith('var:') && !parseHexColor(color)) {
+      console.error(chalk.red('✗ ' + invalidColorMessage(color))); process.exit(1);
+    }
     await checkConnection();
     // For fill, after the standard selector runs we walk into matched
     // containers (Groups, Frames) and expand to their fillable descendants
@@ -529,6 +555,9 @@ set
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .option('-w, --weight <n>', 'Stroke weight', '1')
   .action(async (color, options) => {
+    if (!color.startsWith('var:') && !parseHexColor(color)) {
+      console.error(chalk.red('✗ ' + invalidColorMessage(color))); process.exit(1);
+    }
     await checkConnection();
     const nodeSelector = buildNodeSelector(options);
 
@@ -732,17 +761,7 @@ set
          if (!root) throw new Error(${JSON.stringify(`Node not found: ${options.node}`)});
          const targets = root.type === 'TEXT' ? [root] :
            (typeof root.findAll === 'function' ? root.findAll(n => n.type === 'TEXT') : []);`;
-    const code = `(async () => {
-      ${selectorCode}
-      if (targets.length === 0) throw new Error('No text nodes matched');
-      const results = [];
-      for (const t of targets) {
-        await figma.loadFontAsync(t.fontName);
-        t.characters = ${JSON.stringify(text)};
-        results.push({ id: t.id, name: t.name });
-      }
-      return results;
-    })()`;
+    const code = setTextCode(text, selectorCode);
     try {
       const r = await daemonExec('eval', { code });
       console.log(chalk.green('✓'), `Updated text on ${r.length} node(s):`);

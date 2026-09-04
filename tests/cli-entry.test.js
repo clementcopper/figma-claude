@@ -29,3 +29,12 @@ describe('entry point', () => {
     assert.match(out, /Usage: .*create rect/);
   });
 });
+
+describe('colour arguments', () => {
+  it('set fill with a bad colour prints one line and exits 1, no stack trace', () => {
+    const { code, out } = run('set', 'fill', 'zzz');
+    assert.strictEqual(code, 1);
+    assert.match(out, /Invalid color "zzz"/);
+    assert.doesNotMatch(out, /at .*\.js:\d+/, 'no stack trace');
+  });
+});

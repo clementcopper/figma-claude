@@ -20,6 +20,7 @@ import { listBlocks, getBlock } from '../blocks/index.js';
 import { connectAdvice, inPanel } from './connection-help.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
 import { isOurDaemon } from './daemon-owner.js';
+import { parseHexColor, invalidColorMessage } from './color.js';
 import { extractGradient, extractMesh, buildMeshFromColors, buildFigmaPaint, buildCssString } from '../gradient-extractor.js';
 import {
   nullDevice, killPort, getPortPid, portHolderCommand, sleepAfterStop,
@@ -885,23 +886,9 @@ function isFigmaPatched() {
 
 // Helper: Hex to Figma RGB (handles both #RGB and #RRGGBB)
 function hexToRgb(hex) {
-  // Remove # if present
-  hex = hex.replace(/^#/, '');
-
-  // Expand 3-char hex to 6-char
-  if (hex.length === 3) {
-    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-  }
-
-  const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (!result) {
-    throw new Error(`Invalid hex color: #${hex}`);
-  }
-  return {
-    r: parseInt(result[1], 16) / 255,
-    g: parseInt(result[2], 16) / 255,
-    b: parseInt(result[3], 16) / 255
-  };
+  const c = parseHexColor(hex);
+  if (!c) throw new Error(invalidColorMessage(hex));
+  return { r: c.r, g: c.g, b: c.b };
 }
 
 // Helper: Check if value is a variable reference (var:name)
