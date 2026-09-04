@@ -137,7 +137,10 @@ public func pollFigma(healthTimeout: TimeInterval = 1.5,
 public final class FigmaWatcher {
     private let interval: TimeInterval
     private let probes: FigmaProbes
-    private let onChange: (FigmaSnapshot) -> Void
+    /// Called on the main queue whenever a poll differs from the last one. Settable, so the owner
+    /// can hand over a closure that captures it — a `let` would have to be passed before the
+    /// owner's own `super.init`.
+    public var onChange: (FigmaSnapshot) -> Void
     private let queue = DispatchQueue(label: "de.designdone.figmaclaude.figma-poll")
     private var timer: DispatchSourceTimer?
     private var firstPoll: DispatchSemaphore?
@@ -145,7 +148,7 @@ public final class FigmaWatcher {
     public private(set) var snapshot: FigmaSnapshot = .empty
 
     public init(interval: TimeInterval = 2.5, probes: FigmaProbes = FigmaProbes(),
-                onChange: @escaping (FigmaSnapshot) -> Void) {
+                onChange: @escaping (FigmaSnapshot) -> Void = { _ in }) {
         self.interval = interval
         self.probes = probes
         self.onChange = onChange

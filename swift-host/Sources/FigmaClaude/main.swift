@@ -233,8 +233,22 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     private var exitRecovery = ExitRecovery()
 
     private let statusLine = StatusRingLineView()
-    private var statusWatcher: StatusLineWatcher!
-    private var prompts: PromptDetector!
+    /// Draws whatever Claude Code last wrote for the active tab, and toasts once per crossing of
+    /// the clear marker — not on every poll: the ring's colour already tells the story, the toast
+    /// is the nudge. Reset when the fill dips back under the marker.
+    private lazy var statusWatcher = StatusLineWatcher { [weak self] tabId, snapshot in
+        guard let self, self.state.active?.id == tabId else { return }
+        self.statusLine.render(snapshot)
+        let marker = self.statusLine.contextThreshold
+        let danger = contextFillLevel(snapshot.usedPercent, marker: marker) == .danger
+        if danger && !self.markerDangerToasted {
+            self.markerDangerToasted = true
+            self.toolbar.toast("Context \(Int(snapshot.usedPercent.rounded()))% — /clear")
+        } else if !danger && self.markerDangerToasted {
+            self.markerDangerToasted = false
+        }
+    }
+    private lazy var prompts = PromptDetector { [weak self] _, _ in self?.refreshTabBar() }
     /// An action that touches the daemon or Figma is running; the menu is read-only until it ends.
     private var figmaBusy = false
     /// Whether the "should clear" toast has already fired for the current crossing of the
@@ -242,17 +256,19 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     private var markerDangerToasted = false
     private lazy var cli = resolveCli(appRoot: Bundle.main.bundlePath, configured: PanelConfig.load().figmaCli)
     private let container = TerminalColumn()
-    /// What the terminal column should be. The window has no other opinion about its width.
     private var state = TabState<TerminalTab>()
-    private let watcher: FigmaWatcher
+    /// `NSWorkspace` answers "is Figma running" from a list the system already keeps — no process
+    /// start every 2.5 seconds, which is what `pgrep -x Figma` would cost now that the toolbar
+    /// wants this on every poll rather than only when the menu opens.
+    private let watcher = FigmaWatcher(probes: FigmaProbes(figmaRunning: {
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.figma.Desktop" }
+    }))
 
     /// An explicit command from the command line, used by the probes in `Tools/`. It applies to
     /// the first tab only — every tab after it is a real panel tab.
-    private let commandOverride: [String]
+    private let commandOverride = Array(CommandLine.arguments.dropFirst())
 
     override init() {
-        commandOverride = Array(CommandLine.arguments.dropFirst())
-
         // Where the window was last time, pulled back onto an attached screen if the monitor it
         // was parked on is gone.
         let screens = NSScreen.screens.map {
@@ -266,17 +282,9 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         window = NSWindow(contentRect: frame,
                           styleMask: [.titled, .closable, .resizable, .miniaturizable],
                           backing: .buffered, defer: false)
-        var render: ((FigmaSnapshot) -> Void)?
-        // `NSWorkspace` answers "is Figma running" from a list the system already keeps — no
-        // process start every 2.5 seconds, which is what `pgrep -x Figma` would cost now that the
-        // toolbar wants this on every poll rather than only when the menu opens.
-        watcher = FigmaWatcher(probes: FigmaProbes(figmaRunning: {
-            NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.figma.Desktop"
-            }
-        })) { snapshot in render?(snapshot) }
         super.init()
-        render = { [weak self] snapshot in
+
+        watcher.onChange = { [weak self] snapshot in
             self?.toolbar.render(snapshot)
             self?.statusLine.renderSelection(snapshot.selection)
         }
@@ -350,7 +358,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         statusLine.onSelectionClick = { [weak self] in self?.insertSelection() }
         // Still the same stored value, still `contextMarker` in panel.json — only the way it is
         // set changed. The ring design has no handle to drag, so it is a number now.
-        statusLine.contextThreshold = PanelConfig.load().contextMarker
+        statusLine.contextThreshold = config.contextMarker
         statusLine.onThresholdChange = { [weak self] value in
             guard let self, updatePanelConfig(["contextMarker": value]) else { return }
             self.toolbar.toast("Clear threshold \(Int(value.rounded()))%")
@@ -361,22 +369,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             guard let tab = self?.state.active else { return }
             tab.view.send(txt: "\u{1b}")
         }
-        statusWatcher = StatusLineWatcher { [weak self] tabId, snapshot in
-            guard let self, self.state.active?.id == tabId else { return }
-            self.statusLine.render(snapshot)
-            // Toast once per crossing of the clear marker, not on every 2.5 s poll. The colour of
-            // the bar already tells the story; the toast is the nudge. Reset when it dips back.
-            let marker = self.statusLine.contextThreshold
-            let danger = contextFillLevel(snapshot.usedPercent, marker: marker) == .danger
-            if danger && !self.markerDangerToasted {
-                self.markerDangerToasted = true
-                self.toolbar.toast("Context \(Int(snapshot.usedPercent.rounded()))% — /clear")
-            } else if !danger && self.markerDangerToasted {
-                self.markerDangerToasted = false
-            }
-        }
         statusWatcher.start()
-        prompts = PromptDetector { [weak self] _, _ in self?.refreshTabBar() }
         toolbar.setDirectory(config.resolvedCwd() ?? NSHomeDirectory())
 
         if saved.x == nil { window.center() }
