@@ -20,7 +20,7 @@ CLI that controls Figma Desktop directly. No API key needed.
 | "list variables" | `figma-cli var list` |
 | "find nodes named X" | `figma-cli find "X"` |
 | "what's on canvas" | `figma-cli canvas info` |
-| "export as PNG/SVG" | `figma-cli export png` |
+| "export as PNG/SVG" | `figma-cli export screenshot -f png` / `export node <id> -f svg` |
 | "extract gradient from image" / "rebuild this gradient" | `figma-cli gradient extract <image>` |
 | "apply image gradient to a frame" | `figma-cli gradient extract <image> --apply-to <nodeId>` |
 | "match this mesh / blossom / aurora background" | `figma-cli gradient extract <image> --mode mesh --apply-to <frameId>` |
@@ -54,7 +54,7 @@ CLI that controls Figma Desktop directly. No API key needed.
 | "combine these into ONE component with several properties" (variant × size × state) | `figma-cli variants from auto --multi --name Button` |
 | "the file uses our shared token library" / "colors came in white after import" | `figma-cli extract --resolve-remote` |
 | "work on the OTHER open file" / commands hit the wrong file | `FIGMA_FILE="File name" figma-cli <command>` |
-| "combine existing components into a variant set" | `figma-cli prop combine <ids> --name Button` |
+| "combine existing components into a variant set" | `figma-cli component combine <ids> --name Button` |
 | "create a slot" | `figma-cli slot create "Name"` |
 | "list slots" | `figma-cli slot list` |
 | "reset slot" | `figma-cli slot reset` |

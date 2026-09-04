@@ -75,7 +75,10 @@ export function isInstalled(name) {
 }
 
 export function getInstalledPlugins() {
-  ensurePluginsDir();
+  // Listing must not create: this ran on every CLI start (misc.js loads plugins at import)
+  // and left ~/.figma-cli/plugins/ behind on machines that never installed one — including
+  // whoever ran `npm test`.
+  if (!existsSync(PLUGINS_DIR)) return [];
   const dirs = readdirSync(PLUGINS_DIR, { withFileTypes: true });
   return dirs
     .filter((d) => d.isDirectory() && existsSync(join(PLUGINS_DIR, d.name, 'plugin.json')))

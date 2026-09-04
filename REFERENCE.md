@@ -228,9 +228,6 @@ node src/index.js export-storybook "1:234"     # Storybook stories
 
 ```bash
 node src/index.js lint                         # Check all rules
-node src/index.js lint --fix                   # Auto-fix
-node src/index.js lint --rule color-contrast   # Specific rule
-node src/index.js lint --preset accessibility  # Use preset
 node src/index.js analyze colors               # Color usage
 node src/index.js analyze typography           # Typography
 node src/index.js analyze spacing              # Spacing

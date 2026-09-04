@@ -23,8 +23,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Syntax-check all source files
+        # Every tracked .js/.mjs outside app/ (own toolchain) — the old list named seven paths
+        # and left design-*.js, code-import/, platform.js, credentials.js and bin/*.mjs unchecked.
         run: |
-          for f in src/index.js src/lib/*.js src/commands/*.js src/daemon.js src/figma-client.js; do
+          git ls-files '*.js' '*.mjs' | grep -v '^app/' | while read -r f; do
             node --check "$f"
           done
 
