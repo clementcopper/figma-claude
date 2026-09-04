@@ -5,7 +5,8 @@
  * Newer Figma versions block --remote-debugging-port by default.
  */
 
-import { readFileSync, writeFileSync, accessSync, constants } from 'fs';
+import { readFileSync, writeFileSync, accessSync, constants, renameSync, unlinkSync } from 'fs';
+import { dirname, basename } from 'path';
 import { execSync } from 'child_process';
 import {
   getAsarPath as platformGetAsarPath,
@@ -100,30 +101,65 @@ export function patchFigma() {
     }
   }
 
+  patchAsarFile(asarPath);
+  resignApp(asarPath);
+  return true;
+}
+
+/** The .app bundle that owns an app.asar (…/Contents/Resources/app.asar → …/Figma.app). */
+export function appPathFromAsar(asarPath) {
+  return dirname(dirname(dirname(asarPath)));
+}
+
+// On macOS, re-sign the app we actually patched — not a hardcoded /Applications/Figma.app.
+function resignApp(asarPath) {
+  if (process.platform !== 'darwin') return;
+  try {
+    execSync(`codesign --force --deep --sign - ${JSON.stringify(appPathFromAsar(asarPath))}`, { stdio: 'ignore' });
+  } catch {
+    // Codesign might fail but the patch might still work
+  }
+}
+
+/**
+ * Write the archive through a temp file in the same directory and rename it into place.
+ * An in-place writeFileSync that was interrupted (crash, full disk) left a truncated app.asar
+ * and Figma would not start, with nothing to restore from; a rename either lands or not.
+ */
+function writeAsarAtomically(asarPath, content) {
+  const tmp = `${asarPath}.figma-cli-tmp`;
+  try {
+    writeFileSync(tmp, content);
+    renameSync(tmp, asarPath);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch {}
+    throw e;
+  }
+}
+
+/** Byte-patch one archive. Exported for the test, which runs it on a fake file. */
+export function patchAsarFile(asarPath) {
   const content = readFileSync(asarPath);
   const blockIndex = content.indexOf(BLOCK_STRING);
-
   if (blockIndex < 0) {
-    // Check if already patched
-    if (content.includes(PATCH_STRING)) {
-      return true; // Already patched
-    }
-    throw new Error('Could not find the string to patch. Figma version may be incompatible.');
+    if (content.includes(PATCH_STRING)) return true; // Already patched
+    throw new Error(`Could not find the string to patch in ${basename(asarPath)}. Figma version may be incompatible (unknown layout).`);
   }
-
-  // Apply patch
   PATCH_STRING.copy(content, blockIndex);
-  writeFileSync(asarPath, content);
+  writeAsarAtomically(asarPath, content);
+  return true;
+}
 
-  // On macOS, re-sign the app
-  if (process.platform === 'darwin') {
-    try {
-      execSync('codesign --force --deep --sign - /Applications/Figma.app', { stdio: 'ignore' });
-    } catch {
-      // Codesign might fail but patch might still work
-    }
+/** Reverse of patchAsarFile. */
+export function unpatchAsarFile(asarPath) {
+  const content = readFileSync(asarPath);
+  const patchIndex = content.indexOf(PATCH_STRING);
+  if (patchIndex < 0) {
+    if (content.includes(BLOCK_STRING)) return true; // Already in original state
+    throw new Error('Could not find the patched string. Figma may not have been patched by this tool.');
   }
-
+  BLOCK_STRING.copy(content, patchIndex);
+  writeAsarAtomically(asarPath, content);
   return true;
 }
 
@@ -137,30 +173,15 @@ export function unpatchFigma() {
     throw new Error('Cannot detect Figma installation path for this platform');
   }
 
-  const content = readFileSync(asarPath);
-  const patchIndex = content.indexOf(PATCH_STRING);
-
-  if (patchIndex < 0) {
-    // Check if already unpatched (original state)
-    if (content.includes(BLOCK_STRING)) {
-      return true; // Already in original state
-    }
-    throw new Error('Could not find the patched string. Figma may not have been patched by this tool.');
+  // The same write-access check patchFigma makes: without it a missing App Management
+  // permission surfaced as a raw EACCES.
+  if (!canPatchFigma()) {
+    throw new Error(process.platform === 'darwin'
+      ? 'No write access to Figma. Grant your terminal "App Management" (System Settings → Privacy & Security → App Management) and try again.'
+      : 'No write access to Figma. Try running as administrator.');
   }
-
-  // Restore original
-  BLOCK_STRING.copy(content, patchIndex);
-  writeFileSync(asarPath, content);
-
-  // On macOS, re-sign the app
-  if (process.platform === 'darwin') {
-    try {
-      execSync('codesign --force --deep --sign - /Applications/Figma.app', { stdio: 'ignore' });
-    } catch {
-      // Codesign might fail but unpatch might still work
-    }
-  }
-
+  unpatchAsarFile(asarPath);
+  resignApp(asarPath);
   return true;
 }
 
