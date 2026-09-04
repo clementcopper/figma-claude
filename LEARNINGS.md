@@ -139,6 +139,13 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **The daemon integration test flakes under full-suite load** (1 in ~5 `npm test` runs,
   never alone): the idle-timer and keep-alive cases race real timers against a loaded machine.
   Rerun before blaming a change; widen the windows if it recurs.
+- **A caller scan is the measurement a "dead code" claim needs.** The review agent counted
+  35 callerless `FigmaClient` methods; a scan over src, bin, tests, plugins, examples, app, docs
+  and skills found 80 (2249 lines, 35 of the 50 sync `getNodeById`). Run the scan, print the
+  list, ask before the delete — Daniel approved all 80 on the number.
+- **A first test on old code finds a bug in it.** `variables-export.js` had no test for
+  weeks; the first one read "SemiBold" as 700 because heaviest-first matching hit "bold"
+  inside "semibold". Longest match wins.
 - **A daemon can be integration-tested without Figma.** `tests/daemon-live.test.js` spawns
   `src/daemon.js` in Plugin Mode on a free port with a temp HOME for the token file; body cap,
   socket identity, hot-reload cleanup and the idle timer are all observable that way, and all
