@@ -106,11 +106,12 @@ describe('daemon idle timer', () => {
       // with the reset in front of it the traffic keeps it alive for the whole 4 s.
       const t0 = Date.now();
       let refusedAt = null;
-      while (Date.now() - t0 < 4000) {
+      while (Date.now() - t0 < 6000) {
         try { await fetch(`http://127.0.0.1:${d.port}/health`); } catch { refusedAt = Date.now() - t0; break; }
         await sleep(250);
       }
-      assert.ok(refusedAt !== null && refusedAt < 3500, `daemon was kept alive by 403 traffic (refused at ${refusedAt} ms)`);
+      // 1.2 s idle + the shutdown's own 3 s force-exit ceiling is the worst honest case.
+      assert.ok(refusedAt !== null && refusedAt < 4000, `daemon was kept alive by 403 traffic (refused at ${refusedAt} ms)`);
     } finally {
       d.stop();
     }

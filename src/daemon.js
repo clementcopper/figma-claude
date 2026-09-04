@@ -679,6 +679,10 @@ function shutdown() {
   if (cdpClient) cdpClient.close();
   if (pluginWs) pluginWs.close();
   httpServer.close(() => process.exit(0));
+  // Node 18: close() stops accepting but keeps serving open keep-alive sockets (fetch keeps
+  // one), so a shut-down daemon answered for another 3 s until the force exit. Node 19+ does
+  // this inside close(); on 18 it is a separate call.
+  if (typeof httpServer.closeIdleConnections === 'function') httpServer.closeIdleConnections();
   // Force exit after 3 seconds if graceful shutdown hangs
   setTimeout(() => process.exit(0), 3000);
 }
