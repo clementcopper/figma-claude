@@ -505,26 +505,15 @@ the content of `~/.figma-ds-cli/.daemon-token`). Paste it once; the plugin remem
 
 ### Command Support
 
-All commands work in both modes. In Safe Mode, commands use native Figma API instead of figma-use:
-
-| Command | Yolo Mode | Safe Mode |
-|---------|-----------|-----------|
-| `render` | figma-use | daemon (native API) |
-| `render-batch` | figma-use | daemon (native API) |
-| `node to-component` | figma-use | native API |
-| `node delete` | figma-use | native API |
-| `node tree` | figma-use | native API |
-| `node bindings` | figma-use | native API |
-| `lint` | figma-use | native API |
-| `analyze colors/typography/spacing/clusters` | figma-use | native API |
-| `export-jsx` | figma-use | native API |
-| `export-storybook` | figma-use | native API |
-| All other commands | daemon | daemon |
+Every command runs the same native Plugin API code in both modes; the daemon only decides
+whether it reaches Figma over CDP (Yolo) or through the plugin's WebSocket (Safe). The table
+that stood here listed `figma-use` as the Yolo path for eleven commands — that binary left in
+2.1.1, and the last three callers went on 2026-09-04.
 
 ### Tips for Safe Mode
 
 1. **Keep payloads smaller**: Break complex screens into multiple `render` calls
-2. **All commands work**: Native implementations match figma-use functionality
+2. **All commands work**: the same code runs in both modes
 3. **Timeout**: Both modes now have 60s timeout
 
 ### When render-batch fails
