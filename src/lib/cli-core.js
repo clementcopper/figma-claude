@@ -14,7 +14,7 @@ import { createServer } from 'http';
 import { FigJamClient } from '../figjam-client.js';
 import { FigmaClient } from '../figma-client.js';
 import * as apiDocs from '../api-docs.js';
-import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, getFigmaBinaryPath } from '../figma-patch.js';
+import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, parseCdpPort, getFigmaBinaryPath } from '../figma-patch.js';
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
 import { connectAdvice, inPanel } from './connection-help.js';
@@ -572,9 +572,14 @@ program.option('--port <number>', 'CDP port for Figma connection (default: 9222,
 
 program.hook('preAction', (thisCommand) => {
   const opts = thisCommand.opts();
-  if (opts.port) {
-    process.env.FIGMA_PORT = String(opts.port);
+  if (opts.port === undefined) return;
+  const port = parseCdpPort(opts.port);
+  if (port === null) {
+    // `--port abc` used to talk to 9222 without a word.
+    console.error(chalk.red(`✗ --port must be a number between 1 and 65535, got "${opts.port}"`));
+    process.exit(1);
   }
+  process.env.FIGMA_PORT = String(port);
 });
 
 // Helper: Prompt user

@@ -15,9 +15,17 @@ import {
 
 const DEFAULT_CDP_PORT = 9222;
 
+/** A whole port number in range, or null. `parseInt` took "9333abc" as 9333 and "abc" as NaN → 9222, silently. */
+export function parseCdpPort(raw) {
+  if (raw === undefined || raw === null) return null;
+  const s = String(raw).trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return n > 0 && n < 65536 ? n : null;
+}
+
 export function getCdpPort() {
-  const envPort = parseInt(process.env.FIGMA_PORT, 10);
-  return (envPort > 0 && envPort < 65536) ? envPort : DEFAULT_CDP_PORT;
+  return parseCdpPort(process.env.FIGMA_PORT) ?? DEFAULT_CDP_PORT;
 }
 
 // The string that blocks remote debugging

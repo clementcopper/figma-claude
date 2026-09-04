@@ -34,3 +34,19 @@ describe('getCdpPort', () => {
     assert.equal(getCdpPort(), 9222);
   });
 });
+
+describe('parseCdpPort', () => {
+  // `--port abc` used to fall back to 9222 without a word, and `9333abc` became 9333.
+  it('accepts a whole number in range', async () => {
+    const { parseCdpPort } = await import(`../src/figma-patch.js?t=${Date.now()}`);
+    assert.equal(parseCdpPort('9333'), 9333);
+    assert.equal(parseCdpPort(9222), 9222);
+  });
+
+  it('returns null for anything else', async () => {
+    const { parseCdpPort } = await import(`../src/figma-patch.js?t=${Date.now()}`);
+    for (const bad of ['abc', '9333abc', '0', '70000', '', undefined, '12.5']) {
+      assert.equal(parseCdpPort(bad), null, `"${bad}" should be rejected`);
+    }
+  });
+});
