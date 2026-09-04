@@ -5,7 +5,7 @@
  * Linux: ~/.config/figma-cli/credentials (chmod 600)
  */
 
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -51,7 +51,8 @@ export function saveKey(name, value) {
   }
 
   if (PLATFORM === 'win32') {
-    execSync(`cmdkey /generic:${SERVICE}:${name} /user:${SERVICE} /pass:${value}`, { stdio: 'ignore' });
+    // argv, not a command line: a key with & or a space broke or injected before.
+    execFileSync('cmdkey', windowsCmdkeyArgs(SERVICE, name, value), { stdio: 'ignore' });
     return;
   }
 
@@ -128,35 +129,62 @@ export function maskKey(value) {
  * Prompt for a key securely (hidden input with asterisks).
  * Returns the entered value.
  */
+/** argv for `cmdkey` on Windows — the secret stays one argument. */
+export function windowsCmdkeyArgs(service, name, value) {
+  return [`/generic:${service}:${name}`, `/user:${service}`, `/pass:${value}`];
+}
+
+/**
+ * Apply one stdin chunk to the hidden prompt's state. A paste delivers the key AND its Enter
+ * in one chunk; comparing the whole chunk with '\r' never matched it, and the prompt hung.
+ * Pure, so the test can feed it chunks. `echoed` is how many asterisks to print (negative:
+ * how many to erase).
+ */
+export function consumeKeyChunk(input, chunk) {
+  let echoed = 0;
+  for (const ch of chunk) {
+    if (ch === '\r' || ch === '\n') return { input, done: true, echoed };
+    if (ch === '\u0003') return { input, done: false, interrupted: true, echoed };
+    if (ch === '\u007f' || ch === '\b') { if (input.length > 0) { input = input.slice(0, -1); echoed--; } continue; }
+    input += ch;
+    echoed++;
+  }
+  return { input, done: false, echoed };
+}
+
 export function promptKeySecure(questionText) {
   return new Promise((resolve) => {
     process.stdout.write(questionText);
     const stdin = process.stdin;
+    // Without a TTY there is no raw mode (setRawMode is undefined on a pipe): read a line.
+    if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
+      let buf = '';
+      stdin.setEncoding('utf-8');
+      stdin.on('data', (d) => { buf += d; });
+      stdin.on('end', () => resolve(buf.split(/\r?\n/)[0] || ''));
+      stdin.resume();
+      return;
+    }
     const wasRaw = stdin.isRaw;
     stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding('utf-8');
     let input = '';
-    const onData = (ch) => {
-      if (ch === '\r' || ch === '\n') {
+    const onData = (chunk) => {
+      const r = consumeKeyChunk(input, chunk);
+      input = r.input;
+      if (r.echoed > 0) process.stdout.write('*'.repeat(r.echoed));
+      else if (r.echoed < 0) process.stdout.write('\b \b'.repeat(-r.echoed));
+      if (r.interrupted) {
+        process.stdout.write('\n');
+        process.exit(0);
+      }
+      if (r.done) {
         stdin.setRawMode(wasRaw || false);
         stdin.pause();
         stdin.removeListener('data', onData);
         process.stdout.write('\n');
         resolve(input);
-      } else if (ch === '\u0003') {
-        // Ctrl+C
-        process.stdout.write('\n');
-        process.exit(0);
-      } else if (ch === '\u007f' || ch === '\b') {
-        // Backspace
-        if (input.length > 0) {
-          input = input.slice(0, -1);
-          process.stdout.write('\b \b');
-        }
-      } else {
-        input += ch;
-        process.stdout.write('*');
       }
     };
     stdin.on('data', onData);
