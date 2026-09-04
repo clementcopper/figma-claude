@@ -12,6 +12,7 @@ import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle } from './l
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
 import { KNOWN_PROPS, PROP_ALIASES } from './lib/jsx-props.js';
 import { coerceNumericProps } from './lib/jsx-numeric.js';
+import { matchRootFrame } from './lib/root-frame.js';
 
 /**
  * Visible fallback colors for shadcn semantic token names (Zinc light theme).
@@ -387,9 +388,15 @@ export class FigmaClient {
     const typeMatch = page.url.match(/figma\.com\/(design|file)\//);
     this.fileType = typeMatch ? typeMatch[1] : 'unknown';
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolveConn, rejectConn) => {
       this.ws = new WebSocket(page.webSocketDebuggerUrl);
       const executionContexts = [];
+      // The connect timer used to run on after a successful connect and held the process
+      // open for up to 15 s; settle clears it.
+      let settled = false;
+      const timer = setTimeout(() => reject(new Error('Connection timeout')), timeoutMs);
+      const resolve = (v) => { if (settled) return; settled = true; clearTimeout(timer); resolveConn(v); };
+      const reject = (e) => { if (settled) return; settled = true; clearTimeout(timer); rejectConn(e); };
 
       this.ws.on('open', async () => {
         try {
@@ -446,22 +453,59 @@ export class FigmaClient {
         }
 
         if (msg.id && this.callbacks.has(msg.id)) {
-          this.callbacks.get(msg.id)(msg);
+          const cb = this.callbacks.get(msg.id);
           this.callbacks.delete(msg.id);
+          cb.resolve(msg);
         }
       });
 
       this.ws.on('error', reject);
 
-      setTimeout(() => reject(new Error('Connection timeout')), timeoutMs);
+      // Figma quit or the socket dropped: without this, `this.ws` stayed set with
+      // readyState 3 and every pending send() waited forever.
+      this.ws.on('close', () => {
+        this.ws = null;
+        this.rejectPending(new Error('CDP connection closed'));
+        reject(new Error('CDP connection closed before Figma answered'));
+      });
     });
   }
 
-  send(method, params = {}) {
-    return new Promise((resolve) => {
+  /** Fail every request still waiting for an answer. */
+  rejectPending(error) {
+    for (const [id, cb] of this.callbacks) {
+      this.callbacks.delete(id);
+      if (cb.reject) cb.reject(error);
+    }
+  }
+
+  /**
+   * One CDP request. Rejects when the socket is not open, when it closes before the answer,
+   * and after `timeoutMs` (default 90 s, the daemon's own eval ceiling) — a promise that
+   * could never settle used to hang the direct CLI path indefinitely.
+   */
+  send(method, params = {}, { timeoutMs = 90000 } = {}) {
+    return new Promise((resolve, reject) => {
+      if (!this.ws || this.ws.readyState !== 1) {
+        reject(new Error('CDP socket is not open'));
+        return;
+      }
       const id = ++this.msgId;
-      this.callbacks.set(id, resolve);
-      this.ws.send(JSON.stringify({ id, method, params }));
+      const timer = setTimeout(() => {
+        this.callbacks.delete(id);
+        reject(new Error(`CDP request ${method} timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
+      this.callbacks.set(id, {
+        resolve: (msg) => { clearTimeout(timer); resolve(msg); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      try {
+        this.ws.send(JSON.stringify({ id, method, params }));
+      } catch (e) {
+        clearTimeout(timer);
+        this.callbacks.delete(id);
+        reject(e);
+      }
     });
   }
 
@@ -485,6 +529,12 @@ export class FigmaClient {
     }
 
     const result = await this.send('Runtime.evaluate', params);
+
+    // A protocol-level error (stale execution context after navigation, bad params) comes
+    // as { id, error } with no `result`; it used to fall through as a successful undefined.
+    if (result.error) {
+      throw new Error(result.error.message || 'CDP error ' + result.error.code);
+    }
 
     if (result.result?.exceptionDetails) {
       const error = result.result.exceptionDetails;
@@ -605,10 +655,10 @@ export class FigmaClient {
 
     // Parse each JSX to get props and children
     const parsed = jsxArray.map(jsx => {
-      const openMatch = jsx.match(/<Frame\s+([^>]*)>/);
+      const openMatch = matchRootFrame(jsx);
       if (!openMatch) throw new Error('Invalid JSX: must start with <Frame>');
-      const propsStr = openMatch[1];
-      const startIdx = openMatch.index + openMatch[0].length;
+      const propsStr = openMatch.propsStr;
+      const startIdx = openMatch.end;
       const children = this.extractContent(jsx.slice(startIdx), 'Frame');
       const props = this.parseProps(propsStr);
       const childElements = this.parseChildren(children);
@@ -895,13 +945,13 @@ export class FigmaClient {
    */
   async parseJSX(jsx, opts = {}) {
     // Find opening Frame tag
-    const openMatch = jsx.match(/<Frame\s+([^>]*)>/);
+    const openMatch = matchRootFrame(jsx);
     if (!openMatch) {
       throw new Error('Invalid JSX: must start with <Frame>');
     }
 
-    const propsStr = openMatch[1];
-    const startIdx = openMatch.index + openMatch[0].length;
+    const propsStr = openMatch.propsStr;
+    const startIdx = openMatch.end;
 
     // Find matching closing tag by counting open/close tags
     const children = this.extractContent(jsx.slice(startIdx), 'Frame');
@@ -1020,10 +1070,10 @@ export class FigmaClient {
    */
   validateTextAlignment(jsx) {
     try {
-      const openMatch = jsx.match(/<Frame\s+([^>]*)>/);
+      const openMatch = matchRootFrame(jsx);
       if (!openMatch) return [];
-      const startIdx = openMatch.index + openMatch[0].length;
-      const props = this.parseProps(openMatch[1]);
+      const startIdx = openMatch.end;
+      const props = this.parseProps(openMatch.propsStr);
       const children = this.parseChildren(this.extractContent(jsx.slice(startIdx), 'Frame'));
       return autoFillDefeatsAlign(props, children);
     } catch {
@@ -5604,8 +5654,9 @@ export const Default: Story = {};
   }
 
   close() {
+    this.rejectPending(new Error('CDP connection closed'));
     if (this.ws) {
-      this.ws.close();
+      try { this.ws.close(); } catch {}
       this.ws = null;
     }
   }
