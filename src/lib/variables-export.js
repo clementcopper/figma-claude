@@ -32,9 +32,9 @@ const WEIGHTS = [
 /**
  * The CSS weight behind a Figma style name.
  *
- * Order matters: `extrabold` contains `bold`, `semibold` contains `bold`, and matching the
- * shorter one first would report 700 for all three. Heaviest-first with a normalised needle
- * avoids that. Italic and width suffixes are dropped — they are not weights.
+ * `extrabold` and `semibold` both contain `bold`, so the longest matching name wins — not the
+ * heaviest, which mis-read semibold as 700. Italic and width suffixes are dropped — they are
+ * not weights.
  */
 export function weightFromStyle(style) {
   if (typeof style !== 'string' || !style.trim()) return null;
@@ -43,10 +43,15 @@ export function weightFromStyle(style) {
     .replace(/italic|oblique|condensed|expanded|narrow|wide/g, '')
     .replace(/[^a-z]/g, '');
   if (!needle) return 400; // "Italic" alone is a regular weight.
+  // Longest name wins: heaviest-first alone still read "semibold" as bold (600 < 700, and
+  // "semibold" contains "bold"). The 2026-09-05 test caught exactly that.
+  let best = null;
   for (const [weight, names] of WEIGHTS) {
-    if (names.some((name) => needle.includes(name))) return weight;
+    for (const name of names) {
+      if (needle.includes(name) && (!best || name.length > best.name.length)) best = { weight, name };
+    }
   }
-  return null;
+  return best ? best.weight : null;
 }
 
 /** `{r,g,b,a}` in Figma's 0..1 floats → `#rrggbb`, plus alpha only when it carries information. */

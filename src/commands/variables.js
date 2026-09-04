@@ -1,5 +1,6 @@
 // Commands: variables (extracted from index.js)
 import chalk from 'chalk';
+import { writeFileSync } from 'fs';
 import ora from 'ora';
 import { join } from 'path';
 import {
@@ -14,6 +15,7 @@ import {
   hexToRgb
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
+import { variablesExportCode, shapeExport, summarize } from '../lib/variables-export.js';
 import { COLOR_SNIPPET } from '../lib/plugin-color.js';
 
 // ============ VARIABLES ============
@@ -59,6 +61,28 @@ v.setValueForMode(modeId, figmaValue);
 return ${JSON.stringify(`Created ${type.toLowerCase()} variable: ${name}`)};
 })()`;
     figmaUse(evalArg(code), { silent: false });
+  });
+
+/** What `var export` prints: the shaped JSON, or a one-line summary. */
+export function varExportOutput(raw, options) {
+  const shaped = shapeExport(raw);
+  return options.json ? JSON.stringify(shaped, null, 2) : summarize(shaped);
+}
+
+variables
+  .command('export')
+  .description('Read every local collection, variable (aliases with target name AND resolved value) and text style out of the file')
+  .option('--json', 'Print the full JSON (pipe it into a file)')
+  .option('-o, --output <file>', 'Write the JSON to a file')
+  .action(async (options) => {
+    await checkConnection();
+    const raw = await fastEval(variablesExportCode());
+    if (options.output) {
+      writeFileSync(options.output, JSON.stringify(shapeExport(raw), null, 2) + '\n');
+      console.log(chalk.green('✓ ' + summarize(shapeExport(raw)) + ' → ' + options.output));
+      return;
+    }
+    console.log(varExportOutput(raw, options));
   });
 
 variables
