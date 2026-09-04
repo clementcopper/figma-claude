@@ -1,5 +1,6 @@
 // Commands: misc (extracted from index.js)
 import chalk from 'chalk';
+import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import ora from 'ora';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -207,10 +208,10 @@ const sectionCmd = program
 
 sectionCmd
   .command('create <name> [nodeIds]')
-  .description('Create a section, optionally moving comma-separated node IDs into it')
+  .description(`Create a section, optionally moving nodes into it (${ID_LIST_HELP})`)
   .action(async (name, nodeIds) => {
     await checkConnection();
-    const ids = nodeIds ? JSON.stringify(nodeIds.split(',').map(s => s.trim())) : '[]';
+    const ids = JSON.stringify(parseIdList(nodeIds));
     const code = `(async () => {
       const section = figma.createSection();
       section.name = ${JSON.stringify(name)};
@@ -258,7 +259,7 @@ sectionCmd
   .description('Add comma-separated nodes into an existing section')
   .action(async (sectionId, nodeIds) => {
     await checkConnection();
-    const ids = JSON.stringify(nodeIds.split(',').map(s => s.trim()));
+    const ids = JSON.stringify(parseIdList(nodeIds));
     const code = `(async () => {
       const s = await figma.getNodeByIdAsync(${JSON.stringify(sectionId)});
       if (!s) throw new Error(${JSON.stringify(`Section not found: ${sectionId}`)});
@@ -490,11 +491,11 @@ propCmd
 
 componentCmd
   .command('combine <ids>')
-  .description('Combine components (comma-separated IDs) into a single variant set')
+  .description(`Combine components into a single variant set (${ID_LIST_HELP})`)
   .option('-n, --name <name>', 'Name for the resulting component set', 'ComponentSet')
   .action(async (ids, options) => {
     await checkConnection();
-    const idArr = ids.split(',').map(s => s.trim());
+    const idArr = parseIdList(ids);
     const code = `(async () => {
       const components = [];
       for (const id of ${JSON.stringify(idArr)}) {

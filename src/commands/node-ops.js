@@ -1,5 +1,6 @@
 // Commands: node-ops (extracted from index.js)
 import chalk from 'chalk';
+import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import {
   program,
   checkConnection,
@@ -164,7 +165,7 @@ node
     // connection took the SLOWER path. Since every component creation ends in
     // a to-component call, that spawn was on the hot path.
     const code = `(async () => {
-      const ids = ${JSON.stringify(nodeIds)};
+      const ids = ${JSON.stringify(parseIdList(nodeIds))};
       const converted = [], skipped = [];
       for (const id of ids) {
         const node = await figma.getNodeByIdAsync(id);
@@ -207,7 +208,7 @@ node
 
     // Native in both modes (see to-component above).
     const code = `(async () => {
-      const ids = ${JSON.stringify(nodeIds)};
+      const ids = ${JSON.stringify(parseIdList(nodeIds))};
       const deleted = [], missing = [];
       for (const id of ids) {
         const node = await figma.getNodeByIdAsync(id);

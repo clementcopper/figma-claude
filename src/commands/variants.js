@@ -1,5 +1,6 @@
 // Commands: variants (extracted from index.js)
 import chalk from 'chalk';
+import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import ora from 'ora';
 import { join } from 'path';
 import { listComponents, getComponent, getAllComponents, getVariety, VISUAL_COMPONENTS } from '../shadcn.js';
@@ -205,7 +206,7 @@ const variantsCmd = program
 
 variantsCmd
   .command('from <ids>')
-  .description('Combine frames/components into a Variant Set. <ids> is a comma list, "selection", or "auto" (all page-level nodes already named prop=value).')
+  .description(`Combine frames/components into a Variant Set. <ids> is a list (${ID_LIST_HELP}), "selection", or "auto" (all page-level nodes already named prop=value).`)
   .option('-p, --property <name>', 'Variant property name (e.g., Size, State, Color)')
   .option('-v, --values <values>', 'Comma-separated variant values matching the IDs (e.g., Small,Medium,Large)')
   .option('-m, --multi', 'Multi-axis: keep each node\'s existing "prop=value, prop2=value2" name and derive ALL properties from it')
@@ -216,7 +217,7 @@ variantsCmd
     const source = ids.trim().toLowerCase();
     const idArr = (source === 'selection' || source === 'auto')
       ? []
-      : ids.split(',').map(s => s.trim()).filter(Boolean);
+      : parseIdList(ids);
     const valueArr = options.values
       ? options.values.split(',').map(s => s.trim()).filter(Boolean)
       : [];

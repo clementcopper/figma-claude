@@ -21,6 +21,7 @@ import { connectAdvice, inPanel } from './connection-help.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
 import { isOurDaemon } from './daemon-owner.js';
 import { parseHexColor, invalidColorMessage } from './color.js';
+import { parseIdList } from './id-list.js';
 import { extractGradient, extractMesh, buildMeshFromColors, buildFigmaPaint, buildCssString } from '../gradient-extractor.js';
 import {
   nullDevice, killPort, getPortPid, portHolderCommand, sleepAfterStop,
@@ -179,7 +180,7 @@ function buildNodeSelector(options, { filterExpr = '' } = {}) {
        const nodes = figma.currentPage.findAll(n => ${filter}typeof n.name === 'string' && n.name.toLowerCase().includes(__pat));`;
   }
   if (options.node) {
-    const ids = String(options.node).split(/[\s,]+/).filter(Boolean);
+    const ids = parseIdList(options.node);
     if (ids.length === 1) {
       return `const __n = await figma.getNodeByIdAsync(${JSON.stringify(ids[0])}); const nodes = __n ? [__n] : [];`;
     }

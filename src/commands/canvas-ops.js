@@ -779,7 +779,7 @@ set
   .option('-p, --padding <n>', 'Uniform padding')
   .option('--px <n>', 'Horizontal padding (overrides --padding for left/right)')
   .option('--py <n>', 'Vertical padding (overrides --padding for top/bottom)')
-  .option('-n, --node <id>', 'Apply to this node ID (or comma-separated list of IDs)')
+  .option('-n, --node <id>', 'Apply to this node ID (or a list: commas or spaces)')
   .option('-q, --query <pattern>', 'Apply to all FRAME/COMPONENT nodes whose name contains <pattern>')
   .option('--sizing <mode>', 'Container sizing: hug (default), fill, fixed', 'hug')
   .option('--align <a>', 'Children alignment: start | center | end | space-between', 'start')
@@ -852,7 +852,7 @@ return 'Auto-layout applied to ' + count + ' frame(s)';
 program
   .command('pin <edge>')
   .description('Pin node(s) to a parent edge with an edge-relative offset. Edges: left | right | top | bottom | top-left | top-right | bottom-left | bottom-right | center-x | center-y | stretch-x | stretch-y | scale-x | scale-y')
-  .option('-n, --node <id>', 'Node ID (or comma-separated list)')
+  .option('-n, --node <id>', 'Node ID (or a list: commas or spaces)')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .option('-o, --offset <n>', 'Offset from the edge in px (default: 0). For top-right etc. it applies to the FIRST edge; use --offset-x / --offset-y to split.')
   .option('--offset-x <n>', 'Horizontal offset (overrides --offset on the horizontal axis)')
@@ -1032,7 +1032,7 @@ program
   .command('use <collection>')
   .alias('theme')
   .description('Switch variable bindings to a target collection. Re-binds every bound variable on the selection (or --node, or --all) to the same-named variable in <collection>.')
-  .option('-n, --node <id>', 'Node ID (or comma-separated list of IDs)')
+  .option('-n, --node <id>', 'Node ID (or a list: commas or spaces)')
   .option('-a, --all', 'Apply to every node on the current page (not just selection)')
   .option('--dry-run', 'Print what would be rebound, don\'t modify anything')
   .action(async (collectionName, options) => {

@@ -9,6 +9,7 @@
 //   2. the daemon's top-level-return auto-wrap is flaky on if-statement returns,
 //      so every eval body is wrapped in an explicit async IIFE (evalBody()).
 import chalk from 'chalk';
+import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import ora from 'ora';
 import { readFileSync } from 'fs';
 import { program, checkConnection, fastEval } from '../lib/cli-core.js';
@@ -255,7 +256,7 @@ motion
   .option('-e, --ease <ease>', 'easing', 'ease-out')
   .action(async (ids, options) => {
     await checkConnection();
-    const list = ids.split(',').map((s) => s.trim()).filter(Boolean);
+    const list = parseIdList(ids);
     if (list.length === 0) { console.log(chalk.red('✗ no node ids given')); process.exitCode = 1; return; }
     const optionsError = staggerOptionsError(options);
     if (optionsError) { console.log(chalk.red('✗ ' + optionsError)); process.exitCode = 1; return; }

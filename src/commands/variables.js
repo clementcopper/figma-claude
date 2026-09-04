@@ -1,5 +1,6 @@
 // Commands: variables (extracted from index.js)
 import chalk from 'chalk';
+import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import { writeFileSync } from 'fs';
 import ora from 'ora';
 import { join } from 'path';
@@ -388,15 +389,10 @@ variables
 
 program
   .command('delete-batch <nodeIds>')
-  .description('Delete multiple nodes at once (comma-separated IDs or JSON array)')
+  .description(`Delete multiple nodes at once (${ID_LIST_HELP})`)
   .action((nodeIds) => {
     checkConnectionSync();
-    let ids;
-    try {
-      ids = JSON.parse(nodeIds);
-    } catch {
-      ids = nodeIds.split(',').map(s => s.trim());
-    }
+    const ids = parseIdList(nodeIds);
 
     const code = `(async () => {
 const ids = ${JSON.stringify(ids)};
