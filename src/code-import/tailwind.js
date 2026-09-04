@@ -8,6 +8,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { resolve, basename, dirname } from 'node:path';
+import { valueToHex } from './css.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ function flattenColors(obj, prefix = '') {
     const key = prefix ? `${prefix}-${k}` : k;
     if (typeof v === 'function') continue; // skip functions silently
     if (typeof v === 'string') {
-      if (!SKIP_COLORS.has(v) && isColorValue(v)) out[key] = v;
+      if (!SKIP_COLORS.has(v) && isColorValue(v)) { const hex = valueToHex(v); if (hex) out[key] = hex; }
     } else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
       Object.assign(out, flattenColors(v, key));
     }
@@ -50,6 +51,10 @@ export async function parseTailwindConfig(configPath) {
   const abs = resolve(configPath);
   const url = pathToFileURL(abs).href;
 
+  // Importing executes the config in this process. It is the user's own file by the
+  // command's contract, but `import` is also advertised for adopting someone else's design
+  // system — so say what is about to run.
+  console.error(`→ executing ${abs} to read its theme`);
   let mod;
   try {
     mod = await import(url);

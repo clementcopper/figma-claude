@@ -5,6 +5,7 @@
  * (so color.brand.primary → brand-primary). Dimension buckets are inferred
  * from the path (radius/spacing) — everything else dimensional is ignored.
  */
+import { valueToHex } from './css.js';
 const toPx = (v) => {
   if (typeof v === 'number') return v;
   const m = String(v).match(/^([\d.]+)(px|rem)?$/);
@@ -13,6 +14,8 @@ const toPx = (v) => {
 };
 
 const isColor = (v) => typeof v === 'string' && /^(#|rgb|hsl)/.test(v.trim());
+// rgb()/hsl()/#fff went through unconverted, and the importer then set nothing for them.
+const normalizeColor = (v) => valueToHex(v) || (isColor(v) ? null : v);
 
 export function parseW3cTokens(jsonText) {
   let doc;
@@ -55,7 +58,7 @@ export function parseW3cTokens(jsonText) {
     if (/^colors?$/i.test(parts[0]) && parts.length > 1) parts.shift();
     const name = parts.join('-');
     if (tok.type === 'color' || isColor(value)) {
-      if (isColor(value)) tokens.color[name] = value;
+      if (isColor(value)) { const hex = normalizeColor(value); if (hex) tokens.color[name] = hex; }
       continue;
     }
     if (tok.type === 'typography' || (value && typeof value === 'object' && 'fontFamily' in value)) {

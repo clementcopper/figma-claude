@@ -205,12 +205,16 @@ function extractDeclarations(css) {
       continue;
     }
 
-    // Look for --name: value;
+    // Look for --name: value; — only where a declaration can start (after '{' or ';'),
+    // and only if the ':' comes before the next brace. `.btn--primary {` used to be read
+    // as a declaration, the colon search ran across the rest of the file, and the block
+    // stack was off by one for everything after it (a .dark block imported as light).
     if (ch === '-' && stripped[pos + 1] === '-') {
-      const declStart = pos;
-      // Find the end of this declaration (next ';' or '}')
+      const prev = stripped.slice(0, pos).replace(/\s+$/, '').slice(-1);
+      const atStatementStart = prev === '' || prev === '{' || prev === ';' || prev === '}';
       let colonPos = stripped.indexOf(':', pos);
-      if (colonPos === -1) { pos++; continue; }
+      const nextBrace = stripped.slice(pos).search(/[{}]/);
+      if (!atStatementStart || colonPos === -1 || (nextBrace !== -1 && pos + nextBrace < colonPos)) { pos++; continue; }
       const name = stripped.slice(pos + 2, colonPos).trim();
 
       // Find value end: next ';' not inside parens, or '}'
@@ -383,7 +387,7 @@ export function parseCss(cssText) {
  * Try to convert a CSS value string to a hex color.
  * Returns #rrggbb string or null.
  */
-function valueToHex(val) {
+export function valueToHex(val) {
   const v = val.trim();
 
   // Hex color

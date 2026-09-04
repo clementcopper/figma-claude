@@ -124,7 +124,7 @@ test('storybook: v6 stories.json shape also parses', () => {
 
 import { convert, detectSourceType } from '../src/code-import/index.js';
 import { parseDesignMd } from '../src/design-md.js';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 test('detect: filenames and content sniffing', () => {
@@ -168,4 +168,33 @@ test('convert: storybook components survive designMd file roundtrip', async () =
     parsed.meta.components.includes('Button'),
     `Expected 'Button' in parsed components: ${JSON.stringify(parsed.meta.components)}`
   );
+});
+
+// 2026-09-05: rgb()/hsl()/#fff values passed through w3c and tailwind unconverted, and
+// design-md's importer then set nothing for them — every such variable stayed black, silently.
+test('w3c: rgb(), hsl() and 3-digit hex become 6-digit hex', () => {
+  const { tokens } = parseW3cTokens(JSON.stringify({ color: { brand: { $value: 'rgb(255, 0, 0)' }, alt: { $value: 'hsl(200 50% 50%)' }, short: { $value: '#fff' } } }));
+  assert.equal(tokens.color.brand, '#ff0000');
+  assert.equal(tokens.color.short, '#ffffff');
+  assert.match(tokens.color.alt, /^#[0-9a-f]{6}$/);
+});
+
+test('tailwind: rgb() and 3-digit hex colours are normalised too', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tw-'));
+  const file = join(dir, 'tailwind.config.mjs');
+  writeFileSync(file, "export default { theme: { colors: { red: 'rgb(255,0,0)', w: '#fff' } } };");
+  try {
+    const { tokens } = await parseTailwindConfig(file);
+    assert.equal(tokens.color.red, '#ff0000');
+    assert.equal(tokens.color.w, '#ffffff');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// A BEM class like .btn--primary starts with "--" as far as the scanner was concerned: it
+// searched for ':' across the rest of the file, jumped past the block's '{', and the stack
+// was off by one for everything after — a .dark block's colours imported as light.
+test('css: "--" inside a selector does not corrupt the block stack', () => {
+  const css = `.btn--primary { color: red; }\n:root { --brand: #ff0000; }\n.dark { --brand: #00ff00; }`;
+  const { tokens } = parseCss(css);
+  assert.equal(tokens.color.brand, '#ff0000', 'the light value wins, the dark block is recognised as dark');
 });
