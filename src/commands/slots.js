@@ -48,7 +48,7 @@ slot
 
       const slot = comp.createSlot(${JSON.stringify(name)});
       try { slot.name = ${JSON.stringify(name)}; } catch (e) {}
-      slot.layoutMode = '${flex}';
+      slot.layoutMode = ${JSON.stringify(flex)};
       slot.itemSpacing = ${gap};
       slot.paddingTop = ${padding};
       slot.paddingBottom = ${padding};
@@ -84,7 +84,7 @@ slot
     await checkConnection();
 
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       let comp;
 
       if (targetId) {
@@ -170,7 +170,7 @@ slot
     await checkConnection();
 
     const code = `(async () => {
-      const targetId = ${options.node ? `"${options.node}"` : 'null'};
+      const targetId = ${JSON.stringify(options.node || null)};
       let comp;
 
       if (targetId) {
@@ -243,7 +243,7 @@ slot
     await checkConnection();
 
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       let node;
 
       if (targetId) {
@@ -304,7 +304,7 @@ slot
     const slotName = options.name || 'Slot';
 
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       let frame;
 
       if (targetId) {

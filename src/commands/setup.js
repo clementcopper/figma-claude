@@ -680,7 +680,7 @@ program
         await new Promise(r => setTimeout(r, 1000));
         try {
           const pluginToken = getDaemonToken();
-          const pluginHeader = pluginToken ? ` -H "X-Daemon-Token: ${pluginToken}"` : '';
+          const pluginHeader = pluginToken ? ` -H ${JSON.stringify(`X-Daemon-Token: ${pluginToken}`)}` : '';
           const healthRes = execSync(`curl -s${pluginHeader} http://127.0.0.1:${DAEMON_PORT}/health`, { encoding: 'utf8' });
           const health = JSON.parse(healthRes);
           if (health.plugin) {

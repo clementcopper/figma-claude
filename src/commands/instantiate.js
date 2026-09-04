@@ -103,7 +103,7 @@ program
       process.exit(1);
     }
     console.log(chalk.green(
-      `✓ Instanced "${spec.name}" via ${res.via}` +
+      `✓ Instanced ${JSON.stringify(spec.name)} via ${res.via}` +
       (res.count > 1 ? ` ×${res.count} → ${res.ids.join(', ')}` : ` → ${res.id}`)
     ));
     process.exit(0);

@@ -77,12 +77,12 @@ program
     smartX += 100;
 
     // Create image from base64
-    const image = await figma.createImageAsync("${dataUrl}");
+    const image = await figma.createImageAsync(${JSON.stringify(dataUrl)});
     const { width, height } = await image.getSizeAsync();
 
     // Create rectangle with image fill
     const rect = figma.createRectangle();
-    rect.name = "${options.name} - ${url}";
+    rect.name = ${JSON.stringify(`${options.name} - ${url}`)};
     rect.resize(width, height);
     rect.x = smartX;
     rect.y = 0;
@@ -455,7 +455,7 @@ const { chromium } = require('playwright');
 
 ${[...fonts].map(f => {
   const { family, style } = JSON.parse(f);
-  return `  await loadFont("${family}", "${style}");`;
+  return `  await loadFont(${JSON.stringify(family)}, ${JSON.stringify(style)});`;
 }).join('\n')}
 
   // Smart positioning
@@ -465,7 +465,7 @@ ${[...fonts].map(f => {
 
   // Main desktop frame
   const main = figma.createFrame();
-  main.name = "${options.name}";
+  main.name = ${JSON.stringify(options.name)};
   main.resize(${options.width}, ${options.height});
   main.fills = [{ type: "SOLID", color: ${hexToRgbCodeStr(data.bodyBg)} }];
   main.x = smartX;
@@ -485,8 +485,8 @@ ${[...fonts].map(f => {
           figmaCode += `
   // ${el.type}: ${text.slice(0, 30)}
   const t${i} = figma.createText();
-  t${i}.fontName = getFont("${fontFamily}", "${fontStyle}");
-  t${i}.characters = "${text}";
+  t${i}.fontName = getFont(${JSON.stringify(fontFamily)}, ${JSON.stringify(fontStyle)});
+  t${i}.characters = ${JSON.stringify(text)};
   t${i}.fontSize = ${el.fontSize || 16};
   t${i}.fills = [{ type: "SOLID", color: ${hexToRgbCodeStr(el.color)} }];
   t${i}.x = ${el.x};
@@ -499,7 +499,7 @@ ${[...fonts].map(f => {
           figmaCode += `
   // Button: ${text.slice(0, 30)}
   const btn${i} = figma.createFrame();
-  btn${i}.name = "${text.slice(0, 20)}";
+  btn${i}.name = ${JSON.stringify(text.slice(0, 20))};
   btn${i}.resize(${el.w}, ${el.h});
   btn${i}.x = ${el.x};
   btn${i}.y = ${el.y};
@@ -510,8 +510,8 @@ ${[...fonts].map(f => {
   btn${i}.primaryAxisAlignItems = "CENTER";
   btn${i}.counterAxisAlignItems = "CENTER";
   const btnTxt${i} = figma.createText();
-  btnTxt${i}.fontName = getFont("${fontFamily}", "${fontStyle}");
-  btnTxt${i}.characters = "${text}";
+  btnTxt${i}.fontName = getFont(${JSON.stringify(fontFamily)}, ${JSON.stringify(fontStyle)});
+  btnTxt${i}.characters = ${JSON.stringify(text)};
   btnTxt${i}.fontSize = ${el.fontSize || 14};
   btnTxt${i}.fills = [{ type: "SOLID", color: ${hexToRgbCodeStr(el.color)} }];
   btn${i}.appendChild(btnTxt${i});
@@ -533,8 +533,8 @@ ${[...fonts].map(f => {
   input${i}.counterAxisAlignItems = "CENTER";
   input${i}.paddingLeft = ${el.paddingLeft || 12};
   const ph${i} = figma.createText();
-  ph${i}.fontName = getFont("${fontFamily}", "Regular");
-  ph${i}.characters = "${placeholder}";
+  ph${i}.fontName = getFont(${JSON.stringify(fontFamily)}, "Regular");
+  ph${i}.characters = ${JSON.stringify(placeholder)};
   ph${i}.fontSize = ${el.fontSize || 14};
   ph${i}.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
   input${i}.appendChild(ph${i});
@@ -545,7 +545,7 @@ ${[...fonts].map(f => {
 
       figmaCode += `
   figma.viewport.scrollAndZoomIntoView([main]);
-  return "Recreated ${data.elements.length} elements from ${url}";
+  return ${JSON.stringify(`Recreated ${data.elements.length} elements from ${url}`)};
 })()`;
 
       // Step 3: Execute via daemon (fast) or direct connection (fallback)
@@ -655,7 +655,7 @@ program
     if (!node) return 'Error: No node selected';
 
     // Create new image from base64
-    const image = await figma.createImageAsync("${dataUrl}");
+    const image = await figma.createImageAsync(${JSON.stringify(dataUrl)});
 
     // Replace fills with new image
     if ('fills' in node) {

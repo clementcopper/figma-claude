@@ -93,7 +93,7 @@ bind
 ${nodeSelector}
 const vars = await figma.variables.getLocalVariablesAsync();
 const v = vars.find(v => v.name === ${JSON.stringify(varName)} || v.name.endsWith(${JSON.stringify('/' + varName)}));
-if (!v) return 'Variable not found: ${varName}';
+if (!v) return ${JSON.stringify(`Variable not found: ${varName}`)};
 if (nodes.length === 0) return 'No node selected';
 nodes.forEach(n => {
   if ('fills' in n && n.fills.length > 0) {
@@ -117,7 +117,7 @@ bind
 ${nodeSelector}
 const vars = await figma.variables.getLocalVariablesAsync();
 const v = vars.find(v => v.name === ${JSON.stringify(varName)} || v.name.endsWith(${JSON.stringify('/' + varName)}));
-if (!v) return 'Variable not found: ${varName}';
+if (!v) return ${JSON.stringify(`Variable not found: ${varName}`)};
 if (nodes.length === 0) return 'No node selected';
 nodes.forEach(n => {
   if ('strokes' in n) {
@@ -142,7 +142,7 @@ bind
 ${nodeSelector}
 const vars = await figma.variables.getLocalVariablesAsync();
 const v = vars.find(v => v.name === ${JSON.stringify(varName)} || v.name.endsWith(${JSON.stringify('/' + varName)}));
-if (!v) return 'Variable not found: ${varName}';
+if (!v) return ${JSON.stringify(`Variable not found: ${varName}`)};
 if (nodes.length === 0) return 'No node selected';
 nodes.forEach(n => {
   if ('cornerRadius' in n) n.setBoundVariable('cornerRadius', v);
@@ -163,7 +163,7 @@ bind
 ${nodeSelector}
 const vars = await figma.variables.getLocalVariablesAsync();
 const v = vars.find(v => v.name === ${JSON.stringify(varName)} || v.name.endsWith(${JSON.stringify('/' + varName)}));
-if (!v) return 'Variable not found: ${varName}';
+if (!v) return ${JSON.stringify(`Variable not found: ${varName}`)};
 if (nodes.length === 0) return 'No node selected';
 nodes.forEach(n => {
   if ('itemSpacing' in n) n.setBoundVariable('itemSpacing', v);
@@ -188,7 +188,7 @@ bind
 ${nodeSelector}
 const vars = await figma.variables.getLocalVariablesAsync();
 const v = vars.find(v => v.name === ${JSON.stringify(varName)} || v.name.endsWith(${JSON.stringify('/' + varName)}));
-if (!v) return 'Variable not found: ${varName}';
+if (!v) return ${JSON.stringify(`Variable not found: ${varName}`)};
 if (nodes.length === 0) return 'No node selected';
 const sides = ${JSON.stringify(sides)};
 nodes.forEach(n => {
@@ -275,7 +275,7 @@ else {
     if ('layoutSizingVertical' in n) n.layoutSizingVertical = 'FIXED';
     if ('resize' in n) n.resize(${width}, ${h});
   });
-  'Set fixed ${width}x${h} on ' + nodes.length + ' elements';
+  ${JSON.stringify(`Set fixed ${width}x${h} on `)} + nodes.length + ' elements';
 }
 `;
     figmaUse(evalArg(code), { silent: false });
@@ -319,7 +319,7 @@ const nodes = figma.currentPage.selection;
 if (nodes.length === 0) 'No selection';
 else {
   nodes.forEach(n => { if ('itemSpacing' in n) n.itemSpacing = ${value}; });
-  'Set gap ${value} on ' + nodes.length + ' elements';
+  ${JSON.stringify(`Set gap ${value} on `)} + nodes.length + ' elements';
 }
 `;
     figmaUse(evalArg(code), { silent: false });
@@ -337,10 +337,10 @@ const nodes = figma.currentPage.selection;
 if (nodes.length === 0) 'No selection';
 else {
   nodes.forEach(n => {
-    if ('primaryAxisAlignItems' in n) n.primaryAxisAlignItems = '${val}';
-    if ('counterAxisAlignItems' in n) n.counterAxisAlignItems = '${val}';
+    if ('primaryAxisAlignItems' in n) n.primaryAxisAlignItems = ${JSON.stringify(val)};
+    if ('counterAxisAlignItems' in n) n.counterAxisAlignItems = ${JSON.stringify(val)};
   });
-  'Aligned ' + nodes.length + ' elements to ${alignment}';
+  'Aligned ' + nodes.length + ${JSON.stringify(` elements to ${alignment}`)};
 }
 `;
     figmaUse(evalArg(code), { silent: false });
@@ -367,7 +367,7 @@ program
     if (nodeId) {
       let code = `(async () => {
 const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-if (node) { node.remove(); return 'Deleted: ${nodeId}'; } else { return 'Node not found: ${nodeId}'; }
+if (node) { node.remove(); return ${JSON.stringify(`Deleted: ${nodeId}`)}; } else { return ${JSON.stringify(`Node not found: ${nodeId}`)}; }
 })()`;
       figmaUse(evalArg(code), { silent: false });
     } else {
@@ -499,7 +499,7 @@ set
           if (col && col.name.startsWith('shadcn')) { variable = v; break; }
         }
         if (!variable) variable = allVars.find(v => v.name === ${JSON.stringify(varName)});
-        if (!variable) return 'Variable ${varName} not found in any local collection';
+        if (!variable) return ${JSON.stringify(`Variable ${varName} not found in any local collection`)};
         ${nodeSelector}
         if (__fillNodes.length === 0) return 'No node found';
         const boundFill = (v) => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5 } }, 'color', v);
@@ -546,7 +546,7 @@ set
           if (col && col.name.startsWith('shadcn')) { variable = v; break; }
         }
         if (!variable) variable = allVars.find(v => v.name === ${JSON.stringify(varName)});
-        if (!variable) return 'Variable ${varName} not found in any local collection';
+        if (!variable) return ${JSON.stringify(`Variable ${varName} not found in any local collection`)};
         ${nodeSelector}
         if (nodes.length === 0) return 'No node found';
         const boundFill = (v) => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5 } }, 'color', v);
@@ -644,7 +644,7 @@ set
           n.y = origin.y + (orig[i].y - origin.y) * ${f};
         }
       }
-      return 'Scaled ' + count + ' element(s) by ${f}' + (origin ? ' (spacing scaled too)' : '');
+      return 'Scaled ' + count + ${JSON.stringify(` element(s) by ${f}`)} + (origin ? ' (spacing scaled too)' : '');
     })()`;
     try {
       const r = await daemonExec('eval', { code });
@@ -728,7 +728,7 @@ set
            (t.characters && t.characters.toLowerCase().includes(pattern)) ||
            matchesAncestor(t));`
       : `const root = await figma.getNodeByIdAsync(${JSON.stringify(options.node)});
-         if (!root) throw new Error('Node not found: ${options.node}');
+         if (!root) throw new Error(${JSON.stringify(`Node not found: ${options.node}`)});
          const targets = root.type === 'TEXT' ? [root] :
            (typeof root.findAll === 'function' ? root.findAll(n => n.type === 'TEXT') : []);`;
     const code = `(async () => {
@@ -790,7 +790,7 @@ const sel = nodes.filter(n => n.type === 'FRAME' || n.type === 'COMPONENT');
 if (sel.length === 0) { return 'No frame/component to apply autolayout to'; }
 let count = 0;
 for (const n of sel) {
-  n.layoutMode = '${layoutMode}';
+  n.layoutMode = ${JSON.stringify(layoutMode)};
   n.primaryAxisSizingMode = ${JSON.stringify(sizingMode)};
   n.counterAxisSizingMode = ${JSON.stringify(sizingMode)};
   n.primaryAxisAlignItems = ${JSON.stringify(primaryAxisAlign)};
@@ -1041,7 +1041,7 @@ program
       const targetCol = collections.find(c => c.name.toLowerCase() === targetQ)
                      || collections.find(c => c.name.toLowerCase().includes(targetQ));
       if (!targetCol) {
-        return 'Collection not found: ${target}. Available: ' + collections.map(c => c.name).join(', ');
+        return ${JSON.stringify(`Collection not found: ${target}. Available: `)} + collections.map(c => c.name).join(', ');
       }
 
       // Build name → variable map for the target collection
@@ -1385,7 +1385,7 @@ function search(node) {
   }
 }
 search(figma.currentPage);
-return results.length === 0 ? 'No nodes found matching "${name}"' : results.slice(0, ${options.limit}).map(r => r.id + ' [' + r.type + '] ' + r.name).join('\\n');
+return results.length === 0 ? 'No nodes found matching ' + ${JSON.stringify(name)} : results.slice(0, ${options.limit}).map(r => r.id + ' [' + r.type + '] ' + r.name).join('\\n');
 })()`;
     figmaUse(evalArg(code), { silent: false });
   });

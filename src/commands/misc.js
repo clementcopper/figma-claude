@@ -107,7 +107,7 @@ devCmd
     await checkConnection();
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-      if (!n) throw new Error('Node not found: ${nodeId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${nodeId}`)});
       if (typeof n.addDevResourceAsync !== 'function') throw new Error('Node does not support dev resources');
       await n.addDevResourceAsync(${JSON.stringify(url)}, ${JSON.stringify(options.name || '')});
       const all = await n.getDevResourcesAsync();
@@ -160,7 +160,7 @@ devCmd
     await checkConnection();
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-      if (!n) throw new Error('Node not found: ${nodeId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${nodeId}`)});
       if (typeof n.deleteDevResourceAsync !== 'function') throw new Error('Node does not support dev resources');
       await n.deleteDevResourceAsync(${JSON.stringify(url)});
       const all = await n.getDevResourcesAsync();
@@ -185,7 +185,7 @@ devCmd
     if (options.name) updateObj.name = options.name;
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-      if (!n) throw new Error('Node not found: ${nodeId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${nodeId}`)});
       if (typeof n.editDevResourceAsync !== 'function') throw new Error('Node does not support dev resources');
       await n.editDevResourceAsync(${JSON.stringify(currentUrl)}, ${JSON.stringify(updateObj)});
       return { id: n.id, name: n.name };
@@ -261,8 +261,8 @@ sectionCmd
     const ids = JSON.stringify(nodeIds.split(',').map(s => s.trim()));
     const code = `(async () => {
       const s = await figma.getNodeByIdAsync(${JSON.stringify(sectionId)});
-      if (!s) throw new Error('Section not found: ${sectionId}');
-      if (s.type !== 'SECTION') throw new Error('Not a section: ${sectionId}');
+      if (!s) throw new Error(${JSON.stringify(`Section not found: ${sectionId}`)});
+      if (s.type !== 'SECTION') throw new Error(${JSON.stringify(`Not a section: ${sectionId}`)});
       const ids = ${ids};
       for (const id of ids) {
         const n = await figma.getNodeByIdAsync(id);
@@ -313,14 +313,14 @@ gridCmd
 
     const grids = [];
     if (options.columns) {
-      grids.push(`{pattern:'COLUMNS',alignment:'${alignment}',count:${options.columns},gutterSize:${options.gutter},offset:${options.margin},color:${colorObj},visible:true}`);
+      grids.push(`{pattern:'COLUMNS',alignment:${JSON.stringify(alignment)},count:${options.columns},gutterSize:${options.gutter},offset:${options.margin},color:${colorObj},visible:true}`);
     }
     if (options.rows) {
-      grids.push(`{pattern:'ROWS',alignment:'${alignment}',count:${options.rows},gutterSize:${options.gutter},offset:${options.margin},color:${colorObj},visible:true}`);
+      grids.push(`{pattern:'ROWS',alignment:${JSON.stringify(alignment)},count:${options.rows},gutterSize:${options.gutter},offset:${options.margin},color:${colorObj},visible:true}`);
     }
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-      if (!n) throw new Error('Node not found: ${nodeId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${nodeId}`)});
       if (!('layoutGrids' in n)) throw new Error('Node does not support layout grids (must be FRAME, COMPONENT, or COMPONENT_SET)');
       const newGrids = [${grids.join(',')}];
       n.layoutGrids = ${options.append ? '[...n.layoutGrids, ...newGrids]' : 'newGrids'};
@@ -375,7 +375,7 @@ gridCmd
     await checkConnection();
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-      if (!n) throw new Error('Node not found: ${nodeId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${nodeId}`)});
       if (!('layoutGrids' in n)) throw new Error('Node does not support layout grids');
       n.layoutGrids = [];
       return { id: n.id, name: n.name };
@@ -422,7 +422,7 @@ propCmd
     }
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(componentId)});
-      if (!n) throw new Error('Node not found: ${componentId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${componentId}`)});
       if (typeof n.addComponentProperty !== 'function') throw new Error('Node is not a component or component set');
       const propName = n.addComponentProperty(${JSON.stringify(name)}, ${JSON.stringify(apiType)}, ${JSON.stringify(parsedDefault)});
       return { id: n.id, name: n.name, propName };
@@ -475,7 +475,7 @@ propCmd
     await checkConnection();
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(componentId)});
-      if (!n) throw new Error('Node not found: ${componentId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${componentId}`)});
       if (typeof n.deleteComponentProperty !== 'function') throw new Error('Node is not a component or component set');
       n.deleteComponentProperty(${JSON.stringify(propName)});
       return { id: n.id, name: n.name };
@@ -541,7 +541,7 @@ annotateCmd
       : `[await figma.getNodeByIdAsync(${JSON.stringify(options.node)})].filter(Boolean)`;
     const code = `(async () => {
       const nodes = ${targetSelector};
-      if (nodes.length === 0) throw new Error(${options.query ? `'No nodes matched query: ${options.query}'` : `'Node not found: ${options.node}'`});
+      if (nodes.length === 0) throw new Error(${JSON.stringify(options.query ? `No nodes matched query: ${options.query}` : `Node not found: ${options.node}`)});
       const results = [];
       for (const n of nodes) {
         if (!('annotations' in n)) continue;
@@ -604,7 +604,7 @@ annotateCmd
     await checkConnection();
     const code = `(async () => {
       const n = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-      if (!n) throw new Error('Node not found: ${nodeId}');
+      if (!n) throw new Error(${JSON.stringify(`Node not found: ${nodeId}`)});
       if (!('annotations' in n)) throw new Error('Node does not support annotations');
       n.annotations = [];
       return { id: n.id, name: n.name };

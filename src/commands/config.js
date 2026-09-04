@@ -97,7 +97,7 @@ ${options.radius ? `rect.cornerRadius = ${options.radius};` : ''}
 ${options.opacity ? `rect.opacity = ${options.opacity};` : ''}
 ${strokeCode ? strokeCode.code : ''}
 figma.currentPage.selection = [rect];
-return '${rectName} created at (' + smartX + ', ${options.y})';
+return ${JSON.stringify(`${rectName} created at (`)} + smartX + ${JSON.stringify(`, ${options.y})`)};
 })()
 `;
     const result = await daemonExec('eval', { code });
@@ -136,7 +136,7 @@ ellipse.resize(${options.width}, ${height});
 ${fillCode.code}
 ${strokeCode ? strokeCode.code : ''}
 figma.currentPage.selection = [ellipse];
-return '${ellipseName} created at (' + smartX + ', ${options.y})';
+return ${JSON.stringify(`${ellipseName} created at (`)} + smartX + ${JSON.stringify(`, ${options.y})`)};
 })()
 `;
     const result = await daemonExec('eval', { code });
@@ -177,7 +177,7 @@ create
   text.y = ${options.y};
   ${options.width ? `text.resize(${options.width}, text.height); text.textAutoResize = 'HEIGHT';` : ''}
   figma.currentPage.selection = [text];
-  return 'Text created at (' + smartX + ', ${options.y})';
+  return 'Text created at (' + smartX + ${JSON.stringify(`, ${options.y})`)};
 })()
 `;
     const result = await daemonExec('eval', { code });
@@ -214,7 +214,7 @@ line.resize(${useSmartPos ? lineLength : `Math.abs(${options.x2 || options.x1 + 
 ${options.x2 && options.x1 ? `line.rotation = Math.atan2(${options.y2} - ${options.y1}, ${options.x2} - ${options.x1}) * 180 / Math.PI;` : ''}
 ${strokeCode.code}
 figma.currentPage.selection = [line];
-return 'Line created at (' + smartX + ', ${options.y1}) with length ${lineLength}';
+return 'Line created at (' + smartX + ${JSON.stringify(`, ${options.y1}) with length ${lineLength}`)};
 })()
 `;
     const result = await daemonExec('eval', { code });
@@ -294,7 +294,7 @@ const frame = figma.createFrame();
 frame.name = ${JSON.stringify(frameName)};
 frame.x = smartX;
 frame.y = ${options.y};
-frame.layoutMode = '${layoutMode}';
+frame.layoutMode = ${JSON.stringify(layoutMode)};
 frame.primaryAxisSizingMode = 'AUTO';
 frame.counterAxisSizingMode = 'AUTO';
 frame.itemSpacing = ${options.gap};
@@ -305,7 +305,7 @@ frame.paddingLeft = ${options.padding};
 ${fillCode ? fillCode.code : 'frame.fills = [];'}
 ${options.radius ? `frame.cornerRadius = ${options.radius};` : ''}
 figma.currentPage.selection = [frame];
-return 'Auto-layout frame created at (' + smartX + ', ${options.y})';
+return 'Auto-layout frame created at (' + smartX + ${JSON.stringify(`, ${options.y})`)};
 })()
 `;
     const result = await daemonExec('eval', { code });

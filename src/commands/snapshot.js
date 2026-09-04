@@ -69,8 +69,8 @@ function completenessWarnings(snapshot, droppedVars) {
   const out = [];
   if (droppedVars) out.push(`${droppedVars} variable(s) could not be read — they are missing from this contract`);
   for (const p of snapshot.pages) {
-    if (p.error) out.push(`page "${p.name}" failed to extract: ${p.error}`);
-    else if (p.reducedDepth != null) out.push(`page "${p.name}" was captured at reduced depth ${p.reducedDepth} — deeper nodes are not in the contract`);
+    if (p.error) out.push(`page ${JSON.stringify(p.name)} failed to extract: ${p.error}`);
+    else if (p.reducedDepth != null) out.push(`page ${JSON.stringify(p.name)} was captured at reduced depth ${p.reducedDepth} — deeper nodes are not in the contract`);
   }
   return out;
 }

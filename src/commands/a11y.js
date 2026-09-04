@@ -22,7 +22,7 @@ a11y
     await checkConnection();
     const level = options.level.toUpperCase();
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
@@ -120,7 +120,7 @@ a11y
         traverse(root);
       }
 
-      const level = "${level}";
+      const level = ${JSON.stringify(level)};
       const passing = results.filter(r => level === 'AAA' ? r.aaa : r.aa);
       const failing = results.filter(r => level === 'AAA' ? !r.aaa : !r.aa);
       return { level, total: results.length, passing: passing.length, failing: failing.length, issues: failing, all: results };
@@ -164,7 +164,7 @@ a11y
     await checkConnection();
     const simType = options.type.toLowerCase();
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage.selection[0];
       if (!root) return { error: 'Select a frame or provide a node ID' };
 
@@ -207,7 +207,7 @@ a11y
         return '#' + r + g + b;
       }
 
-      const types = "${simType}" === 'all' ? Object.keys(matrices) : ["${simType}"];
+      const types = ${JSON.stringify(simType)} === 'all' ? Object.keys(matrices) : [${JSON.stringify(simType)}];
       if (!types.every(t => matrices[t])) return { error: 'Unknown type. Use: protanopia, deuteranopia, tritanopia, achromatopsia, all' };
 
       // Collect all unique colors used in the selection
@@ -354,7 +354,7 @@ a11y
     await checkConnection();
     const minSize = parseInt(options.min) || 44;
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
@@ -437,7 +437,7 @@ a11y
   .action(async (nodeId, options) => {
     await checkConnection();
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
@@ -554,7 +554,7 @@ a11y
   .action(async (nodeId, options) => {
     await checkConnection();
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage.selection[0] || figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
@@ -682,7 +682,7 @@ a11y
     await checkConnection();
     const level = options.level.toUpperCase();
     const code = `(async () => {
-      const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+      const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
@@ -718,7 +718,7 @@ a11y
       }
 
       const interactivePatterns = /button|btn|link|tab|toggle|switch|checkbox|radio|input|select|dropdown|menu|icon-btn|close|nav|click|tap|cta/i;
-      const level = "${level}";
+      const level = ${JSON.stringify(level)};
       const issues = [];
       let textCount = 0, interactiveCount = 0;
 

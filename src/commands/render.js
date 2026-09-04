@@ -40,15 +40,15 @@ function warnUnknownProps(jsxStrings) {
     for (const j of jsxStrings) {
       for (const w of client.validateJsxProps(j)) {
         console.log(chalk.yellow(
-          `\u26a0 Unknown prop "${w.prop}" on <${w.tag}>` +
-          (w.suggestion ? ` — did you mean "${w.suggestion}"?` : ' (ignored)')
+          `\u26a0 Unknown prop ${JSON.stringify(w.prop)} on <${w.tag}>` +
+          (w.suggestion ? ` — did you mean ${JSON.stringify(w.suggestion)}?` : ' (ignored)')
         ));
       }
       // Not a typo but the same class of silence: the prop is right, and the layout ignores it.
       for (const a of client.validateTextAlignment(j)) {
         console.log(chalk.yellow(
-          `\u26a0 <Text> "${a.text}" fills "${a.frame}" — items="${a.items}" has no effect on it. ` +
-          `Use align="${a.suggest}" on the <Text>.`
+          `\u26a0 <Text> ${JSON.stringify(a.text)} fills ${JSON.stringify(a.frame)} — items=${JSON.stringify(a.items)} has no effect on it. ` +
+          `Use align=${JSON.stringify(a.suggest)} on the <Text>.`
         ));
       }
     }
@@ -226,7 +226,7 @@ program
           const r = await daemonExec('eval', { code:
             `(async () => {
               const n = await figma.getNodeByIdAsync(${JSON.stringify(id)});
-              if (!n) throw new Error('Node not found after render: ${id}');
+              if (!n) throw new Error(${JSON.stringify(`Node not found after render: ${id}`)});
               const c = figma.createComponentFromNode(n);
               return { id: c.id, name: c.name };
             })()`

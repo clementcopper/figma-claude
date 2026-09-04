@@ -61,7 +61,7 @@ else if (${JSON.stringify(type)} === 'FLOAT') figmaValue = parseFloat(${JSON.str
 else if (${JSON.stringify(type)} === 'BOOLEAN') figmaValue = ${JSON.stringify(options.value)} === 'true';
 v.setValueForMode(modeId, figmaValue);
 ` : ''}
-return 'Created ${type.toLowerCase()} variable: ${name}';
+return ${JSON.stringify(`Created ${type.toLowerCase()} variable: ${name}`)};
 })()`;
     figmaUse(evalArg(code), { silent: false });
   });

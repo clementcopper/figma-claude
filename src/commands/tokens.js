@@ -1094,12 +1094,12 @@ removed
     // Step 1: Create frames using JSX render (handles fonts)
     spinner = ora('Creating frames...').start();
     const jsxComponents = [
-      { jsx: `<Frame name="Button / Primary" bg="${colors.primary500}" px={16} py={10} rounded={8} flex="row"><Text size={14} weight="semibold" color="#ffffff">Button</Text></Frame>` },
-      { jsx: `<Frame name="Button / Secondary" bg="${colors.gray100}" px={16} py={10} rounded={8} flex="row"><Text size={14} weight="semibold" color="${colors.gray900}">Button</Text></Frame>` },
-      { jsx: `<Frame name="Button / Outline" bg="#ffffff" stroke="${colors.gray200}" px={16} py={10} rounded={8} flex="row"><Text size={14} weight="semibold" color="${colors.gray900}">Button</Text></Frame>` },
-      { jsx: `<Frame name="Input" w={200} bg="#ffffff" stroke="${colors.gray200}" px={12} py={10} rounded={8} flex="row"><Text size={14} color="${colors.gray500}">Placeholder</Text></Frame>` },
-      { jsx: `<Frame name="Card" bg="#ffffff" stroke="${colors.gray200}" p={24} rounded={12} flex="col" gap={8}><Text size={18} weight="semibold" color="${colors.gray900}">Card Title</Text><Text size={14} color="${colors.gray500}">Card description goes here.</Text></Frame>` },
-      { jsx: `<Frame name="Badge / Default" bg="${colors.gray100}" px={10} py={4} rounded={9999} flex="row"><Text size={12} weight="medium" color="${colors.gray900}">Badge</Text></Frame>` },
+      { jsx: `<Frame name="Button / Primary" bg=${JSON.stringify(colors.primary500)} px={16} py={10} rounded={8} flex="row"><Text size={14} weight="semibold" color="#ffffff">Button</Text></Frame>` },
+      { jsx: `<Frame name="Button / Secondary" bg=${JSON.stringify(colors.gray100)} px={16} py={10} rounded={8} flex="row"><Text size={14} weight="semibold" color=${JSON.stringify(colors.gray900)}>Button</Text></Frame>` },
+      { jsx: `<Frame name="Button / Outline" bg="#ffffff" stroke=${JSON.stringify(colors.gray200)} px={16} py={10} rounded={8} flex="row"><Text size={14} weight="semibold" color=${JSON.stringify(colors.gray900)}>Button</Text></Frame>` },
+      { jsx: `<Frame name="Input" w={200} bg="#ffffff" stroke=${JSON.stringify(colors.gray200)} px={12} py={10} rounded={8} flex="row"><Text size={14} color=${JSON.stringify(colors.gray500)}>Placeholder</Text></Frame>` },
+      { jsx: `<Frame name="Card" bg="#ffffff" stroke=${JSON.stringify(colors.gray200)} p={24} rounded={12} flex="col" gap={8}><Text size={18} weight="semibold" color=${JSON.stringify(colors.gray900)}>Card Title</Text><Text size={14} color=${JSON.stringify(colors.gray500)}>Card description goes here.</Text></Frame>` },
+      { jsx: `<Frame name="Badge / Default" bg=${JSON.stringify(colors.gray100)} px={10} py={4} rounded={9999} flex="row"><Text size={12} weight="medium" color=${JSON.stringify(colors.gray900)}>Badge</Text></Frame>` },
       { jsx: `<Frame name="Badge / Success" bg="#dcfce7" px={10} py={4} rounded={9999} flex="row"><Text size={12} weight="medium" color="#166534">Success</Text></Frame>` },
       { jsx: `<Frame name="Badge / Warning" bg="#fef3c7" px={10} py={4} rounded={9999} flex="row"><Text size={12} weight="medium" color="#92400e">Warning</Text></Frame>` },
       { jsx: `<Frame name="Badge / Error" bg="#fee2e2" px={10} py={4} rounded={9999} flex="row"><Text size={12} weight="medium" color="#991b1b">Error</Text></Frame>` }
@@ -1212,7 +1212,7 @@ else if (type === 'FLOAT') figmaValue = parseFloat(value);
 else if (type === 'BOOLEAN') figmaValue = value === 'true';
 v.setValueForMode(modeId, figmaValue);
 
-return 'Created ' + type.toLowerCase() + ' token: ${name}';
+return 'Created ' + type.toLowerCase() + ${JSON.stringify(` token: ${name}`)};
 })()`;
 
     try {

@@ -25,7 +25,7 @@ program
 
     if (await isInSafeMode()) {
       const code = `(async () => {
-        const targetId = ${nodeId ? `"${nodeId}"` : 'null'};
+        const targetId = ${JSON.stringify(nodeId || null)};
         const nodes = targetId
           ? [await figma.getNodeByIdAsync(targetId)]
           : figma.currentPage.selection;
@@ -102,10 +102,10 @@ program
       }
     } else {
       let cmd = 'npx --yes figma-use export jsx';
-      if (nodeId) cmd += ` "${nodeId}"`;
+      if (nodeId) cmd += ` ${JSON.stringify(nodeId)}`;
       if (options.pretty) cmd += ' --pretty';
       if (options.output) {
-        cmd += ` > "${options.output}"`;
+        cmd += ` > ${JSON.stringify(options.output)}`;
         runFigmaUse(cmd, { stdio: 'inherit' });
       } else {
         runFigmaUse(cmd);
@@ -169,9 +169,9 @@ program
       }
     } else {
       let cmd = 'npx --yes figma-use export storybook';
-      if (nodeId) cmd += ` "${nodeId}"`;
+      if (nodeId) cmd += ` ${JSON.stringify(nodeId)}`;
       if (options.output) {
-        cmd += ` > "${options.output}"`;
+        cmd += ` > ${JSON.stringify(options.output)}`;
         runFigmaUse(cmd, { stdio: 'inherit' });
       } else {
         runFigmaUse(cmd);

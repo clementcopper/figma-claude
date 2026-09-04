@@ -71,7 +71,7 @@ exp
     const scale = parseFloat(options.scale);
     const code = `(async () => {
 const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-if (!node) return { error: 'Node not found: ${nodeId}' };
+if (!node) return { error: ${JSON.stringify(`Node not found: ${nodeId}`)} };
 if (!('exportAsync' in node)) return { error: 'Node cannot be exported' };
 const bytes = await node.exportAsync({ format: ${JSON.stringify(format)}, constraint: { type: 'SCALE', value: ${scale} } });
 return {

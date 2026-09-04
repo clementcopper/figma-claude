@@ -50,7 +50,7 @@ frame.resize(${options.width}, ${options.height});
 ${fillCode ? fillCode.code : ''}
 ${options.radius ? `frame.cornerRadius = ${options.radius};` : ''}
 figma.currentPage.selection = [frame];
-return '${name} created at (' + smartX + ', ${options.y})';
+return ${JSON.stringify(`${name} created at (`)} + smartX + ${JSON.stringify(`, ${options.y})`)};
 })()
 `;
     const result = await daemonExec('eval', { code });
@@ -115,7 +115,7 @@ create
 
   // Create SVG node
   const node = figma.createNodeFromSvg(${JSON.stringify(svgContent)});
-  node.name = "${name}";
+  node.name = ${JSON.stringify(name)};
   node.x = x;
   node.y = ${posY};
 
@@ -123,7 +123,7 @@ create
   let finalNode = node;
   if (node.type === 'FRAME' && node.children.length > 0) {
     finalNode = figma.flatten([node]);
-    finalNode.name = "${name}";
+    finalNode.name = ${JSON.stringify(name)};
   }
 
   ${usesVar ? `
@@ -173,7 +173,7 @@ create
     }
 
     // Create image from URL
-    const image = await figma.createImageAsync("${url}");
+    const image = await figma.createImageAsync(${JSON.stringify(url)});
     const { width, height } = await image.getSizeAsync();
 
     // Calculate dimensions
@@ -185,7 +185,7 @@ create
 
     // Create rectangle with image fill
     const rect = figma.createRectangle();
-    rect.name = "${options.name}";
+    rect.name = ${JSON.stringify(options.name)};
     rect.resize(w, h);
     rect.x = smartX;
     rect.y = ${options.y};
@@ -194,7 +194,7 @@ create
     figma.currentPage.selection = [rect];
     figma.viewport.scrollAndZoomIntoView([rect]);
 
-    return 'Image created: ' + w + 'x' + h + ' at (' + smartX + ', ${options.y})';
+    return 'Image created: ' + w + 'x' + h + ' at (' + smartX + ${JSON.stringify(`, ${options.y})`)};
   } catch (e) {
     return 'Error: ' + e.message;
   }
