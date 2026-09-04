@@ -839,7 +839,18 @@ export class FigmaClient {
       const locked = props.locked === true || props.locked === 'true' ? true : null;
       const hugWidth = hug === 'both' || hug === 'w' || hug === 'width';
       const hugHeight = hug === 'both' || hug === 'h' || hug === 'height';
-      const clip = props.clip === 'true' || props.clip === true;
+      // Same as the single path: overflow="hidden" clips too.
+      const clip = props.clip === 'true' || props.clip === true || props.overflow === 'hidden';
+      // A frame with its own x/y sits there; the batch row layout is for the others.
+      const ownX = props.x !== undefined ? Number(props.x) : null;
+      const ownY = props.y !== undefined ? Number(props.y) : null;
+      // w/h="fill" on a batch root has nothing to fill (no --parent here); say so, as
+      // the single path does, instead of dropping it in silence.
+      const rootFill = resolveRootFill({
+        fillWidth: props.w === 'fill' || props.width === 'fill',
+        fillHeight: props.h === 'fill' || props.height === 'fill',
+        hasParent: false, name,
+      });
 
       const { alignVal, justifyVal } = resolveAlign(flex, props);
 
@@ -855,8 +866,9 @@ export class FigmaClient {
         const f${frameIdx} = figma.createFrame();
         f${frameIdx}.name = ${JSON.stringify(name)};
         f${frameIdx}.resize(${width}, ${height});
-        f${frameIdx}.x = posX;
-        f${frameIdx}.y = posY;
+        f${frameIdx}.x = ${ownX !== null ? ownX : 'posX'};
+        f${frameIdx}.y = ${ownY !== null ? ownY : 'posY'};
+        ${rootFill.warnings.map(w => `globalThis.__layoutWarnings.push(${JSON.stringify(w)});`).join('\n        ')}
         f${frameIdx}.cornerRadius = ${rounded};
         ${fillCode.code}
         ${strokeCode.code}

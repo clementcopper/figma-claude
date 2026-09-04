@@ -442,6 +442,10 @@ async function handleRequest(req, res) {
               // Parse JSX to code, then execute via unified eval (works with both CDP and Plugin)
               const ClientClass = await getFigmaClient();
               const parser = new ClientClass();
+              // The same two knobs render-batch honours below; --collection was silently
+              // ignored on this path.
+              if (collection) parser.setCollection(collection);
+              if (autoStyle === false) parser.setAutoTextStyle(false);
               const renderCode = await parser.parseJSX(jsx);
               result = await execWithTimeout(() => executeEval(renderCode), 90000); // 90s for renders with icons
               break;

@@ -109,3 +109,28 @@ describe('single render path unchanged (characterization)', () => {
     assertValidJs(code);
   });
 });
+
+// Differences between the single and the batch root frame found in the 2026-09-04 review.
+// Identical JSX must produce identical layout, whichever command created it.
+describe('parseJSXBatch root-frame parity with single render', () => {
+  const client = new FigmaClient();
+
+  it('honours overflow="hidden" like the single path', async () => {
+    const code = await client.parseJSXBatch(['<Frame name="A" overflow="hidden"><Text>x</Text></Frame>']);
+    assert.match(code, /f0\.clipsContent = true;/);
+  });
+
+  it('honours a per-frame x/y instead of its own row layout', async () => {
+    const code = await client.parseJSXBatch(['<Frame name="A" x={200} y={150}><Text>x</Text></Frame>']);
+    assert.match(code, /f0\.x = 200;/);
+    assert.match(code, /f0\.y = 150;/);
+    const laid = await client.parseJSXBatch(['<Frame name="B"><Text>x</Text></Frame>']);
+    assert.match(laid, /f0\.x = posX;/, 'without x/y the batch layout still applies');
+  });
+
+  it('warns about w="fill" on a root frame instead of dropping it silently', async () => {
+    const code = await client.parseJSXBatch(['<Frame name="A" w="fill"><Text>x</Text></Frame>']);
+    assert.match(code, /__layoutWarnings\.push\("\\"A\\" fills width/);
+    assertValidJs(code);
+  });
+});
