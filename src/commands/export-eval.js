@@ -5,6 +5,7 @@ import { join } from 'path';
 import {
   program,
   checkConnection,
+  checkConnectionSync,
   daemonExec,
   figmaEvalSync,
   figmaUse,
@@ -29,7 +30,7 @@ exp
   .option('-s, --scale <number>', 'Export scale (1-4)', '2')
   .option('-f, --format <format>', 'Format: png, jpg, svg, pdf', 'png')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     const format = options.format.toUpperCase();
     const scale = parseFloat(options.scale);
     const code = `(async () => {
@@ -66,7 +67,7 @@ exp
   .option('-s, --scale <number>', 'Export scale', '2')
   .option('-f, --format <format>', 'Format: png, svg, pdf, jpg', 'png')
   .action((nodeId, options) => {
-    checkConnection();
+    checkConnectionSync();
     const format = options.format.toUpperCase();
     const scale = parseFloat(options.scale);
     const code = `(async () => {
@@ -99,7 +100,7 @@ exp
   .command('css')
   .description('Export variables as CSS custom properties')
   .action(() => {
-    checkConnection();
+    checkConnectionSync();
     const code = `(async () => {
 const vars = await figma.variables.getLocalVariablesAsync();
 const css = vars.map(v => {
@@ -120,7 +121,7 @@ exp
   .command('tailwind')
   .description('Export color variables as Tailwind config')
   .action(() => {
-    checkConnection();
+    checkConnectionSync();
     const code = `(async () => {
 const vars = await figma.variables.getLocalVariablesAsync();
 const colorVars = vars.filter(v => v.resolvedType === 'COLOR');
@@ -146,7 +147,7 @@ exp
   .command('dtcg [output]')
   .description('Export variables as W3C Design Tokens (DTCG) JSON — the export side of token sync (import side: figma-cli import tokens.json)')
   .action((output) => {
-    checkConnection();
+    checkConnectionSync();
     const code = `(async () => {
 const vars = await figma.variables.getLocalVariablesAsync();
 const byId = {};
@@ -197,7 +198,7 @@ program
   .option('--base64', 'Dump the base64 PNG to stdout instead of saving (token-heavy — opt-in only)')
   .option('--measure', 'Also return real (unscaled) node + child dimensions so size bugs are caught by measurement, not just the screenshot')
   .action((nodeId, options) => {
-    checkConnection();
+    checkConnectionSync();
     const scale = parseFloat(options.scale);
     const maxDim = parseInt(options.max);
     const withMeasure = !!options.measure;
@@ -412,7 +413,7 @@ program
   .command('raw <command...>')
   .description('Run raw figma-use command')
   .action((command) => {
-    checkConnection();
+    checkConnectionSync();
     figmaUse(command.join(' '));
   });
 

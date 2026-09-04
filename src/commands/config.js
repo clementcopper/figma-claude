@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import {
   program,
   checkConnection,
+  checkConnectionSync,
   daemonExec,
   figmaUse,
   generateFillCode,
@@ -75,7 +76,7 @@ create
   .option('--radius <n>', 'Corner radius')
   .option('--opacity <n>', 'Opacity 0-1')
   .action(async (name, options) => {
-    checkConnection();
+    await checkConnection();
     const rectName = name || 'Rectangle';
     const useSmartPos = options.x === undefined;
     const usesVars = isVarRef(options.fill) || (options.stroke && isVarRef(options.stroke));
@@ -115,7 +116,7 @@ create
   .option('--fill <color>', 'Fill color (hex or var:name)', '#D9D9D9')
   .option('--stroke <color>', 'Stroke color (hex or var:name)')
   .action(async (name, options) => {
-    checkConnection();
+    await checkConnection();
     const ellipseName = name || 'Ellipse';
     const height = options.height || options.width;
     const useSmartPos = options.x === undefined;
@@ -155,7 +156,7 @@ create
   .option('--width <n>', 'Text box width (auto-width if not set)')
   .option('--spacing <n>', 'Gap from other elements', '100')
   .action(async (content, options) => {
-    checkConnection();
+    await checkConnection();
     const weightMap = { regular: 'Regular', medium: 'Medium', semibold: 'Semi Bold', bold: 'Bold' };
     const fontStyle = weightMap[options.weight.toLowerCase()] || 'Regular';
     const useSmartPos = options.x === undefined;
@@ -196,7 +197,7 @@ create
   .option('-w, --weight <n>', 'Stroke weight', '1')
   .option('--spacing <n>', 'Gap from other elements', '100')
   .action(async (options) => {
-    checkConnection();
+    await checkConnection();
     const useSmartPos = options.x1 === undefined;
     const lineLength = parseFloat(options.length);
     const usesVars = isVarRef(options.color);
@@ -225,7 +226,7 @@ create
   .command('component [name]')
   .description('Convert selection to component')
   .action((name) => {
-    checkConnection();
+    checkConnectionSync();
     const compName = name || 'Component';
     let code = `
 const sel = figma.currentPage.selection;
@@ -250,7 +251,7 @@ create
   .command('group [name]')
   .description('Group current selection')
   .action((name) => {
-    checkConnection();
+    checkConnectionSync();
     const groupName = name || 'Group';
     let code = `
 const sel = figma.currentPage.selection;
@@ -278,7 +279,7 @@ create
   .option('--radius <n>', 'Corner radius')
   .option('--spacing <n>', 'Gap from other elements', '100')
   .action(async (name, options) => {
-    checkConnection();
+    await checkConnection();
     const frameName = name || 'Auto Layout';
     const layoutMode = options.direction === 'col' ? 'VERTICAL' : 'HORIZONTAL';
     const useSmartPos = options.x === undefined;

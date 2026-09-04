@@ -97,7 +97,7 @@ gradient
       }
 
       if (options.applyTo) {
-        checkConnection();
+        await checkConnection();
         const paint = buildFigmaPaint(result);
         const code = `
           (async () => {
@@ -156,7 +156,7 @@ gradient
     }
 
     if (options.applyTo) {
-      checkConnection();
+      await checkConnection();
       const code = `
         (async () => {
           await figma.loadAllPagesAsync();
@@ -250,7 +250,7 @@ gradient
       console.log(JSON.stringify(recipe, null, 2));
     }
 
-    checkConnection();
+    await checkConnection();
     let W = 1920, H = 1080;
     const m = (options.size || '').match(/^(\d+)\s*[xX]\s*(\d+)$/);
     if (m) { W = parseInt(m[1], 10); H = parseInt(m[2], 10); }

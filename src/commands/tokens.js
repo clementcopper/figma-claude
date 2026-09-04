@@ -6,6 +6,7 @@ import { join } from 'path';
 import {
   program,
   checkConnection,
+  checkConnectionSync,
   daemonExec,
   fastEval,
   figmaUse,
@@ -33,7 +34,7 @@ collections
   .command('list')
   .description('List all collections')
   .action(() => {
-    checkConnection();
+    checkConnectionSync();
     figmaUse('collection list');
   });
 
@@ -41,7 +42,7 @@ collections
   .command('create <name>')
   .description('Create a collection')
   .action((name) => {
-    checkConnection();
+    checkConnectionSync();
     figmaUse(`collection create "${name}"`);
   });
 
@@ -56,7 +57,7 @@ tokens
   .description('Create Tailwind CSS color palette')
   .option('-c, --collection <name>', 'Collection name', 'Color - Primitive')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     const spinner = ora('Creating Tailwind color palette...').start();
 
     const tailwindColors = {
@@ -122,7 +123,7 @@ tokens
   .command('preset <name>')
   .description('Add color presets: shadcn, radix')
   .action(async (preset) => {
-    checkConnection();
+    await checkConnection();
 
     const presetLower = preset.toLowerCase();
 
@@ -359,7 +360,7 @@ tokens
   .description('Create shadcn/ui color primitives (from v3.shadcn.com/colors)')
   .option('-c, --collection <name>', 'Collection name', 'shadcn/primitives')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     const spinner = ora('Creating shadcn color primitives...').start();
 
     // All colors from https://v3.shadcn.com/colors
@@ -427,7 +428,7 @@ tokens
   .description('Create spacing scale (4px base)')
   .option('-c, --collection <name>', 'Collection name', 'Spacing')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     const spinner = ora('Creating spacing scale...').start();
 
     const spacings = {
@@ -470,7 +471,7 @@ tokens
   .description('Create border radius scale')
   .option('-c, --collection <name>', 'Collection name', 'Radii')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     const spinner = ora('Creating border radii...').start();
 
     const radii = {
@@ -512,7 +513,7 @@ tokens
   .option('-c, --collection <name>', 'Collection name')
   .option('--force-slash', 'Allow "/" in --collection (bypasses the LLM-mistake guard)')
   .action((file, options) => {
-    checkConnection();
+    checkConnectionSync();
     // Guard against LLM-style mistakes: a "/" in the collection name almost
     // always means the caller split one DESIGN.md across multiple `tokens
     // import` runs (e.g. -c "stripe/colors", -c "stripe/radius"). Figma
@@ -719,7 +720,7 @@ tokens
       return;
     }
 
-    checkConnection();
+    await checkConnection();
     const { toTokensImportJson, summarizeForLLM, variableImportCode, chunkVariableTokens } = await import('../design-md.js');
 
     // Authoritative path: the file carries real variable collections (from
@@ -857,7 +858,7 @@ tokens
   .command('ds')
   .description('Create IDS Base Design System (complete starter kit)')
   .action(async () => {
-    checkConnection();
+    await checkConnection();
 
     console.log(chalk.cyan('\n  IDS Base Design System'));
     console.log(chalk.gray('  by Into Design Systems\n'));
@@ -1077,7 +1078,7 @@ tokens
   .description('Create IDS Base Components (Button, Input, Card, Badge)')
   .option('--replace', 'Remove an earlier run\'s components of the same names first')
   .action(async (options) => {
-    checkConnection();
+    await checkConnection();
 
     console.log(chalk.cyan('\n  IDS Base Components'));
     console.log(chalk.gray('  by Into Design Systems\n'));
@@ -1198,7 +1199,7 @@ tokens
   .option('-c, --collection <name>', 'Collection name', 'Tokens')
   .option('-t, --type <type>', 'Type: COLOR, FLOAT, STRING, BOOLEAN (auto-detected if not set)')
   .action((name, value, options) => {
-    checkConnection();
+    checkConnectionSync();
 
     const code = `(async () => {
 function hexToRgb(hex) {

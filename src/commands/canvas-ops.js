@@ -5,6 +5,7 @@ import {
   program,
   buildNodeSelector,
   checkConnection,
+  checkConnectionSync,
   daemonExec,
   fastEval,
   figmaUse,
@@ -23,7 +24,7 @@ canvas
   .command('info')
   .description('Show canvas info (bounds, element count, free space)')
   .action(() => {
-    checkConnection();
+    checkConnectionSync();
     let code = `(function() {
 const children = figma.currentPage.children;
 if (children.length === 0) {
@@ -55,7 +56,7 @@ canvas
   .option('-g, --gap <n>', 'Gap from existing elements', '100')
   .option('-d, --direction <dir>', 'Direction: right, below', 'right')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     let code = `
 const children = figma.currentPage.children;
 const gap = ${options.gap};
@@ -87,7 +88,7 @@ bind
   .description('Bind color variable to fill')
   .option('-n, --node <id>', 'Node ID (uses selection if not set)')
   .action((varName, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `(async () => {
 ${nodeSelector}
@@ -111,7 +112,7 @@ bind
   .description('Bind color variable to stroke')
   .option('-n, --node <id>', 'Node ID')
   .action((varName, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `(async () => {
 ${nodeSelector}
@@ -136,7 +137,7 @@ bind
   .description('Bind number variable to corner radius')
   .option('-n, --node <id>', 'Node ID')
   .action((varName, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `(async () => {
 ${nodeSelector}
@@ -157,7 +158,7 @@ bind
   .description('Bind number variable to auto-layout gap')
   .option('-n, --node <id>', 'Node ID')
   .action((varName, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `(async () => {
 ${nodeSelector}
@@ -179,7 +180,7 @@ bind
   .option('-n, --node <id>', 'Node ID')
   .option('-s, --side <side>', 'Side: top, right, bottom, left, all', 'all')
   .action((varName, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     const sides = options.side === 'all'
       ? ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']
@@ -204,7 +205,7 @@ bind
   .description('List available variables for binding')
   .option('-t, --type <type>', 'Filter: COLOR, FLOAT')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     let code = `(async () => {
 const vars = await figma.variables.getLocalVariablesAsync();
 const filtered = vars${options.type ? `.filter(v => v.resolvedType === ${JSON.stringify(options.type.toUpperCase())})` : ''};
@@ -224,7 +225,7 @@ sizing
   .description('Set to hug contents')
   .option('-a, --axis <axis>', 'Axis: both, h, v', 'both')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     let code = `
 const nodes = figma.currentPage.selection;
 if (nodes.length === 0) 'No selection';
@@ -245,7 +246,7 @@ sizing
   .description('Set to fill container')
   .option('-a, --axis <axis>', 'Axis: both, h, v', 'both')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     let code = `
 const nodes = figma.currentPage.selection;
 if (nodes.length === 0) 'No selection';
@@ -264,7 +265,7 @@ sizing
   .command('fixed <width> [height]')
   .description('Set to fixed size')
   .action((width, height) => {
-    checkConnection();
+    checkConnectionSync();
     const h = height || width;
     let code = `
 const nodes = figma.currentPage.selection;
@@ -288,7 +289,7 @@ program
   .alias('pad')
   .description('Set padding (CSS-style: 1-4 values)')
   .action((value, r, b, l) => {
-    checkConnection();
+    checkConnectionSync();
     let top = value, right = r || value, bottom = b || value, left = l || r || value;
     if (!r) { right = value; bottom = value; left = value; }
     else if (!b) { bottom = value; left = r; }
@@ -313,7 +314,7 @@ program
   .command('gap <value>')
   .description('Set auto-layout gap')
   .action((value) => {
-    checkConnection();
+    checkConnectionSync();
     let code = `
 const nodes = figma.currentPage.selection;
 if (nodes.length === 0) 'No selection';
@@ -329,7 +330,7 @@ program
   .command('align <alignment>')
   .description('Align items: start, center, end, stretch')
   .action((alignment) => {
-    checkConnection();
+    checkConnectionSync();
     const map = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' };
     const val = map[alignment.toLowerCase()] || 'CENTER';
     let code = `
@@ -352,7 +353,7 @@ program
   .command('select <nodeId>')
   .description('Select a node by ID')
   .action((nodeId) => {
-    checkConnection();
+    checkConnectionSync();
     figmaUse(`select "${nodeId}"`);
   });
 
@@ -363,7 +364,7 @@ program
   .alias('remove')
   .description('Delete node by ID or current selection')
   .action((nodeId) => {
-    checkConnection();
+    checkConnectionSync();
     if (nodeId) {
       let code = `(async () => {
 const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
@@ -468,7 +469,7 @@ set
   .option('-n, --node <id>', 'Node ID (uses selection if not set)')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern> (case-insensitive)')
   .action(async (color, options) => {
-    checkConnection();
+    await checkConnection();
     // For fill, after the standard selector runs we walk into matched
     // containers (Groups, Frames) and expand to their fillable descendants
     // when they don't have fills themselves.
@@ -528,7 +529,7 @@ set
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .option('-w, --weight <n>', 'Stroke weight', '1')
   .action(async (color, options) => {
-    checkConnection();
+    await checkConnection();
     const nodeSelector = buildNodeSelector(options);
 
     let code;
@@ -574,7 +575,7 @@ set
   .option('-n, --node <id>', 'Node ID')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .action((value, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `
 ${nodeSelector}
@@ -590,7 +591,7 @@ set
   .option('-n, --node <id>', 'Node ID')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .action((width, height, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `
 ${nodeSelector}
@@ -661,7 +662,7 @@ set
   .option('-n, --node <id>', 'Node ID')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .action((x, y, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `
 ${nodeSelector}
@@ -677,7 +678,7 @@ set
   .option('-n, --node <id>', 'Node ID')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .action((value, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `
 ${nodeSelector}
@@ -693,7 +694,7 @@ set
   .option('-n, --node <id>', 'Node ID')
   .option('-q, --query <pattern>', 'Apply to all nodes whose name contains <pattern>')
   .action((name, options) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = buildNodeSelector(options);
     let code = `
 ${nodeSelector}
@@ -1301,7 +1302,7 @@ program
   .option('-g, --gap <n>', 'Gap between frames', '100')
   .option('-c, --cols <n>', 'Number of columns (0 = single row)', '0')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     let code = `
 const frames = figma.currentPage.children.filter(n => n.type === 'FRAME' || n.type === 'COMPONENT');
 if (frames.length === 0) 'No frames to arrange';
@@ -1335,7 +1336,7 @@ program
   .command('get [nodeId]')
   .description('Get properties of node or selection')
   .action((nodeId) => {
-    checkConnection();
+    checkConnectionSync();
     const nodeSelector = nodeId
       ? `const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});`
       : `const node = figma.currentPage.selection[0];`;
@@ -1372,7 +1373,7 @@ program
   .option('-t, --type <type>', 'Filter by type (FRAME, TEXT, RECTANGLE, etc.)')
   .option('-l, --limit <n>', 'Limit results', '20')
   .action((name, options) => {
-    checkConnection();
+    checkConnectionSync();
     let code = `(function() {
 const results = [];
 function search(node) {

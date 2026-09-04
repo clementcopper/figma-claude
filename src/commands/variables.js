@@ -5,6 +5,7 @@ import { join } from 'path';
 import {
   program,
   checkConnection,
+  checkConnectionSync,
   daemonExec,
   fastEval,
   figmaEvalSync,
@@ -25,7 +26,7 @@ variables
   .command('list')
   .description('List all variables')
   .action(() => {
-    checkConnection();
+    checkConnectionSync();
     figmaUse('variable list');
   });
 
@@ -36,7 +37,7 @@ variables
   .requiredOption('-t, --type <type>', 'Type: COLOR, FLOAT, STRING, BOOLEAN')
   .option('-v, --value <value>', 'Initial value')
   .action((name, options) => {
-    checkConnection();
+    checkConnectionSync();
     const type = options.type.toUpperCase();
     const code = `(async () => {
 const cols = await figma.variables.getLocalVariableCollectionsAsync();
@@ -70,7 +71,7 @@ variables
   .command('find <pattern>')
   .description('Find variables by name pattern')
   .action((pattern) => {
-    checkConnection();
+    checkConnectionSync();
     figmaUse(`variable find "${pattern}"`);
   });
 
@@ -78,7 +79,7 @@ variables
   .command('visualize [collection]')
   .description('Create color swatches on canvas (shadcn-style layout)')
   .action(async (collection, options) => {
-    checkConnection();
+    await checkConnection();
     const spinner = ora('Creating color palette...').start();
 
     const code = `(async () => {
@@ -272,7 +273,7 @@ variables
   .description('Create multiple variables at once (faster than individual calls)')
   .requiredOption('-c, --collection <id>', 'Collection ID or name')
   .action((json, options) => {
-    checkConnection();
+    checkConnectionSync();
     let vars;
     try {
       vars = JSON.parse(json);
@@ -352,7 +353,7 @@ variables
   .option('-c, --collection <name>', 'Only delete variables in this collection (case-insensitive)')
   .option('-y, --yes', 'Actually delete; without it the command only lists what would go')
   .action((options) => {
-    checkConnection();
+    checkConnectionSync();
     const spinner = ora(options.yes ? 'Deleting variables...' : 'Counting variables...').start();
     const code = deleteAllCode(options);
 
@@ -372,7 +373,7 @@ program
   .command('delete-batch <nodeIds>')
   .description('Delete multiple nodes at once (comma-separated IDs or JSON array)')
   .action((nodeIds) => {
-    checkConnection();
+    checkConnectionSync();
     let ids;
     try {
       ids = JSON.parse(nodeIds);
@@ -401,7 +402,7 @@ program
   .command('bind-batch <json>')
   .description('Bind variables to multiple nodes at once')
   .action((json) => {
-    checkConnection();
+    checkConnectionSync();
     let bindings;
     try {
       bindings = JSON.parse(json);
@@ -597,7 +598,7 @@ program
   .command('rename-batch <json>')
   .description('Rename multiple nodes at once. Accepts [{id|nodeId,name}, …] or {"<id>": "<name>", …}.')
   .action((json) => {
-    checkConnection();
+    checkConnectionSync();
     let renames;
     try {
       renames = JSON.parse(json);
