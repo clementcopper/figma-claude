@@ -1,6 +1,7 @@
 // Commands: render (extracted from index.js)
 import chalk from 'chalk';
 import { exportScaleSnippet } from '../lib/verify-export.js';
+import { autoSplitArgs } from '../lib/render-split.js';
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -205,16 +206,13 @@ program
     if (!options.keepWrapper) {
       const split = detectWrapperSplit(jsx);
       if (split) {
-        console.log(chalk.gray(`↳ outer flex wrapper detected — splitting to ${split.children.length} standalone items (--keep-wrapper to opt out)`));
-        const args = [
-          'render-batch',
-          JSON.stringify(split.children),
-          '--direction', split.direction,
-        ];
-        if (options.asComponent) args.push('--as-component');
-        if (options.collection) args.push('--collection', options.collection);
-        await program.parseAsync(args, { from: 'user' });
-        return;
+        const plan = autoSplitArgs(options, split);
+        if (plan.args) {
+          console.error(chalk.gray(`↳ outer flex wrapper detected — splitting to ${split.children.length} standalone items (--keep-wrapper to opt out)`));
+          await program.parseAsync(plan.args, { from: 'user' });
+          return;
+        }
+        console.error(chalk.gray(`↳ outer flex wrapper detected, but ${plan.keepWrapper}`));
       }
     }
 
