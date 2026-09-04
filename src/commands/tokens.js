@@ -30,6 +30,18 @@ const collections = program
   .alias('col')
   .description('Manage variable collections');
 
+/**
+ * `figmaUse(…, { silent: true })` answers null for any error. The presets below used to fall
+ * back to a literal ("Created spacing scale") on null, so a disconnected Figma got five green
+ * checkmarks and nothing was created. Null is a failure; the last eval error is its message.
+ */
+export function resultOrThrow(result, lastError = figmaUse.lastError) {
+  if (result === null || result === undefined) {
+    throw lastError instanceof Error ? lastError : new Error('Figma returned no result');
+  }
+  return String(result).trim();
+}
+
 collections
   .command('list')
   .description('List all collections')
@@ -111,8 +123,8 @@ return 'Created ' + count + ' color variables in ' + ${JSON.stringify(options.co
 })()`;
 
     try {
-      const result = figmaUse(evalArg(code), { silent: true });
-      spinner.succeed(result?.trim() || 'Created Tailwind palette');
+      const result = resultOrThrow(figmaUse(evalArg(code), { silent: true }));
+      spinner.succeed(result || 'Created Tailwind palette');
     } catch (error) {
       spinner.fail('Failed to create palette'); process.exitCode = 1;
       console.error(error.message);
@@ -415,8 +427,8 @@ return 'Created ' + count + ' shadcn color variables in ' + ${JSON.stringify(opt
 })()`;
 
     try {
-      const result = figmaUse(evalArg(code), { silent: true });
-      spinner.succeed(result?.trim() || 'Created shadcn primitives (231 colors)');
+      const result = resultOrThrow(figmaUse(evalArg(code), { silent: true }));
+      spinner.succeed(result || 'Created shadcn primitives (231 colors)');
     } catch (error) {
       spinner.fail('Failed to create shadcn colors'); process.exitCode = 1;
       console.error(error.message);
@@ -459,8 +471,8 @@ return 'Created ' + count + ' spacing variables';
 })()`;
 
     try {
-      const result = figmaUse(evalArg(code), { silent: true });
-      spinner.succeed(result?.trim() || 'Created spacing scale');
+      const result = resultOrThrow(figmaUse(evalArg(code), { silent: true }));
+      spinner.succeed(result || 'Created spacing scale');
     } catch (error) {
       spinner.fail('Failed to create spacing scale'); process.exitCode = 1;
     }
@@ -500,8 +512,8 @@ return 'Created ' + count + ' radius variables';
 `;
 
     try {
-      const result = figmaUse(evalArg(code), { silent: true });
-      spinner.succeed(result?.trim() || 'Created border radii');
+      const result = resultOrThrow(figmaUse(evalArg(code), { silent: true }));
+      spinner.succeed(result || 'Created border radii');
     } catch (error) {
       spinner.fail('Failed to create radii'); process.exitCode = 1;
     }
@@ -605,8 +617,8 @@ return 'Imported ' + count + ' tokens into ' + collectionName;
 })()`;
 
     try {
-      const result = figmaUse(evalArg(code), { silent: true });
-      spinner.succeed(result?.trim() || 'Tokens imported');
+      const result = resultOrThrow(figmaUse(evalArg(code), { silent: true }));
+      spinner.succeed(result || 'Tokens imported');
     } catch (error) {
       spinner.fail('Failed to import tokens'); process.exitCode = 1;
       console.error(error.message);
@@ -930,8 +942,8 @@ for (const [colorName, shades] of Object.entries(colors)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(evalArg(primitivesCode), { silent: true });
-      spinner.succeed(`Color - Primitives (${result?.trim() || '33'} variables)`);
+      const result = resultOrThrow(figmaUse(evalArg(primitivesCode), { silent: true }));
+      spinner.succeed(`Color - Primitives (${result || '33'} variables)`);
     } catch { spinner.fail('Color - Primitives failed'); process.exitCode = 1; }
 
     // Create Color - Semantic
@@ -959,8 +971,8 @@ for (const [name, hex] of Object.entries(colors)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(evalArg(semanticCode), { silent: true });
-      spinner.succeed(`Color - Semantic (${result?.trim() || '13'} variables)`);
+      const result = resultOrThrow(figmaUse(evalArg(semanticCode), { silent: true }));
+      spinner.succeed(`Color - Semantic (${result || '13'} variables)`);
     } catch { spinner.fail('Color - Semantic failed'); process.exitCode = 1; }
 
     // Create Spacing
@@ -984,8 +996,8 @@ for (const [name, value] of Object.entries(spacings)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(evalArg(spacingCode), { silent: true });
-      spinner.succeed(`Spacing (${result?.trim() || '7'} variables)`);
+      const result = resultOrThrow(figmaUse(evalArg(spacingCode), { silent: true }));
+      spinner.succeed(`Spacing (${result || '7'} variables)`);
     } catch { spinner.fail('Spacing failed'); process.exitCode = 1; }
 
     // Create Typography
@@ -1009,8 +1021,8 @@ for (const [name, value] of Object.entries(typography)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(evalArg(typographyCode), { silent: true });
-      spinner.succeed(`Typography (${result?.trim() || '12'} variables)`);
+      const result = resultOrThrow(figmaUse(evalArg(typographyCode), { silent: true }));
+      spinner.succeed(`Typography (${result || '12'} variables)`);
     } catch { spinner.fail('Typography failed'); process.exitCode = 1; }
 
     // Create Border Radii
@@ -1034,8 +1046,8 @@ for (const [name, value] of Object.entries(radii)) {
 return count;
 })()`;
     try {
-      const result = figmaUse(evalArg(radiiCode), { silent: true });
-      spinner.succeed(`Border Radii (${result?.trim() || '6'} variables)`);
+      const result = resultOrThrow(figmaUse(evalArg(radiiCode), { silent: true }));
+      spinner.succeed(`Border Radii (${result || '6'} variables)`);
     } catch { spinner.fail('Border Radii failed'); process.exitCode = 1; }
 
     // Small delay to let spinner render
@@ -1103,8 +1115,8 @@ tokens
     if (cleanupCode) {
       spinner = ora('Removing earlier components...').start();
       try {
-        const removed = figmaUse(evalArg(cleanupCode), { silent: true });
-        spinner.succeed(`Removed ${removed?.trim() || '0'} earlier element(s)`);
+        const removed = resultOrThrow(figmaUse(evalArg(cleanupCode), { silent: true }));
+        spinner.succeed(`Removed ${removed || '0'} earlier element(s)`);
       } catch { spinner.succeed('Ready'); }
     }
 
@@ -1233,8 +1245,8 @@ return 'Created ' + type.toLowerCase() + ${JSON.stringify(` token: ${name}`)};
 })()`;
 
     try {
-      const result = figmaUse(evalArg(code), { silent: true });
-      console.log(chalk.green(result?.trim() || `✓ Created token: ${name}`));
+      const result = resultOrThrow(figmaUse(evalArg(code), { silent: true }));
+      console.log(chalk.green(result || `✓ Created token: ${name}`));
     } catch (error) {
       console.log(chalk.red(`✗ Failed to create token: ${name}`));
     }

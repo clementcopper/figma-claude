@@ -740,7 +740,7 @@ function figmaUse(args, options = {}) {
       }
       return typeof result === 'object' ? JSON.stringify(result) : String(result || '');
     } catch (error) {
-      if (options.silent) return null;
+      if (options.silent) { figmaUse.lastError = error; return null; }
       throw error;
     }
   }
