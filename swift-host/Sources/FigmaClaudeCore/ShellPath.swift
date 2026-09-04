@@ -84,10 +84,11 @@ public enum LoginShellPath {
             return nil
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard let probed = extractProbedPath(String(decoding: data, as: UTF8.self)) else { return nil }
+        // A shell whose rc file waits for input would otherwise hold the main thread; after the
+        // deadline the caller falls back to the app's own PATH.
+        let (data, timedOut) = readOutput(process, from: pipe, timeout: timeout)
+        guard !timedOut,
+              let probed = extractProbedPath(String(decoding: data, as: UTF8.self)) else { return nil }
         let home = NSHomeDirectory()
         cached = withUserBinDirs(probed, home: home)
         return cached

@@ -76,14 +76,20 @@ public func runCli(_ cli: CliInvocation, _ arguments: [String],
         return CliResult(ok: false, output: "could not start \(resolved): \(error.localizedDescription)")
     }
 
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
+    let (data, timedOut) = readOutput(process, from: pipe, timeout: timeout)
 
     // ANSI out: this text goes into a dialog, not a terminal.
     let output = String(decoding: data, as: UTF8.self)
         .replacingOccurrences(of: "\u{001B}\\[[0-9;]*[A-Za-z]", with: "", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
+    if timedOut {
+        // Said in the sheet, not only implied by the exit code: a killed `connect` looks like a
+        // failed one, and "timed out" points at the daemon or Figma rather than at the CLI.
+        let seconds = Int(timeout.rounded())
+        return CliResult(ok: false, output: "figma-cli \(arguments.joined(separator: " ")) "
+                         + "timed out after \(seconds) s" + (output.isEmpty ? "" : "\n" + output))
+    }
     return CliResult(ok: process.terminationStatus == 0, output: output)
 }
 
