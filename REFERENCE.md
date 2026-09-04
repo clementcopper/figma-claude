@@ -164,8 +164,9 @@ instead of a pile.
 node src/index.js duplicate                    # Duplicate selection
 node src/index.js dup "1:234" --offset 50      # With offset
 node src/index.js dup "I2058:20351;2054:20325" # Nested instance id: the copy lands outside it
-node src/index.js delete                       # Delete selection
-node src/index.js delete "1:234"               # Delete by ID
+node src/index.js delete                       # Delete the selected node (several need --yes)
+node src/index.js delete "1:234" "1:235"       # Delete by id — commas or spaces, a missing id fails
+node src/index.js find Button --json           # tree, bindings, find, get, spec, sizes, combos all take --json
 ```
 
 A nested id names a node inside an instance, where a copy would be stuck. The clone is placed
