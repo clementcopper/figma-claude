@@ -14,6 +14,7 @@ enum StatusLineTests {
         roundTrip()
         remembered()
         watcherRemembers()
+        compactions()
     }
 
     /// The whole path through the file system, because that is where the fault was: a tab whose
@@ -278,5 +279,29 @@ enum StatusLineTests {
 
         // No target named is the normal case outside a panel tab, not an error.
         Checks.expect(runStatusLineProducer(environment: [:]), false)
+    }
+
+    static func compactions() {
+        // testCountsCompactionsFromTheTranscriptBytes
+        let file = NSTemporaryDirectory() + "figmaclaude-transcript-\(UUID().uuidString).jsonl"
+        defer { try? FileManager.default.removeItem(atPath: file) }
+        // One line without the marker, one manual compaction, one automatic — and a line where
+        // the auto markers sit on a *different* record than the summary, which must not count.
+        let transcript = [
+            "{\"type\":\"user\",\"message\":\"isCompact? no — that word alone is not the marker\"}",
+            "{\"type\":\"user\",\"isCompactSummary\":true,\"message\":\"manual\"}",
+            "{\"type\":\"user\",\"isCompactSummary\":true,\"compactMetadata\":{\"trigger\":\"auto\"}}",
+            "{\"type\":\"system\",\"compactMetadata\":{\"trigger\":\"auto\"}}",
+            "{\"isCompactSummary\":true,\"compactMetadata\":{\"trigger\":\"manual\"}}"
+        ].joined(separator: "\n")
+        try? transcript.write(toFile: file, atomically: true, encoding: .utf8)
+        let counted = countCompactions(file)
+        Checks.expect(counted.total, 3)
+        Checks.expect(counted.auto, 1)
+
+        // Last line without a trailing newline, and a file that is not there.
+        try? (transcript + "\n{\"isCompactSummary\":true}").write(toFile: file, atomically: true, encoding: .utf8)
+        Checks.expect(countCompactions(file).total, 4)
+        Checks.expect(countCompactions(file + ".missing").total, 0)
     }
 }
