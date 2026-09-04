@@ -143,9 +143,20 @@ public final class FigmaWatcher {
     public var onChange: (FigmaSnapshot) -> Void
     private let queue = DispatchQueue(label: "de.designdone.figmaclaude.figma-poll")
     private var timer: DispatchSourceTimer?
-    private var firstPoll: DispatchSemaphore?
+    /// Entered in `start`, left once, on the first poll. A group rather than a semaphore: waiting
+    /// on a finished group returns at once, however many tabs ask.
+    private let firstPoll = DispatchGroup()
+    private var firstPollDone = false
 
-    public private(set) var snapshot: FigmaSnapshot = .empty
+    /// Written on the poll queue, read on the main thread — a struct with arrays in it, so the
+    /// two must not overlap. A lock rather than `queue.sync`: a poll blocks its queue for up to
+    /// 5.5 s when the daemon times out, and a main thread waiting on that is a frozen window.
+    private let lock = NSLock()
+    private var latest: FigmaSnapshot = .empty
+    public var snapshot: FigmaSnapshot {
+        lock.lock(); defer { lock.unlock() }
+        return latest
+    }
 
     public init(interval: TimeInterval = 2.5, probes: FigmaProbes = FigmaProbes(),
                 onChange: @escaping (FigmaSnapshot) -> Void = { _ in }) {
@@ -154,21 +165,29 @@ public final class FigmaWatcher {
         self.onChange = onChange
     }
 
+    /// One poll, stored, reported when it differs. On the queue.
+    private func poll() {
+        let next = pollFigma(probes: probes)
+        lock.lock()
+        let changed = next != latest
+        latest = next
+        lock.unlock()
+        if changed { DispatchQueue.main.async { self.onChange(next) } }
+    }
+
     public func start() {
         guard timer == nil else { return }
-        let gate = DispatchSemaphore(value: 0)
-        firstPoll = gate
+        firstPoll.enter()
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: interval)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
-            let next = pollFigma(probes: self.probes)
-            let changed = next != self.snapshot
-            self.snapshot = next
-            gate.signal()
-            if changed {
-                DispatchQueue.main.async { self.onChange(next) }
+            self.poll()
+            // `firstPollDone` is touched on this queue only.
+            if !self.firstPollDone {
+                self.firstPollDone = true
+                self.firstPoll.leave()
             }
         }
         timer.resume()
@@ -186,13 +205,7 @@ public final class FigmaWatcher {
     /// the label to catch up reads as "nothing happened". Port of the `refresh()` the Electron
     /// host calls after each action (`app/src/main.ts:549`).
     public func refresh() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            let next = pollFigma(probes: self.probes)
-            let changed = next != self.snapshot
-            self.snapshot = next
-            if changed { DispatchQueue.main.async { self.onChange(next) } }
-        }
+        queue.async { [weak self] in self?.poll() }
     }
 
     /// Waits for the first poll to land, capped.
@@ -203,6 +216,6 @@ public final class FigmaWatcher {
     /// right name anyway. The Electron host learned this the hard way — without it the first tab
     /// was *always* named after the folder.
     public func waitForFirstPoll(timeout: TimeInterval = 0.6) {
-        _ = firstPoll?.wait(timeout: .now() + timeout)
+        _ = firstPoll.wait(timeout: .now() + timeout)
     }
 }
