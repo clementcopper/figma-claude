@@ -11,3 +11,4 @@ Distilled from `LEARNINGS.md` § Process and § Fork Decisions. `npm install` fi
 - **Framelink MCP is anchored, not vendored** (2026-09-02): division of labour in `skills/figma-cli/SKILL.md` and the rule `bin/fig-feedback-setup` writes to `~/.claude/CLAUDE.md`; the server is registered at user scope so the key sits in `~/.claude.json` once.
 - **A `.gitignore` pattern without a leading slash reaches into subdirectories, case-insensitively on macOS.** `screenshot.png` swallowed `swift-host/Screenshot.png` in silence; anchor it (`/screenshot.png`) and `git check-ignore -v` anything a document links to.
 - **Cache dependencies, never build products.** Content-keyed caches holding absolute paths hit after a repo rename and broke every compile.
+- **Verify an agent's finding against the code before it enters a plan;** of ~60 review findings one was wrong (`fontWeight`) and would have removed a working check. A fix is done when its test was seen red.

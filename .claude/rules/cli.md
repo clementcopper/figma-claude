@@ -39,4 +39,9 @@ Distilled from `LEARNINGS.md` § Figma Plugin API, § `render` bugs, § Text Sty
 - **`DESIGN.md` must not print an estimate like a measurement.** The GCD-guessed base unit under "### Do" made a foreign instance build against a 2 px grid; mark estimated sections, use the indicative, print real binding names (`color/brand-500`, not `accent-3`). `--pages` filters pages, not metrics.
 - **Claude Code reads `CLAUDE.md` and `.claude/rules/*.md`, not `AGENTS.md`.** `init-agent` writes `.claude/rules/figma-cli.md`; the AGENTS.md route was inert until 2026-08-19.
 - **`FIGMACLAUDE=1` is the marker the CLI can branch on** (`src/lib/connection-help.js`): inside the panel, never advise `figma-cli connect`, connecting is a button and Daniel's job.
+- **Numeric JSX props are numbers when they leave `parseProps`** (`src/lib/jsx-numeric.js`); never splice a prop string into generated code. Every value inside plugin code goes through `JSON.stringify` — `tests/plugin-code-quoting.test.js` fails on the next raw one.
+- **A failure line sets the exit code within three lines** (`tests/exit-codes.test.js`); `checkConnection` is awaited or the sync form is used (`tests/check-connection-await.test.js`).
+- **Never delete the user's nodes or variables unasked:** `--replace` / `--yes`; `var delete-all` previews first.
+- **The daemon has an integration test without Figma** (`tests/daemon-live.test.js`, Plugin Mode, temp HOME); extend it before touching `daemon.js`. Editing daemon.js needs `daemon restart`; figma-client.js hot-reloads.
+- **A module that adds subcommands to another module's group must be in `command-map.js`** for that group; the map test checks subcommand contributors too.
 - **`fetch failed` from the daemon does not mean Figma is gone.** A daemon holds one CDP link fixed at startup and outlives it; say the request did not get through, name `status` / `daemon restart`.

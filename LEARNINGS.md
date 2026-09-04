@@ -113,6 +113,34 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **A `.gitignore` pattern without a leading slash reaches into every subdirectory — and macOS matches it case-insensitively.** The rule `screenshot.png`, which exists because `figma-cli export` writes that file into the working directory, also swallowed `swift-host/Screenshot.png`: the README would have shipped a broken image and `git status` would never have mentioned it. Anchor such a rule to the root (`/screenshot.png`), and run `git check-ignore -v <file>` on anything a document links to.
 - **A build cache keyed on content but holding absolute paths breaks when the checkout moves.** Renaming the repo moved the CI runner's directory; the SwiftPM `.build` cache still hit — `Package.resolved` had not changed — and every compile failed with "precompiled file … was compiled with module cache path …". Cache the fetched dependencies, never the build products.
 
+- **A guard test sees only the level it walks.** The lazy-command-map test checked every
+  top-level command and passed for eighteen days while ten `create` subcommands were
+  unreachable: config.js attaches them to a group create.js owns, and the map named one module.
+  When a check guards a tree, ask which level it never visits — and run the real binary for one
+  case (`tests/cli-entry.test.js`), because a unit test of the map cannot see the loader.
+- **One choke point beats forty guarded emit sites.** Numeric JSX props were spliced raw into
+  Plugin API code in ~40 places (`gap="8px"` → SyntaxError, `gap="0; …"` → code). Guarding
+  each would have missed the next; coercing once at `parseProps`' exit
+  (`src/lib/jsx-numeric.js`) covered all fifteen callers. The same shape fixed the quoting bug:
+  ninety-nine `'…${x}…'` strings became `${JSON.stringify(…)}` and a scanner test keeps
+  them out (`tests/plugin-code-quoting.test.js`).
+- **A regex that pairs any two quotes is not a scanner.** The first version of that test read
+  `'a' in n) x = ${v}; return '` as one string and flagged 219 lines, most of them fine. Walk
+  left to right, close each string at the next unescaped quote of its kind; then the count is
+  the truth (99).
+- **Mechanical edits need the two-line cases listed.** Appending `process.exitCode = 1` to 132
+  `spinner.fail` lines broke three one-line `if … else` statements and missed one
+  multi-line call. Print what the script could not handle, then fix those by hand; and let the
+  guard look a few lines ahead instead of exactly one.
+- **A daemon can be integration-tested without Figma.** `tests/daemon-live.test.js` spawns
+  `src/daemon.js` in Plugin Mode on a free port with a temp HOME for the token file; body cap,
+  socket identity, hot-reload cleanup and the idle timer are all observable that way, and all
+  four were red on the old daemon.
+- **A review is done when each fix has a red test, not when the agent's list is empty.** Three
+  Explore agents found ~60 items; one (`TextNode.fontWeight` "does not exist") was wrong and
+  would have removed a working check. Verify every finding against the code or a reproduction
+  before it enters a plan.
+
 ## Fork Decisions (clementcopper)
 
 - **Migrated from v1.1.1 to upstream v2.1.2 on 2026-08-16** by branching from `upstream/main` (branch `v2`) instead of merging. The merge was not viable: upstream had split `src/index.js` from 8342 to 31 lines, so a merge would have meant hand-resolving the old monolith against 67 changed lines. Old state kept in `archive/draft-v1`.

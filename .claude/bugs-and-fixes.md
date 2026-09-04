@@ -162,3 +162,39 @@ the parser to the docs, so every new prop was one editorial slip away from being
 genuinely undocumented today are a **named** allowlist, not a tolerated silence: without it the
 check would be red from its first run, and a permanently red line stops being read. The test also
 fails when a backlog entry becomes documented, so the list can only shrink.
+
+## Ten `create` Subcommands Answered "unknown command" for Eighteen Days (2026-09-04, review)
+
+**Symptom:** `figma-cli create rect X` → `error: unknown command 'rect'`; same for text, line,
+autolayout, group, component, ellipse and their aliases, all documented in REFERENCE.md.
+
+**Cause:** config.js attaches those subcommands to the `create` group that create.js registers.
+The lazy loader (17.08.) loads only the module the map names, and the map said
+`create: ['create']`. `tests/lazy-command-map.test.js` walked top-level commands only, so a
+subcommand that vanished was invisible to it. Nobody reported it: no panel session used `create`.
+
+**Fix:** `create: ['create', 'config']`; the test now records which module contributes
+subcommands to which group and was red on the old map. `tests/cli-entry.test.js` runs the real
+binary for `create rect --help` and for `figma-cli toString` (which crashed on
+`Object.prototype` before `Object.hasOwn`).
+
+## The Plugin's WebSocket Was the One Door Without a Lock (2026-09-04, review)
+
+**Symptom:** none visible. Every HTTP request to the daemon needed Host + token; the `/plugin`
+WebSocket server was attached to the same http server and completed the upgrade for anyone.
+
+**Why it matters:** a browser opens a WebSocket to 127.0.0.1 without a CORS preflight, so any
+open tab could become `pluginWs`, receive every eval the CLI sent and answer with forged results.
+
+**Fix:** `src/lib/daemon-auth.js` — one rule set for HTTP and upgrade (loopback Host, token in
+`?token=` or header, no Origin other than the `null` a sandboxed plugin iframe sends). The plugin
+stores the token in clientStorage; `connect --safe` prints it. Probed with a throwaway daemon:
+no token / wrong token / real Origin → 403.
+
+## Three Commands Still Called the Binary Removed in 2.1.1 (2026-09-04, review)
+
+`export-jsx` and `export-storybook` took the native path only in Safe Mode and ran
+`npx --yes figma-use …` in the default mode; `remove-bg` asked figma-use for its PNG export, so
+the file never appeared and every run said "Select an image or frame first"; `raw` was a
+passthrough. Native path for both modes, `exportAsync` for remove-bg, `raw` deleted;
+`tests/figma-use-remnants.test.js` scans for the next one.
