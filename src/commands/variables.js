@@ -400,6 +400,55 @@ return 'Deleted ' + deleted + ' nodes';
     console.log(chalk.green(result || `✓ Deleted nodes`));
   });
 
+/**
+ * Plugin code for `bind-batch`. Each entry is guarded on its own and reported on its own:
+ * one bad entry (a COLOR variable on cornerRadius) used to throw inside the loop, abort the
+ * eval, and lose every binding after it behind a generic error. Number properties check the
+ * variable's resolvedType first, so the message names the mismatch instead of Figma's.
+ */
+export function bindBatchCode(bindings) {
+  return `(async () => {
+const bindings = ${JSON.stringify(bindings)};
+const vars = await figma.variables.getLocalVariablesAsync();
+const results = [];
+const NUMBER_PROPS = { radius: ['cornerRadius'], gap: ['itemSpacing'], padding: ['paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight'] };
+
+for (const b of bindings) {
+  const entry = { nodeId: b.nodeId, property: b.property, variable: b.variable, ok: false };
+  results.push(entry);
+  try {
+    const node = await figma.getNodeByIdAsync(b.nodeId);
+    if (!node) { entry.error = 'node not found'; continue; }
+    const variable = vars.find(v => v.name === b.variable || v.name.endsWith('/' + b.variable));
+    if (!variable) { entry.error = 'variable not found'; continue; }
+    const prop = String(b.property || '').toLowerCase();
+
+    if (prop === 'fill' || prop === 'stroke') {
+      if (variable.resolvedType !== 'COLOR') { entry.error = 'variable is ' + variable.resolvedType + ', needs COLOR'; continue; }
+      const key = prop === 'fill' ? 'fills' : 'strokes';
+      if (!(key in node) || !node[key].length) { entry.error = 'node has no ' + key; continue; }
+      const paints = JSON.parse(JSON.stringify(node[key]));
+      paints[0] = figma.variables.setBoundVariableForPaint(paints[0], 'color', variable);
+      node[key] = paints;
+      entry.ok = true;
+    } else if (NUMBER_PROPS[prop]) {
+      if (variable.resolvedType !== 'FLOAT') { entry.error = 'variable is ' + variable.resolvedType + ', needs FLOAT'; continue; }
+      const fields = NUMBER_PROPS[prop];
+      if (!(fields[0] in node)) { entry.error = 'node has no ' + fields[0]; continue; }
+      for (const field of fields) node.setBoundVariable(field, variable);
+      entry.ok = true;
+    } else {
+      entry.error = 'unknown property (fill, stroke, radius, gap, padding)';
+    }
+  } catch (e) {
+    entry.error = e.message;
+  }
+}
+const bound = results.filter(r => r.ok).length;
+return { bound, failed: results.filter(r => !r.ok) };
+})()`;
+}
+
 program
   .command('bind-batch <json>')
   .description('Bind variables to multiple nodes at once')
@@ -413,47 +462,13 @@ program
       return;
     }
 
-    const code = `(async () => {
-const bindings = ${JSON.stringify(bindings)};
-const vars = await figma.variables.getLocalVariablesAsync();
-let bound = 0;
-
-for (const b of bindings) {
-  const node = await figma.getNodeByIdAsync(b.nodeId);
-  if (!node) continue;
-
-  const variable = vars.find(v => v.name === b.variable || v.name.endsWith('/' + b.variable));
-  if (!variable) continue;
-
-  const prop = b.property.toLowerCase();
-
-  if (prop === 'fill' && 'fills' in node && node.fills.length > 0) {
-    const newFill = figma.variables.setBoundVariableForPaint(node.fills[0], 'color', variable);
-    node.fills = [newFill];
-    bound++;
-  } else if (prop === 'stroke' && 'strokes' in node && node.strokes.length > 0) {
-    const newStroke = figma.variables.setBoundVariableForPaint(node.strokes[0], 'color', variable);
-    node.strokes = [newStroke];
-    bound++;
-  } else if (prop === 'radius' && 'cornerRadius' in node) {
-    node.setBoundVariable('cornerRadius', variable);
-    bound++;
-  } else if (prop === 'gap' && 'itemSpacing' in node) {
-    node.setBoundVariable('itemSpacing', variable);
-    bound++;
-  } else if (prop === 'padding' && 'paddingTop' in node) {
-    node.setBoundVariable('paddingTop', variable);
-    node.setBoundVariable('paddingBottom', variable);
-    node.setBoundVariable('paddingLeft', variable);
-    node.setBoundVariable('paddingRight', variable);
-    bound++;
-  }
-}
-return 'Bound ' + bound + ' properties';
-})()`;
+    const code = bindBatchCode(bindings);
 
     const result = figmaEvalSync(code);
-    console.log(chalk.green(result || `✓ Bound variables`));
+    const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+    console.log(chalk.green(`✓ Bound ${parsed.bound} of ${bindings.length}`));
+    for (const f of parsed.failed) console.log(chalk.red(`  ✗ ${f.nodeId} ${f.property} ← ${f.variable}: ${f.error}`));
+    if (parsed.failed.length) process.exitCode = 1;
   });
 
 program
