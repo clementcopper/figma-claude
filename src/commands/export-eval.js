@@ -364,7 +364,7 @@ program
                                   e.message.includes('disconnected');
         if (isConnectionError) {
           // Connection/daemon error - fall back to sync path
-          console.log(chalk.yellow('⚠ Daemon error, trying sync path...'));
+          console.error(chalk.yellow('⚠ Daemon error, trying sync path...'));
         } else {
           // User code error - display directly, don't fall back
           printEvalError(e);

@@ -5,6 +5,7 @@ import { execSync, execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { createRequire } from 'module';
 import {
   program,
   checkConnection,
@@ -13,6 +14,22 @@ import {
   loadConfig
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
+
+
+// analyze-url and recreate-url drive a browser through playwright, which is not a dependency
+// of this package. Without the probe the failure was a swallowed MODULE_NOT_FOUND inside a
+// child process, reported as "Analysis failed: Command failed: node …".
+function requirePlaywright() {
+  try {
+    createRequire(import.meta.url).resolve('playwright');
+    return true;
+  } catch {
+    console.error(chalk.red('✗ playwright is not installed. It drives the browser for this command:'));
+    console.error(chalk.cyan('  npm install -g playwright && npx playwright install chromium'));
+    process.exitCode = 1;
+    return false;
+  }
+}
 
 // ============ SCREENSHOT URL ============
 
@@ -118,6 +135,7 @@ program
   .option('-h, --height <n>', 'Viewport height', '900')
   .option('--screenshot', 'Also save a screenshot')
   .action(async (url, options) => {
+    if (!requirePlaywright()) return;
     const spinner = ora('Analyzing ' + url + ' with Playwright...').start();
 
     try {
@@ -221,6 +239,7 @@ program
   .option('-h, --height <n>', 'Viewport height', '900')
   .option('--name <name>', 'Frame name', 'Recreated Page')
   .action(async (url, options) => {
+    if (!requirePlaywright()) return;
     await checkConnection();
 
     const spinner = ora('Analyzing ' + url + ' with Playwright...').start();

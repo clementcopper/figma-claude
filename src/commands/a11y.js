@@ -11,6 +11,11 @@ import {
 
 // ============ ACCESSIBILITY (a11y) ============
 
+/** One failure line: `{ ok: false, error }` under --json (what `check --json` does), red text otherwise. */
+export function a11yErrorOutput(message, options) {
+  return options && options.json ? JSON.stringify({ ok: false, error: message }) : chalk.red('✗ ' + message);
+}
+
 const a11y = program
   .command('a11y')
   .description('Accessibility checks (contrast, vision, touch targets, audit)');
@@ -101,7 +106,7 @@ a11y
 
     try {
       const result = await fastEval(code);
-      if (result.error) { console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1; return; }
+      if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -124,7 +129,7 @@ a11y
         console.log(chalk.green('  All text passes WCAG ' + result.level + '! ✓\n'));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Contrast check failed: ' + e.message)); process.exitCode = 1;
+      console.log(a11yErrorOutput('Contrast check failed: ' + e.message, options)); process.exitCode = 1;
     }
   });
 
@@ -282,7 +287,7 @@ a11y
 
     try {
       const result = await fastEval(code);
-      if (result.error) { console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1; return; }
+      if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -309,7 +314,7 @@ a11y
         console.log(`    ${chalk.gray('ID: ' + clone.id)}\n`);
       }
     } catch (e) {
-      console.log(chalk.red('✗ Vision simulation failed: ' + e.message)); process.exitCode = 1;
+      console.log(a11yErrorOutput('Vision simulation failed: ' + e.message, options)); process.exitCode = 1;
     }
   });
 
@@ -374,7 +379,7 @@ a11y
 
     try {
       const result = await fastEval(code);
-      if (result.error) { console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1; return; }
+      if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -396,7 +401,7 @@ a11y
         console.log(chalk.green('  All interactive elements meet minimum size! ✓\n'));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Touch target check failed: ' + e.message)); process.exitCode = 1;
+      console.log(a11yErrorOutput('Touch target check failed: ' + e.message, options)); process.exitCode = 1;
     }
   });
 
@@ -491,7 +496,7 @@ a11y
 
     try {
       const result = await fastEval(code);
-      if (result.error) { console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1; return; }
+      if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -515,7 +520,7 @@ a11y
         console.log(chalk.green('  All text passes accessibility checks! ✓\n'));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Text check failed: ' + e.message)); process.exitCode = 1;
+      console.log(a11yErrorOutput('Text check failed: ' + e.message, options)); process.exitCode = 1;
     }
   });
 
@@ -615,7 +620,7 @@ a11y
 
     try {
       const result = await fastEval(code);
-      if (result.error) { console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1; return; }
+      if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -643,7 +648,7 @@ a11y
       }
       console.log('');
     } catch (e) {
-      console.log(chalk.red('✗ Focus order check failed: ' + e.message)); process.exitCode = 1;
+      console.log(a11yErrorOutput('Focus order check failed: ' + e.message, options)); process.exitCode = 1;
     }
   });
 
@@ -790,7 +795,7 @@ a11y
 
     try {
       const result = await fastEval(code);
-      if (result.error) { console.log(chalk.red('✗ ' + result.error)); process.exitCode = 1; return; }
+      if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -831,7 +836,7 @@ a11y
         console.log(chalk.green('\n  Perfect score! No accessibility issues found. ✓\n'));
       }
     } catch (e) {
-      console.log(chalk.red('✗ Audit failed: ' + e.message)); process.exitCode = 1;
+      console.log(a11yErrorOutput('Audit failed: ' + e.message, options)); process.exitCode = 1;
     }
   });
 
