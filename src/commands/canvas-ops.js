@@ -1,5 +1,7 @@
 // Commands: canvas-ops (extracted from index.js)
 import chalk from 'chalk';
+import { deletePlan, deleteNodesCode, formatDeleteResult } from '../lib/delete-nodes.js';
+import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import { join } from 'path';
 import {
   program,
@@ -361,24 +363,23 @@ program
 // ============ DELETE ============
 
 program
-  .command('delete [nodeId]')
+  .command('delete [nodeIds...]')
   .alias('remove')
-  .description('Delete node by ID or current selection')
-  .action((nodeId) => {
-    checkConnectionSync();
-    if (nodeId) {
-      let code = `(async () => {
-const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
-if (node) { node.remove(); return ${JSON.stringify(`Deleted: ${nodeId}`)}; } else { return ${JSON.stringify(`Node not found: ${nodeId}`)}; }
-})()`;
-      figmaUse(evalArg(code), { silent: false });
-    } else {
-      let code = `
-const sel = figma.currentPage.selection;
-if (sel.length === 0) 'No selection';
-else { const count = sel.length; sel.forEach(n => n.remove()); 'Deleted ' + count + ' elements'; }
-`;
-      figmaUse(evalArg(code), { silent: false });
+  .description(`Delete nodes by id (${ID_LIST_HELP}) or the current selection; several selected nodes need --yes`)
+  .option('-y, --yes', 'Delete a multi-node selection without asking')
+  .action(async (nodeIds, options) => {
+    await checkConnection();
+    const ids = parseIdList(nodeIds);
+    const selectionCount = ids.length ? 0 : Number(await fastEval('figma.currentPage.selection.length')) || 0;
+    const plan = deletePlan({ ids, selectionCount, yes: options.yes });
+    if (plan.refuse) { console.error(chalk.red('✗ ' + plan.refuse)); process.exitCode = 1; return; }
+    try {
+      const result = await fastEval(deleteNodesCode(plan.ids || null));
+      const report = formatDeleteResult(result);
+      for (const line of report.lines) console.log(line.startsWith('✓') ? chalk.green(line) : line.startsWith('○') ? chalk.yellow(line) : chalk.gray(line));
+      process.exitCode = report.exitCode;
+    } catch (e) {
+      handleEvalError(e);
     }
   });
 

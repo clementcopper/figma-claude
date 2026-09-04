@@ -1,5 +1,6 @@
 // Commands: variables (extracted from index.js)
 import chalk from 'chalk';
+import { deletePlan, deleteNodesCode, formatDeleteResult } from '../lib/delete-nodes.js';
 import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import { writeFileSync } from 'fs';
 import ora from 'ora';
@@ -390,25 +391,18 @@ variables
 program
   .command('delete-batch <nodeIds>')
   .description(`Delete multiple nodes at once (${ID_LIST_HELP})`)
-  .action((nodeIds) => {
-    checkConnectionSync();
+  .action(async (nodeIds) => {
+    await checkConnection();
     const ids = parseIdList(nodeIds);
-
-    const code = `(async () => {
-const ids = ${JSON.stringify(ids)};
-let deleted = 0;
-for (const id of ids) {
-  const node = await figma.getNodeByIdAsync(id);
-  if (node) {
-    node.remove();
-    deleted++;
-  }
-}
-return 'Deleted ' + deleted + ' nodes';
-})()`;
-
-    const result = figmaEvalSync(code);
-    console.log(chalk.green(result || `✓ Deleted nodes`));
+    if (!ids.length) { console.error(chalk.red('✗ No ids given')); process.exitCode = 1; return; }
+    try {
+      const result = await fastEval(deleteNodesCode(ids));
+      const report = formatDeleteResult(result);
+      for (const line of report.lines) console.log(line.startsWith('✓') ? chalk.green(line) : line.startsWith('○') ? chalk.yellow(line) : chalk.gray(line));
+      process.exitCode = report.exitCode;
+    } catch (e) {
+      handleEvalError(e);
+    }
   });
 
 /**

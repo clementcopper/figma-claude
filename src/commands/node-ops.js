@@ -1,5 +1,6 @@
 // Commands: node-ops (extracted from index.js)
 import chalk from 'chalk';
+import { deletePlan, deleteNodesCode, formatDeleteResult } from '../lib/delete-nodes.js';
 import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import {
   program,
@@ -202,38 +203,16 @@ node
 
 node
   .command('delete <nodeIds...>')
-  .description('Delete nodes by ID')
+  .description(`Delete nodes by id (${ID_LIST_HELP})`)
   .action(async (nodeIds) => {
     await checkConnection();
-
-    // Native in both modes (see to-component above).
-    const code = `(async () => {
-      const ids = ${JSON.stringify(parseIdList(nodeIds))};
-      const deleted = [], missing = [];
-      for (const id of ids) {
-        const node = await figma.getNodeByIdAsync(id);
-        if (!node) { missing.push(id); continue; }
-        const name = node.name;
-        node.remove();
-        deleted.push({ id, name });
-      }
-      return { deleted, missing };
-    })()`;
-
     try {
-      const result = await fastEval(code);
-      for (const d of result?.deleted || []) {
-        console.log(chalk.green(`✓ Deleted ${d.id} ("${d.name}")`));
-      }
-      // Deleting is destructive: say exactly what went, and don't report a
-      // silent success for ids that were never there.
-      for (const id of result?.missing || []) {
-        console.log(chalk.yellow(`○ Not found: ${id}`));
-      }
-      if (result?.missing?.length) process.exitCode = 1;
+      const result = await fastEval(deleteNodesCode(parseIdList(nodeIds)));
+      const report = formatDeleteResult(result);
+      for (const line of report.lines) console.log(line.startsWith('✓') ? chalk.green(line) : line.startsWith('○') ? chalk.yellow(line) : chalk.gray(line));
+      process.exitCode = report.exitCode;
     } catch (e) {
-      console.log(chalk.red('✗ Delete failed: ' + e.message));
-      process.exitCode = 1;
+      console.log(chalk.red('✗ Delete failed: ' + e.message)); process.exitCode = 1;
     }
   });
 
