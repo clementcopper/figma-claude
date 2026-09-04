@@ -86,15 +86,16 @@ describe('parseProps', () => {
 
   it('parses brace props', () => {
     const p = client.parseProps('w={320} gap={16} opacity={0.8}');
-    assert.strictEqual(p.w, '320');
-    assert.strictEqual(p.gap, '16');
-    assert.strictEqual(p.opacity, '0.8');
+    // numeric props leave the parser as numbers (src/lib/jsx-numeric.js)
+    assert.strictEqual(p.w, 320);
+    assert.strictEqual(p.gap, 16);
+    assert.strictEqual(p.opacity, 0.8);
   });
 
   it('parses mixed props', () => {
     const p = client.parseProps('flex="row" gap={8} bg="var:card"');
     assert.strictEqual(p.flex, 'row');
-    assert.strictEqual(p.gap, '8');
+    assert.strictEqual(p.gap, 8);
     assert.strictEqual(p.bg, 'var:card');
   });
 
@@ -106,7 +107,7 @@ describe('parseProps', () => {
     const p = client.parseProps('name="Card"\n  bg="#fff"\n  w={200}');
     assert.strictEqual(p.name, 'Card');
     assert.strictEqual(p.bg, '#fff');
-    assert.strictEqual(p.w, '200');
+    assert.strictEqual(p.w, 200);
   });
 });
 

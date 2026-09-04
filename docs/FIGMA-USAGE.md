@@ -453,7 +453,8 @@ flex="row"              // or "col" — DEFAULT is "col", at every nesting depth
                         //   Explicit justify=/items= always win.
 flex="none"             // no auto-layout: children OVERLAP at their x/y (z-stack)
                         //   for spinners (ring+arc), badges on avatars, layered art
-gap={16}                // spacing
+gap={16}                // spacing — numeric props take a number or "8px";
+                        //   anything else ("8pxx", rounded="full") is an error, not a guess
 p={24}                  // padding all sides
 px={16} py={8}          // padding x/y
 pt={8} pr={16} pb={8} pl={16}

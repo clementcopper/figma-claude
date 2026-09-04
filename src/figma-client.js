@@ -11,6 +11,7 @@ import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
 import { KNOWN_PROPS, PROP_ALIASES } from './lib/jsx-props.js';
+import { coerceNumericProps } from './lib/jsx-numeric.js';
 
 /**
  * Visible fallback colors for shadcn semantic token names (Zinc light theme).
@@ -1089,7 +1090,9 @@ export class FigmaClient {
       props[key] = value;
     }
 
-    return props;
+    // One exit for all fifteen callers: numeric props leave here as numbers,
+    // or not at all (see src/lib/jsx-numeric.js).
+    return coerceNumericProps(props);
   }
 
   parseChildren(childrenStr) {
@@ -1560,7 +1563,7 @@ export class FigmaClient {
           const parentNone = parentFlex === 'none' || parentFlex === 'stack' || parentFlex === 'free';
           const autoFill = isCol && !fillWidth && numW === null;
           return `
-        __currentNode = 'Text: ${item.content.substring(0, 30).replace(/'/g, "\\'")}';
+        __currentNode = ${JSON.stringify('Text: ' + item.content.substring(0, 30))};
         const el${idx} = figma.createText();
         el${idx}.fontName = __font(${JSON.stringify(family)}, ${JSON.stringify(style)});
         el${idx}.fontSize = ${size};
@@ -1725,7 +1728,7 @@ export class FigmaClient {
           const isNone = fFlex === 'none' || fFlex === 'stack' || fFlex === 'free';
           const parentIsNone = parentFlex === 'none' || parentFlex === 'stack' || parentFlex === 'free';
           return `
-        __currentNode = 'Frame: ${fName.replace(/'/g, "\\'")}';
+        __currentNode = ${JSON.stringify('Frame: ' + fName)};
         const el${idx} = figma.createFrame();
         el${idx}.name = ${JSON.stringify(fName)};
         el${idx}.layoutMode = '${isNone ? 'NONE' : (fFlex === 'row' ? 'HORIZONTAL' : 'VERTICAL')}';
