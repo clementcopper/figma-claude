@@ -118,6 +118,14 @@ public func exitStatus(waitStatus: Int32) -> (code: Int32, signal: Int32?) {
 /// never printed a thing. `[Process exited with code 1]` on its own reads like a broken `claude`
 /// or a broken PATH, and both send you looking in the wrong place. The one cause seen so far is a
 /// stale instance — the bundle in /Applications replaced while the app was running.
+/// What a tab shows instead of a terminal when its command is nowhere on the PATH. Into the
+/// tab, not onto stderr: launched from the Dock nobody reads stderr, and an empty window with no
+/// tab in it was the whole report.
+public func missingCommandNote(command: String, configPath: String = PanelConfig.path) -> String {
+    "\r\n[\(command) is not on the PATH this window sees — install it, or set \"command\" "
+        + "in \(configPath). Restart tries again.]\r\n"
+}
+
 public func describePtyExit(code: Int32, msSinceSpawn: Double, sawOutput: Bool) -> String {
     let line = "\r\n[Process exited with code \(code)]\r\n"
 

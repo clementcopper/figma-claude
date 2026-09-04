@@ -128,6 +128,12 @@ enum PanelPiecesTests {
         let silent = describePtyExit(code: 1, msSinceSpawn: 40, sawOutput: false)
         Checks.expect(silent.contains("reinstalled while running"), true)
 
+        // A command that is not there names itself and the file to fix, as a terminal line.
+        let missing = missingCommandNote(command: "claude", configPath: "/Users/x/panel.json")
+        Checks.expect(missing.hasPrefix("\r\n[claude is not on the PATH"), true)
+        Checks.expect(missing.contains("/Users/x/panel.json"), true)
+        Checks.expect(missing.hasSuffix("]\r\n"), true)
+
         // Anything else is just the code — a hint on a normal exit would be noise.
         Checks.expect(describePtyExit(code: 0, msSinceSpawn: 40, sawOutput: false),
                       "\r\n[Process exited with code 0]\r\n")

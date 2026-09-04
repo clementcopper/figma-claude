@@ -406,18 +406,13 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         view.onOutput = { [weak self] text in self?.prompts.onData(tab.id, text) }
         view.onInput = { [weak self] in self?.prompts.onUserInput(tab.id) }
 
-        let executable: String
+        let executable: String?
         let args: [String]
         if state.count == 0, !commandOverride.isEmpty {
             executable = commandOverride[0]
             args = Array(commandOverride.dropFirst())
         } else {
-            guard let resolved = whichOnPath(config.command, path: environment["PATH"] ?? "") else {
-                FileHandle.standardError.write(
-                    "\(config.command) is not on the PATH this window sees\n".data(using: .utf8)!)
-                return
-            }
-            executable = resolved
+            executable = whichOnPath(config.command, path: environment["PATH"] ?? "")
             args = panelArguments(config: config, sessionName: sessionName,
                                   sessionId: sessionId,
                                   statusLineCommand: Self.statusLineCommand)
@@ -425,10 +420,22 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
         state.append(tab)
         show(tab)
+        start(view, executable: executable, args: args, environment: environment, cwd: cwd,
+              command: config.command)
+        refreshTabBar()
+    }
+
+    /// Starts the tab's process — or, when the command is nowhere on the PATH, says so in the
+    /// tab and leaves it standing, so the window opens with something to read rather than empty.
+    private func start(_ view: PanelTerminalView, executable: String?, args: [String],
+                       environment: [String: String], cwd: String, command: String) {
+        guard let executable else {
+            view.feed(text: missingCommandNote(command: command))
+            return
+        }
         view.startProcess(executable: executable, args: args,
                           environment: environment.map { "\($0.key)=\($0.value)" },
                           currentDirectory: cwd)
-        refreshTabBar()
     }
 
     private func show(_ tab: TerminalTab) {
@@ -746,7 +753,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
         let config = PanelConfig.load()
         let environment = panelEnvironment(config: config, tabId: old.id)
-        guard let executable = whichOnPath(config.command, path: environment["PATH"] ?? "") else { return }
+        let executable = whichOnPath(config.command, path: environment["PATH"] ?? "")
 
         let snapshot = watcher.snapshot
         let file = snapshot.file.isEmpty ? config.figmaFile : snapshot.file
@@ -774,9 +781,8 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let replacement = TerminalTab(view: view, name: old.name, cwd: old.cwd, id: old.id)
         state.replace(at: index, with: replacement)
         show(replacement)
-        view.startProcess(executable: executable, args: args,
-                          environment: environment.map { "\($0.key)=\($0.value)" },
-                          currentDirectory: old.cwd)
+        start(view, executable: executable, args: args, environment: environment, cwd: old.cwd,
+              command: config.command)
         refreshTabBar()
     }
 
