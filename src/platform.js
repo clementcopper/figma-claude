@@ -55,6 +55,21 @@ function getPortPidWindows(port) {
 
 export const getPortPid = PLATFORM === 'win32' ? getPortPidWindows : getPortPidUnix;
 
+// --- Command line of a process (null when unknown) ---
+export function portHolderCommand(pid) {
+  if (!pid || !/^\d+$/.test(String(pid))) return null;
+  try {
+    if (PLATFORM === 'win32') {
+      const out = execSync(`wmic process where processid=${pid} get commandline /value`, { encoding: 'utf8', stdio: 'pipe' });
+      const m = out.match(/CommandLine=(.*)/);
+      return m ? m[1].trim() : null;
+    }
+    return execSync(`ps -o command= -p ${pid}`, { encoding: 'utf8', stdio: 'pipe' }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Sleep after daemon stop ---
 export function sleepAfterStop() {
   if (PLATFORM === 'win32') {

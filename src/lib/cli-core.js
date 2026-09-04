@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { execSync, spawn } from 'child_process';
 import { randomBytes } from 'crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, mkdtempSync, rmSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import { createInterface } from 'readline';
@@ -18,9 +18,11 @@ import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, getFi
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
 import { connectAdvice, inPanel } from './connection-help.js';
+import { curlConfig, CURL_ARGS } from './daemon-curl.js';
+import { isOurDaemon } from './daemon-owner.js';
 import { extractGradient, extractMesh, buildMeshFromColors, buildFigmaPaint, buildCssString } from '../gradient-extractor.js';
 import {
-  nullDevice, killPort, getPortPid, sleepAfterStop,
+  nullDevice, killPort, getPortPid, portHolderCommand, sleepAfterStop,
   startFigmaApp, killFigmaApp,
   getFigmaVersion, isFigmaRunning, platformName
 } from '../platform.js';
@@ -242,6 +244,15 @@ function getTokenStatus() {
 // boolean result for a brief window collapses those to one spawn. `force` and
 // the detail form always bypass the cache (used by retry/fallback logic that
 // must see the live state after a failure).
+/**
+ * One synchronous call to the daemon. The options — token included — go to curl as a config
+ * on stdin (see lib/daemon-curl.js), never on the command line.
+ */
+function curlDaemon(path, { method, dataFile, output, writeOut, timeout = 2000, host = '127.0.0.1' } = {}) {
+  const cfg = curlConfig({ url: `http://${host}:${DAEMON_PORT}${path}`, token: getDaemonToken(), method, dataFile, output, writeOut });
+  return execSync('curl ' + CURL_ARGS.join(' '), { input: cfg, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout });
+}
+
 let _daemonHealthCache = { time: 0, value: null };
 const DAEMON_HEALTH_TTL_MS = 2000;
 function invalidateDaemonHealthCache() { _daemonHealthCache = { time: 0, value: null }; }
@@ -254,12 +265,7 @@ function isDaemonRunning(returnDetails = false, force = false) {
   }
   try {
     const token = getDaemonToken();
-    const tokenHeader = token ? ` -H "X-Daemon-Token: ${token}"` : '';
-    const response = execSync(`curl -s -o ${nullDevice} -w "%{http_code}"${tokenHeader} http://localhost:${DAEMON_PORT}/health`, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      timeout: 1000
-    });
+    const response = curlDaemon('/health', { output: nullDevice, writeOut: '%{http_code}', timeout: 1000, host: 'localhost' });
     const statusCode = response.trim();
 
     if (returnDetails) {
@@ -374,11 +380,7 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
  */
 function daemonBoundFile() {
   try {
-    const token = getDaemonToken();
-    const tokenHeader = token ? ` -H "X-Daemon-Token: ${token}"` : '';
-    const body = execSync(`curl -s${tokenHeader} http://localhost:${DAEMON_PORT}/health`, {
-      encoding: 'utf8', stdio: 'pipe', timeout: 1000,
-    });
+    const body = curlDaemon('/health', { timeout: 1000, host: 'localhost' });
     return JSON.parse(body).file || null;
   } catch {
     return null;
@@ -479,10 +481,8 @@ function startDaemon(forceRestart = false, mode = 'auto') {
     stopDaemon();
     sleepAfterStop();
 
-    // Double-check port is free
-    try {
-      killPort(DAEMON_PORT);
-    } catch {}
+    // Double-check port is free — but only evict our own daemon
+    try { killDaemonOnPort(); } catch {}
   } else if (isDaemonRunning()) {
     return true; // Already running
   }
@@ -518,9 +518,25 @@ function stopDaemon() {
       } catch {}
       unlinkSync(DAEMON_PID_FILE);
     }
-    // Also try to kill by port
-    try { killPort(DAEMON_PORT); } catch {}
+    // Also try to kill by port — if the holder is our daemon
+    try { killDaemonOnPort(); } catch {}
   } catch {}
+}
+
+/**
+ * Kill whatever holds DAEMON_PORT, provided it is a figma-cli daemon. Before this check the
+ * fallback was `lsof -ti:PORT | xargs kill -9`, which took a stranger's dev server with it.
+ */
+function killDaemonOnPort() {
+  const raw = getPortPid(DAEMON_PORT);
+  if (!raw) return;
+  const pid = String(raw).split('\n')[0].trim();
+  const cmd = portHolderCommand(pid);
+  if (cmd === null || isOurDaemon(cmd)) {
+    killPort(DAEMON_PORT);
+  } else {
+    console.log(chalk.yellow(`  Port ${DAEMON_PORT} is held by another process (pid ${pid}: ${cmd}); not killing it.`));
+  }
 }
 
 // Platform-specific Figma paths and commands
@@ -626,20 +642,17 @@ function figmaEvalSync(code) {
       // For simple expressions and multi-statement code, just pass through
       // The plugin will add return to the last statement
       const payload = JSON.stringify({ action: 'eval', code: wrappedCode });
-      const payloadFile = join(tmpdir(), `figma-payload-${Date.now()}.json`);
-      writeFileSync(payloadFile, payload);
-      const daemonToken = getDaemonToken();
-      const tokenHeader = daemonToken ? ` -H "X-Daemon-Token: ${daemonToken}"` : '';
-      // `finally`, because the unlink used to sit after the call: a curl that threw left the
-      // payload behind, and those files accumulate in $TMPDIR unnoticed.
+      // A private directory per call (mode 0700, from mkdtemp): a fixed name in the shared
+      // temp dir could be pre-created or symlinked by another local user. Removed in
+      // `finally`, because a curl that threw used to leave the payload behind.
+      const dir = mkdtempSync(join(tmpdir(), 'figma-cli-'));
+      const payloadFile = join(dir, 'payload.json');
       let result;
       try {
-        result = execSync(
-          `curl -s -X POST http://127.0.0.1:${DAEMON_PORT}/exec -H "Content-Type: application/json"${tokenHeader} -d @"${payloadFile}"`,
-          { encoding: 'utf8', timeout: 60000 }
-        );
+        writeFileSync(payloadFile, payload);
+        result = curlDaemon('/exec', { method: 'POST', dataFile: payloadFile, timeout: 60000 });
       } finally {
-        try { unlinkSync(payloadFile); } catch {}
+        try { rmSync(dir, { recursive: true, force: true }); } catch {}
       }
       if (!result || result.trim() === '') {
         throw new Error('Empty response from daemon');
@@ -658,10 +671,7 @@ function figmaEvalSync(code) {
       if (e && e.fromDaemon) throw e;
       // Check if we're in Safe Mode (plugin only) - don't fall through to CDP
       try {
-        const healthToken = getDaemonToken();
-        const healthHeader = healthToken ? ` -H "X-Daemon-Token: ${healthToken}"` : '';
-        const healthRes = execSync(`curl -s${healthHeader} http://127.0.0.1:${DAEMON_PORT}/health`, { encoding: 'utf8', timeout: 2000 });
-        const health = JSON.parse(healthRes);
+        const health = JSON.parse(curlDaemon('/health'));
         if (health.plugin && !health.cdp) {
           // Safe Mode - re-throw the error, don't try CDP fallback
           throw e;
@@ -671,9 +681,12 @@ function figmaEvalSync(code) {
     }
   }
 
-  // Fallback: direct connection via temp script
-  const tempFile = join(tmpdir(), `figma-eval-${Date.now()}.mjs`);
-  const resultFile = join(tmpdir(), `figma-result-${Date.now()}.json`);
+  // Fallback: direct connection via a temp script. Same private directory as above: the
+  // script is executed, so a guessable path in a shared temp dir was a way to run code as
+  // this user.
+  const dir = mkdtempSync(join(tmpdir(), 'figma-cli-'));
+  const tempFile = join(dir, 'eval.mjs');
+  const resultFile = join(dir, 'result.json');
 
   // Use file:// URL for ESM import (cross-platform). Resolve relative to
   // this file, not process.cwd(), so the CLI works from any directory.
@@ -699,19 +712,17 @@ function figmaEvalSync(code) {
   writeFileSync(tempFile, script);
   try {
     execSync(`node "${tempFile}"`, { stdio: 'pipe', timeout: 60000 });
-    if (existsSync(resultFile)) {
-      const data = JSON.parse(readFileSync(resultFile, 'utf8'));
-      try { unlinkSync(tempFile); } catch {}
-      try { unlinkSync(resultFile); } catch {}
-      if (data.success) return data.result;
-      throw new Error(data.error);
+    if (!existsSync(resultFile)) {
+      // Exit 0 and no result file used to fall through to `return null`, indistinguishable
+      // from Figma answering null.
+      throw new Error('eval subprocess produced no result');
     }
-  } catch (e) {
-    try { unlinkSync(tempFile); } catch {}
-    try { unlinkSync(resultFile); } catch {}
-    throw e;
+    const data = JSON.parse(readFileSync(resultFile, 'utf8'));
+    if (data.success) return data.result;
+    throw new Error(data.error);
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true }); } catch {}
   }
-  return null;
 }
 
 // Compatibility wrapper for old figmaUse calls
@@ -817,10 +828,7 @@ async function checkConnection() {
 
   // First check daemon (works for both CDP and Plugin modes)
   try {
-    const connToken = getDaemonToken();
-    const connHeader = connToken ? ` -H "X-Daemon-Token: ${connToken}"` : '';
-    const health = execSync(`curl -s${connHeader} http://127.0.0.1:${DAEMON_PORT}/health`, { encoding: 'utf8', timeout: 2000 });
-    const data = JSON.parse(health);
+    const data = JSON.parse(curlDaemon('/health'));
     if (data.status === 'ok' && (data.plugin || data.cdp)) {
       return true;
     }
@@ -843,10 +851,7 @@ async function checkConnection() {
 function checkConnectionSync() {
   // First check daemon (works for both CDP and Plugin modes)
   try {
-    const syncToken = getDaemonToken();
-    const syncHeader = syncToken ? ` -H "X-Daemon-Token: ${syncToken}"` : '';
-    const health = execSync(`curl -s${syncHeader} http://127.0.0.1:${DAEMON_PORT}/health`, { encoding: 'utf8', timeout: 2000 });
-    const data = JSON.parse(health);
+    const data = JSON.parse(curlDaemon('/health'));
     if (data.status === 'ok' && (data.plugin || data.cdp)) {
       return true;
     }
@@ -980,10 +985,7 @@ function handleEvalError(e) {
 // Helper: Check if Safe Mode (plugin only)
 async function isInSafeMode() {
   try {
-    const healthToken = getDaemonToken();
-    const healthHeader = healthToken ? ` -H "X-Daemon-Token: ${healthToken}"` : '';
-    const healthRes = execSync(`curl -s${healthHeader} http://127.0.0.1:${DAEMON_PORT}/health`, { encoding: 'utf8', timeout: 2000 });
-    const health = JSON.parse(healthRes);
+    const health = JSON.parse(curlDaemon('/health'));
     return health.plugin && !health.cdp;
   } catch {
     return false;
@@ -991,6 +993,7 @@ async function isInSafeMode() {
 }
 
 export {
+  curlDaemon,
   CONFIG_DIR,
   CONFIG_FILE,
   DAEMON_PID_FILE,

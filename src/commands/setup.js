@@ -15,6 +15,7 @@ import {
   program,
   CONFIG_DIR,
   DAEMON_PORT,
+  curlDaemon,
   figmaUse,
   getDaemonToken,
   getManualStartCommand,
@@ -679,9 +680,7 @@ program
       for (let i = 0; i < PLUGIN_CONNECT_MAX_WAIT_S; i++) {
         await new Promise(r => setTimeout(r, 1000));
         try {
-          const pluginToken = getDaemonToken();
-          const pluginHeader = pluginToken ? ` -H ${JSON.stringify(`X-Daemon-Token: ${pluginToken}`)}` : '';
-          const healthRes = execSync(`curl -s${pluginHeader} http://127.0.0.1:${DAEMON_PORT}/health`, { encoding: 'utf8' });
+          const healthRes = curlDaemon('/health');
           const health = JSON.parse(healthRes);
           if (health.plugin) {
             pluginSpinner.succeed('Plugin connected!');
