@@ -359,9 +359,11 @@ export function extractMesh(path, opts = {}) {
 // applier is shared.
 
 function hexToRgb(h) {
-  h = h.replace('#', '');
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  // Validated: parseInt on "red" gave NaN, and the recipe came out as #NANNANNAN.
+  let hex = String(h).trim().replace('#', '');
+  if (/^[0-9a-f]{3}$/i.test(hex)) hex = hex.split('').map((c) => c + c).join('');
+  if (!/^[0-9a-f]{6}$/i.test(hex)) throw new Error(`Not a hex colour: "${h}" — use #rrggbb (or #rgb)`);
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
 }
 
 function normalizeHex(h) {
