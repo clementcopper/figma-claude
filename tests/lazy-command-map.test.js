@@ -33,8 +33,12 @@ describe('lazy command map', () => {
   /** command/alias -> module, derived by loading modules one at a time. */
   const actual = {};
 
+  /** top-level command -> modules that add SUBcommands to it after it was registered. */
+  const subcommandContributors = {};
+
   before(async () => {
     let before = new Set(program.commands.map((c) => c.name()));
+    let subsBefore = new Map();
     for (const mod of ALL) {
       await import(`../src/commands/${mod}.js`);
       for (const cmd of program.commands) {
@@ -44,7 +48,32 @@ describe('lazy command map', () => {
         for (const alias of cmd.aliases()) actual[alias] = mod;
       }
       before = new Set(program.commands.map((c) => c.name()));
+      // A module may attach subcommands to a group ANOTHER module registered
+      // (config.js adds rect/text/line… to create.js's `create`). The loader
+      // then has to load both, or those subcommands do not exist.
+      for (const cmd of program.commands) {
+        const subs = new Set(cmd.commands.map((c) => c.name()));
+        const seen = subsBefore.get(cmd.name()) || new Set();
+        if ([...subs].some((n) => !seen.has(n)) && actual[cmd.name()] !== mod) {
+          (subcommandContributors[cmd.name()] ??= new Set()).add(mod);
+        }
+        subsBefore.set(cmd.name(), subs);
+      }
     }
+  });
+
+  it('loads every module that adds subcommands to a group', () => {
+    // Seen red on 2026-09-04: `create rect` answered "unknown command 'rect'" since
+    // the lazy loader landed (17.08.), because `create: ['create']` left config.js out.
+    const problems = [];
+    for (const [name, mods] of Object.entries(subcommandContributors)) {
+      for (const mod of mods) {
+        for (const entry of [name, ...(program.commands.find((c) => c.name() === name)?.aliases() || [])]) {
+          if (!COMMAND_MODULES[entry]?.includes(mod)) problems.push(`${entry}: subcommands from ${mod} are unreachable — add it to the map`);
+        }
+      }
+    }
+    assert.deepStrictEqual(problems, []);
   });
 
   it('every registered command and alias is in the map', () => {

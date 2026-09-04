@@ -25,7 +25,16 @@ const load = (names) =>
 // modules. Taking the FIRST match left-to-right is safe because a command always
 // precedes its own arguments, so a command name appearing later as an argument
 // (`figma-cli find "render"`) can never win over the real command.
-const invoked = process.argv.slice(2).find((arg) => COMMAND_MODULES[arg]);
+// `hasOwn`, not `[arg]`: a plain object answers `toString` with a function, and
+// `figma-cli toString` then crashed on `names.map is not a function`.
+const invoked = process.argv.slice(2).find((arg) => Object.hasOwn(COMMAND_MODULES, arg));
 await load(invoked ? COMMAND_MODULES[invoked] : ALL);
 
-program.parse();
+// parseAsync, because most actions are async: with parse() a throw inside one surfaced as an
+// unhandled rejection with a stack trace, and the exit code was whatever Node chose.
+try {
+  await program.parseAsync();
+} catch (e) {
+  console.error('✗ ' + (e && e.message ? e.message : String(e)));
+  process.exitCode = 1;
+}

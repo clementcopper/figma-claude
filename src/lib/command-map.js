@@ -40,7 +40,7 @@ export const COMMAND_MODULES = {
   col: ['tokens'],
   tokens: ['tokens'],
   gradient: ['gradient'],
-  create: ['create'],
+  create: ['create', 'config'],   // config.js adds rect/text/line/… to the group
   'screenshot-url': ['url-tools'],
   screenshot: ['url-tools'],
   'analyze-url': ['url-tools'],
