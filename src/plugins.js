@@ -6,6 +6,7 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, cpSync } from 'fs';
 import { join, dirname } from 'path';
+import { pathToFileURL } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -80,12 +81,20 @@ export function getInstalledPlugins() {
   // whoever ran `npm test`.
   if (!existsSync(PLUGINS_DIR)) return [];
   const dirs = readdirSync(PLUGINS_DIR, { withFileTypes: true });
-  return dirs
-    .filter((d) => d.isDirectory() && existsSync(join(PLUGINS_DIR, d.name, 'plugin.json')))
-    .map((d) => {
-      const meta = JSON.parse(readFileSync(join(PLUGINS_DIR, d.name, 'plugin.json'), 'utf-8'));
-      return { ...meta, path: join(PLUGINS_DIR, d.name) };
-    });
+  const plugins = [];
+  for (const d of dirs) {
+    const metaPath = join(PLUGINS_DIR, d.name, 'plugin.json');
+    if (!d.isDirectory() || !existsSync(metaPath)) continue;
+    // A corrupt plugin.json (an interrupted install) used to throw here, at module load,
+    // and take `--help` down with it. Skip it and say which file.
+    try {
+      const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
+      plugins.push({ ...meta, path: join(PLUGINS_DIR, d.name) });
+    } catch (e) {
+      console.error(`⚠ ignoring plugin "${d.name}": ${metaPath} is not valid JSON (${e.message})`);
+    }
+  }
+  return plugins;
 }
 
 export async function installPlugin(name) {
@@ -285,7 +294,8 @@ export function loadPlugins(program, { daemonExec, checkConnection, getDaemonTok
 
           // Load and run the plugin command
           try {
-            const mod = await import(join(pluginDir, plugin.entry || 'index.js'));
+            // A file URL, not a path: a bare Windows path is ERR_UNSUPPORTED_ESM_URL_SCHEME.
+            const mod = await import(pathToFileURL(join(pluginDir, plugin.entry || 'index.js')).href);
             if (mod.commands?.[cmd]) {
               await mod.commands[cmd]({
                 args: args.slice(0, -1), // last arg is Commander's Command object
