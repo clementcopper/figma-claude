@@ -15,7 +15,7 @@
  * `figma-use` binary, which agreed with neither).
  *
  * Requires a connected Figma (node src/index.js connect). It works in a
- * scratch page called "CLI Lab" and clears that page between cases.
+ * scratch page called "CLI Lab" (or $PARITY_PAGE) and clears that page between cases.
  *
  *   node tests/live/parity-harness.mjs            # run all cases
  *   node tests/live/parity-harness.mjs divider    # filter by case name
@@ -26,7 +26,8 @@ import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CLI = path.join(ROOT, 'src/index.js');
-const PAGE = 'CLI Lab';
+// PARITY_PAGE="My Page" points the run at a page the user prepared instead.
+const PAGE = process.env.PARITY_PAGE || 'CLI Lab';
 
 const cli = (args, input) =>
   execFileSync('node', [CLI, ...args], {
