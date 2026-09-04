@@ -790,6 +790,20 @@ If permission error (macOS 13+): System Settings > Privacy & Security > App Mana
 
 ---
 
+## Scripting the CLI (exit codes, --json, id lists, delete)
+
+- **Exit code is the truth.** A failed `render`, `eval`, `run`, `tokens`, `motion` or
+  `a11y` command exits 1 — treat non-zero as "not done", never parse the red line.
+- **`--json` for anything you read back:** `find`, `get`, `node tree`, `node bindings`,
+  `spec`, `sizes`, `combos`, `a11y *`, `check`, `var export`. Errors come as
+  `{ "ok": false, "error": "…" }`; diagnostics go to stderr, so stdout stays parseable.
+- **Node-id lists take any shape:** `1:2,1:3`, `1:2 1:3`, one per line, or a JSON array —
+  the same for `--node`, `delete`, `section add`, `component combine`, `stagger`.
+- **`delete` is explicit:** by id it lists every node it removed and fails on a missing id;
+  without ids it takes one selected node, several only with `--yes`, none is an error.
+- **Numeric props are numbers:** `gap={8}` or `gap="8px"`; `gap="8pxx"` is an error that
+  names the prop, not a silent guess.
+
 ## Other Commands
 
 ```bash
