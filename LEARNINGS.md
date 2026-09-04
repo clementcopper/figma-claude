@@ -132,6 +132,13 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
   `spinner.fail` lines broke three one-line `if … else` statements and missed one
   multi-line call. Print what the script could not handle, then fix those by hand; and let the
   guard look a few lines ahead instead of exactly one.
+- **A one-line `return console.log(…)` swallows whatever is appended after it.** The exit-code
+  sweep put `process.exitCode = 1` behind three such returns in motion.js, where it never ran,
+  and the guard test was satisfied because the text was on the line. A mechanical edit that
+  appends a statement has to check the line does not begin with `return`; the fix is braces.
+- **The daemon integration test flakes under full-suite load** (1 in ~5 `npm test` runs,
+  never alone): the idle-timer and keep-alive cases race real timers against a loaded machine.
+  Rerun before blaming a change; widen the windows if it recurs.
 - **A daemon can be integration-tested without Figma.** `tests/daemon-live.test.js` spawns
   `src/daemon.js` in Plugin Mode on a free port with a temp HOME for the token file; body cap,
   socket identity, hot-reload cleanup and the idle timer are all observable that way, and all
