@@ -226,7 +226,13 @@ function isPluginConnected() {
   return pluginWs && pluginWs.readyState === WebSocket.OPEN;
 }
 
-async function evalViaPlugin(code, retryCount = 0) {
+// One budget per request, from the CLI (`--timeout`, default 90 s), used by the daemon and
+// forwarded to the plugin. Four unrelated numbers used to live here (25 s plugin-side, 25 s
+// daemon-side, 60 s per batch, 90 s in the CLI): a 5-item Safe Mode batch timed out on the
+// daemon while the plugin kept building, and the late result was dropped.
+const DEFAULT_TIMEOUT_MS = 90000;
+
+async function evalViaPlugin(code, retryCount = 0, timeoutMs = DEFAULT_TIMEOUT_MS) {
   if (!isPluginConnected()) {
     throw new Error('Plugin not connected. Start the Figma CLI Bridge plugin in Figma.');
   }
@@ -235,8 +241,8 @@ async function evalViaPlugin(code, retryCount = 0) {
     const id = ++pluginMsgId;
     const timeout = setTimeout(() => {
       pluginPendingRequests.delete(id);
-      reject(new Error('Plugin execution timeout (25s)'));
-    }, 25000); // 25s timeout to match plugin-side timeout
+      reject(new Error(`Plugin execution timeout (${timeoutMs / 1000}s)`));
+    }, timeoutMs);
 
     pluginPendingRequests.set(id, { resolve, reject, timeout, code, retryCount });
 
@@ -244,7 +250,8 @@ async function evalViaPlugin(code, retryCount = 0) {
       pluginWs.send(JSON.stringify({
         action: 'eval',
         id: id,
-        code: code
+        code: code,
+        timeoutMs: timeoutMs
       }));
     } catch (sendError) {
       clearTimeout(timeout);
@@ -255,17 +262,20 @@ async function evalViaPlugin(code, retryCount = 0) {
 }
 
 // Batch eval via plugin (execute multiple codes, return all results)
-async function evalBatchViaPlugin(codes) {
+async function evalBatchViaPlugin(codes, timeoutMs = DEFAULT_TIMEOUT_MS) {
   if (!isPluginConnected()) {
     throw new Error('Plugin not connected. Start the Figma CLI Bridge plugin in Figma.');
   }
 
   return new Promise((resolve, reject) => {
     const id = ++pluginMsgId;
+    // The plugin runs the items one after another, each within `timeoutMs`; the daemon
+    // waits for the whole batch.
+    const budget = timeoutMs * codes.length;
     const timeout = setTimeout(() => {
       pluginPendingRequests.delete(id);
-      reject(new Error('Plugin batch execution timeout (60s)'));
-    }, 60000); // 60s for batches
+      reject(new Error(`Plugin batch execution timeout (${budget / 1000}s for ${codes.length} items)`));
+    }, budget);
 
     pluginPendingRequests.set(id, { resolve, reject, timeout, isBatch: true });
 
@@ -273,7 +283,8 @@ async function evalBatchViaPlugin(codes) {
       pluginWs.send(JSON.stringify({
         action: 'eval-batch',
         id: id,
-        codes: codes
+        codes: codes,
+        timeoutMs: timeoutMs
       }));
     } catch (sendError) {
       clearTimeout(timeout);
@@ -286,12 +297,12 @@ async function evalBatchViaPlugin(codes) {
 // ============ UNIFIED EVAL ============
 
 
-async function executeEval(code) {
+async function executeEval(code, timeoutMs = DEFAULT_TIMEOUT_MS) {
   // Auto mode: prefer plugin if connected, fallback to CDP
   if (MODE === 'auto') {
     if (isPluginConnected()) {
       // Plugin handles its own wrapping, send code as-is
-      return evalViaPlugin(code);
+      return evalViaPlugin(code, 0, timeoutMs);
     }
     // CDP needs wrapping for top-level return statements
     return evalViaCdp(wrapCodeIfNeeded(code));
@@ -300,7 +311,7 @@ async function executeEval(code) {
   // Explicit mode
   if (MODE === 'plugin') {
     // Plugin handles its own wrapping
-    return evalViaPlugin(code);
+    return evalViaPlugin(code, 0, timeoutMs);
   }
 
   // CDP mode
@@ -423,9 +434,11 @@ async function handleRequest(req, res) {
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           const { action, code, jsx, jsxArray, gap, vertical, collection, autoStyle } = payload;
+          // One budget for daemon and plugin, from the CLI's --timeout (default 90 s).
+          const timeoutMs = Number(payload.timeoutMs) > 0 ? Number(payload.timeoutMs) : DEFAULT_TIMEOUT_MS;
           let result;
 
-          const execWithTimeout = async (fn, timeoutMs = 30000) => {
+          const execWithTimeout = async (fn, timeoutMs = DEFAULT_TIMEOUT_MS) => {
             return Promise.race([
               fn(),
               new Promise((_, reject) =>
@@ -436,7 +449,7 @@ async function handleRequest(req, res) {
 
           switch (action) {
             case 'eval':
-              result = await execWithTimeout(() => executeEval(code));
+              result = await execWithTimeout(() => executeEval(code, timeoutMs), timeoutMs);
               break;
             case 'render': {
               // Parse JSX to code, then execute via unified eval (works with both CDP and Plugin)
@@ -447,7 +460,7 @@ async function handleRequest(req, res) {
               if (collection) parser.setCollection(collection);
               if (autoStyle === false) parser.setAutoTextStyle(false);
               const renderCode = await parser.parseJSX(jsx);
-              result = await execWithTimeout(() => executeEval(renderCode), 90000); // 90s for renders with icons
+              result = await execWithTimeout(() => executeEval(renderCode, timeoutMs), timeoutMs);
               break;
             }
             case 'render-batch': {
@@ -460,7 +473,7 @@ async function handleRequest(req, res) {
                 gap: gap || 40,
                 vertical: vertical || false
               });
-              result = await execWithTimeout(() => executeEval(batchCode), 60000); // 60s for batches
+              result = await execWithTimeout(() => executeEval(batchCode, timeoutMs), timeoutMs);
               break;
             }
             default:

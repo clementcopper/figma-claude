@@ -10,7 +10,7 @@
   "editorType": ["figma", "figjam"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": ["*"],
-    "reasoning": "Connects to local CLI daemon for command execution"
+    "allowedDomains": ["ws://127.0.0.1:3456", "ws://127.0.0.1:3457", "ws://127.0.0.1:3458", "ws://127.0.0.1:3459", "ws://127.0.0.1:3460"],
+    "reasoning": "Connects to the local figma-cli daemon (loopback WebSocket on ports 3456-3460) to execute commands; no other network access"
   }
 }

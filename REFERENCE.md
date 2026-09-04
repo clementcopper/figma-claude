@@ -498,7 +498,7 @@ the content of `~/.figma-ds-cli/.daemon-token`). Paste it once; the plugin remem
 | Connection | Direct CDP | Plugin bridge |
 | Setup | Patches Figma once | Start plugin each session |
 | Speed | ~10x faster | Standard |
-| Timeout | 60 seconds | 60 seconds |
+| Timeout | 90 s per request (`eval --timeout` raises it; the daemon and the plugin use the same number) | same |
 
 ### Command Support
 

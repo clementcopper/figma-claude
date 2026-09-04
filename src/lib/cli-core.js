@@ -190,7 +190,9 @@ function buildNodeSelector(options, { filterExpr = '' } = {}) {
 }
 
 // Daemon configuration
-const DAEMON_PORT = 3456;
+// SECURITY.md promised `DAEMON_PORT` overrides; it was a literal, and the spawn below passed
+// the literal on, so the env was overwritten rather than read.
+const DAEMON_PORT = parseInt(process.env.DAEMON_PORT, 10) || 3456;
 const DAEMON_PID_FILE = join(homedir(), '.figma-cli-daemon.pid');
 const DAEMON_TOKEN_FILE = join(homedir(), '.figma-ds-cli', '.daemon-token');
 
@@ -318,7 +320,8 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
     const response = await fetch(`http://localhost:${DAEMON_PORT}/exec`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ action, ...data }),
+      // The daemon and the plugin use the same budget the CLI waits for (--timeout).
+      body: JSON.stringify({ action, timeoutMs, ...data }),
       signal: AbortSignal.timeout(timeoutMs)
     });
 

@@ -66,6 +66,10 @@
     let token = null;
     let ws = null;
     let reconnectTimer = null;
+    // Reconnect delay: 300 ms after a drop, doubling to 5 s while the daemon stays away —
+    // a fixed 200–300 ms opened five sockets a second for as long as the tab was open.
+    let reconnectDelay = 300;
+    const nextDelay = () => { const d = reconnectDelay; reconnectDelay = Math.min(reconnectDelay * 2, 5000); return d; };
     let keepaliveTimer = null;
     const statusEl = document.getElementById('status');
     const dotEl = document.getElementById('dot');
@@ -132,6 +136,7 @@
             ws.onerror = handleClose;
 
             setStatus('Connected', 'connected');
+            reconnectDelay = 300;
             parent.postMessage({ pluginMessage: { type: 'connected' } }, '*');
 
             // Send hello
@@ -155,7 +160,7 @@
             try { s.close(); } catch {}
           });
           clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(connectParallel, 300);
+          reconnectTimer = setTimeout(connectParallel, nextDelay());
         }
       }, 1500);
     }
@@ -199,9 +204,8 @@
         stopKeepalive();
         parent.postMessage({ pluginMessage: { type: 'disconnected' } }, '*');
 
-        // Fast reconnect (200ms)
         clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(connectParallel, 200);
+        reconnectTimer = setTimeout(connectParallel, nextDelay());
       }
     }
 

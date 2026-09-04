@@ -13,7 +13,10 @@ figma.showUI(__html__, {
 });
 
 // Execute code with auto-return and timeout protection
-async function executeCode(code, timeoutMs = 25000) {
+// The daemon sends the budget with each request (one number, from the CLI); 90 s is the
+// CLI's own default when a message carries none.
+async function executeCode(code, timeoutMs = 90000) {
+  timeoutMs = Number(timeoutMs) || 90000;
   let trimmed = code.trim();
 
   // Don't add return if code already starts with return
@@ -63,7 +66,7 @@ figma.ui.onmessage = async (msg) => {
   // Single eval
   if (msg.type === 'eval') {
     try {
-      const result = await executeCode(msg.code);
+      const result = await executeCode(msg.code, msg.timeoutMs);
       figma.ui.postMessage({ type: 'result', id: msg.id, result: result });
     } catch (error) {
       figma.ui.postMessage({ type: 'result', id: msg.id, error: error.message });
@@ -75,7 +78,7 @@ figma.ui.onmessage = async (msg) => {
     const results = [];
     for (const code of msg.codes) {
       try {
-        const result = await executeCode(code);
+        const result = await executeCode(code, msg.timeoutMs);
         results.push({ success: true, result });
       } catch (error) {
         results.push({ success: false, error: error.message });
