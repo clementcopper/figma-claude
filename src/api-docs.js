@@ -1,7 +1,8 @@
 /**
  * Figma Plugin API documentation lookup.
  *
- * Reads from docs/figma-api/ (cloned via `figma-cli api setup`).
+ * Reads from ~/.figma-cli/figma-api/ (cloned via `figma-cli api setup`; a checkout that
+ * already has docs/figma-api/ keeps using it).
  * Source: https://github.com/iamtekeste/figma (Figma Plugin API as markdown)
  */
 
@@ -9,9 +10,15 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import os from 'os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DOCS_DIR = path.resolve(__dirname, '..', 'docs', 'figma-api');
+/** Where the docs clone lives: an existing checkout-local clone, else under the user's home. */
+export function resolveDocsDir({ legacy, legacyExists, home }) {
+  return legacyExists ? legacy : path.join(home, '.figma-cli', 'figma-api');
+}
+const LEGACY_DOCS_DIR = path.resolve(__dirname, '..', 'docs', 'figma-api');
+const DOCS_DIR = resolveDocsDir({ legacy: LEGACY_DOCS_DIR, legacyExists: fs.existsSync(LEGACY_DOCS_DIR), home: os.homedir() });
 const REPO = 'https://github.com/iamtekeste/figma.git';
 
 function isInstalled() {
@@ -21,7 +28,7 @@ function isInstalled() {
 export async function setup({ update = false } = {}) {
   const installed = isInstalled();
   if (installed && !update) {
-    console.log('✓ API docs already installed at docs/figma-api/');
+    console.log(`✓ API docs already installed at ${DOCS_DIR}`);
     console.log('  Run with --update to pull the latest version.');
     return;
   }
@@ -36,11 +43,15 @@ export async function setup({ update = false } = {}) {
       return;
     } catch (e) {
       console.error('✗ git pull failed:', e.message);
-      console.error('  If the repo is dirty, delete docs/figma-api/ and re-run `figma-cli api setup`.');
+      console.error(`  If the repo is dirty, delete ${DOCS_DIR} and re-run \`figma-cli api setup\`.`);
       process.exit(1);
     }
   }
-  console.log('→ cloning Figma API docs (~5 MB) into docs/figma-api/');
+  try { execSync('git --version', { stdio: 'ignore' }); } catch {
+    console.error('✗ git is required to fetch the API docs and is not on PATH.');
+    process.exit(1);
+  }
+  console.log(`→ cloning Figma API docs (~5 MB) into ${DOCS_DIR}`);
   fs.mkdirSync(path.dirname(DOCS_DIR), { recursive: true });
   try {
     execSync(`git clone --depth 1 ${REPO} "${DOCS_DIR}"`, { stdio: 'inherit' });
