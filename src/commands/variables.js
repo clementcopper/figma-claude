@@ -236,12 +236,14 @@ for (const col of filteredCols) {
     }
   }
 
-  // Bind after appending
+  // Bind after appending. A failure here used to be swallowed, so every aliased swatch
+  // rendered grey without a word (the sync getVariableById throws under dynamic-page).
+  const bindFailures = [];
   for (const { swatch, variable, modeId } of swatchesToBind) {
     try {
       let value = variable.valuesByMode[modeId];
       if (value && value.type === 'VARIABLE_ALIAS') {
-        const resolved = figma.variables.getVariableById(value.id);
+        const resolved = await figma.variables.getVariableByIdAsync(value.id);
         if (resolved) value = resolved.valuesByMode[Object.keys(resolved.valuesByMode)[0]];
       }
       if (value && value.r !== undefined) {
@@ -249,14 +251,14 @@ for (const col of filteredCols) {
           { type: 'SOLID', color: { r: value.r, g: value.g, b: value.b } }, 'color', variable
         )];
       }
-    } catch (e) {}
+    } catch (e) { bindFailures.push(variable.name + ': ' + e.message); }
   }
 
   startX += container.width + 60;
 }
 
 figma.viewport.scrollAndZoomIntoView(figma.currentPage.children.slice(-filteredCols.length));
-return 'Created ' + totalSwatches + ' color swatches';
+return 'Created ' + totalSwatches + ' color swatches' + (bindFailures.length ? '\\n⚠ ' + bindFailures.length + ' swatch(es) not bound: ' + bindFailures.slice(0, 5).join('; ') : '');
 })()`;
 
     try {

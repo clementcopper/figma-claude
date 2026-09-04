@@ -1159,12 +1159,14 @@ tokens
 
     let row0X = 0, row1X = 0;
     const gap = 32;
+    let converted = 0;
+    const conversionErrors = [];
 
     for (const comp of componentOrder) {
       const convertSingle = `
 const f = figma.currentPage.children.find(n => n.name === ${JSON.stringify(comp.name)} && n.type === 'FRAME');
 if (f) {
-  const vars = figma.variables.getLocalVariables();
+  const vars = await figma.variables.getLocalVariablesAsync();
   const findVar = (name) => vars.find(v => v.name === name);
   ${comp.varFill ? `
   const vFill = findVar(${JSON.stringify(comp.varFill)});
@@ -1186,12 +1188,17 @@ if (f) {
 }
 `;
       try {
-        figmaUse(evalArg(convertSingle), { silent: true });
+        resultOrThrow(figmaUse(evalArg(convertSingle), { silent: true }));
+        converted++;
         if (comp.row === 0) row0X += comp.width + gap;
         else row1X += comp.width + 24;
-      } catch {}
+      } catch (e) { conversionErrors.push(comp.name + ': ' + e.message); }
     }
-    spinner.succeed('9 components with variables');
+    if (conversionErrors.length) {
+      spinner.fail(`${converted} of ${componentOrder.length} components converted — ${conversionErrors[0]}`); process.exitCode = 1;
+    } else {
+      spinner.succeed(`${converted} components with variables`);
+    }
 
     await new Promise(r => setTimeout(r, 100));
 

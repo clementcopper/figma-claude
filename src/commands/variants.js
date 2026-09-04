@@ -163,7 +163,7 @@ program
           createdComponents.push({ id: comp.id, name: comp.name, w: comp.width, h: comp.height });
         }
 
-        figma.currentPage.selection = createdComponents.map(c => figma.getNodeById(c.id)).filter(Boolean);
+        figma.currentPage.selection = (await Promise.all(createdComponents.map(c => figma.getNodeByIdAsync(c.id)))).filter(Boolean);
         figma.viewport.scrollAndZoomIntoView(figma.currentPage.selection);
 
         return { count: createdComponents.length, components: createdComponents };
@@ -584,7 +584,7 @@ program
           rowIndex++;
         }
 
-        const allNodes = [...createdComponents.map(c => figma.getNodeById(c.id)), ...createdLabels].filter(Boolean);
+        const allNodes = [...(await Promise.all(createdComponents.map(c => figma.getNodeByIdAsync(c.id)))), ...createdLabels].filter(Boolean);
         figma.currentPage.selection = allNodes;
         if (allNodes.length > 0) {
           figma.viewport.scrollAndZoomIntoView(allNodes);
