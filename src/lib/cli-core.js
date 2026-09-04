@@ -324,13 +324,15 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
 
     if (!response.ok) {
       const text = await response.text();
+      // Everything thrown from here on is the daemon's answer: the code may have run.
+      const reported = (msg) => Object.assign(new Error(msg), { fromDaemon: true });
       // Try to parse as JSON error from daemon
       try {
         const errObj = JSON.parse(text);
         if (errObj.error) {
           // Enhance auth errors with helpful info
           if (errObj.error.includes('Unauthorized') || errObj.error.includes('token')) {
-            throw new Error(
+            throw reported(
               `${errObj.error}\n` +
               `Token file: ${DAEMON_TOKEN_FILE}\n` +
               `Try: node src/index.js daemon restart`
@@ -339,33 +341,41 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
           // Safe Mode: plugin tab was closed → guide the user back to it
           // instead of just dumping the raw error.
           if (/Plugin not connected/i.test(errObj.error)) {
-            throw new Error(
+            throw reported(
               'Plugin not connected.\n' +
               'In Figma: Plugins → Development → FigCli (keep that tab open).\n' +
               'Or switch to Yolo Mode: node src/index.js connect'
             );
           }
           // Clean up error: remove stack trace line numbers for cleaner output
-          const cleanError = errObj.error.split('\n')[0];
-          throw new Error(cleanError);
+          throw reported(errObj.error.split('\n')[0]);
         }
       } catch (parseErr) {
-        if (parseErr.message && !parseErr.message.includes('JSON')) {
-          throw parseErr; // Re-throw our clean error
-        }
+        // Our own throws carry the flag; anything else here is JSON.parse on a non-JSON body.
+        if (parseErr.fromDaemon) throw parseErr;
       }
-      throw new Error(`HTTP ${response.status}: ${text}`);
+      throw reported(`HTTP ${response.status}: ${text}`);
     }
 
     const result = await response.json();
-    if (result.error) throw new Error(result.error);
+    if (result.error) throw Object.assign(new Error(result.error), { fromDaemon: true });
     return result.result;
   } catch (e) {
-    if (e.name === 'TimeoutError' || e.message.includes('timeout')) {
-      throw new Error(`Execution timeout (${timeoutMs/1000}s). Try: node src/index.js daemon restart`);
+    if (e.name === 'TimeoutError') {
+      // The daemon may still be executing: a caller must not run the code again.
+      throw Object.assign(new Error(`Execution timeout (${timeoutMs/1000}s). Try: node src/index.js daemon restart`), { fromDaemon: true });
     }
     throw e;
   }
+}
+
+/**
+ * May a daemon failure be retried over a direct CDP connection? Only when the daemon never
+ * answered. An error it reported — or a timeout while it was executing — means the code may
+ * already have run, and running it again duplicates every node it created.
+ */
+function shouldFallBackToDirect(e) {
+  return !(e && e.fromDaemon);
 }
 
 // Ensure the daemon is up before sending it work. The daemon idle-shuts-down
@@ -434,7 +444,8 @@ async function fastEval(code) {
     try {
       return await daemonExec('eval', { code });
     } catch (e) {
-      // Continue to fallback
+      if (!shouldFallBackToDirect(e)) throw e;
+      // The daemon was unreachable: the code has not run, a direct connection may try.
     }
   }
 
@@ -459,20 +470,6 @@ async function fastRender(jsx) {
   return await client.render(jsx);
 }
 
-// Helper: run figma-use commands with Node 20+ compatibility warning
-function runFigmaUse(cmd, options = {}) {
-  try {
-    execSync(cmd, { stdio: options.stdio || 'inherit', timeout: options.timeout || 60000 });
-  } catch (error) {
-    if (error.message?.includes('enableCompileCache')) {
-      console.log(chalk.red('\n✗ figma-use is broken on Node.js ' + process.version));
-      console.log(chalk.yellow('  This is a known upstream bug (enableCompileCache not available in ESM).'));
-      console.log(chalk.gray('  Workaround: use Node.js 18.x, or wait for a figma-use update.\n'));
-    } else {
-      throw error;
-    }
-  }
-}
 
 // Start daemon in background
 function startDaemon(forceRestart = false, mode = 'auto') {
@@ -994,6 +991,7 @@ async function isInSafeMode() {
 
 export {
   curlDaemon,
+  shouldFallBackToDirect,
   CONFIG_DIR,
   CONFIG_FILE,
   DAEMON_PID_FILE,
@@ -1033,7 +1031,6 @@ export {
   pkg,
   program,
   prompt,
-  runFigmaUse,
   saveConfig,
   smartPosCode,
   startDaemon,
