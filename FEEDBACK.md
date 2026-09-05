@@ -41,17 +41,7 @@ Append new entries at the end of **Open**; never rewrite one that is already the
 ## Open
 <!-- new entries go here -->
 
-- [ ] `cli` · **`--help` on `node tree`, `node bindings`, `var export` prints the top-level help of "figma-ds-cli"**
-  **Repro:** `figma-cli node tree --help`, `figma-cli node bindings --help`, `figma-cli var export --help`
-  **Observed:** `Usage: figma-ds-cli [options] [command]` with `--port <number> CDP port … (default: 9222)` and the full command list; the subcommand's own flags (`--json`) never appear. `figma-cli render --help`, `delete --help`, `check --help` show their own flags.
-  **Expected:** the subcommand's usage and flags, like every other command. The "figma-ds-cli" name and CDP port 9222 also contradict `status` (daemon on 3456).
-  **Context:** 2.1.2, panel
-  → not reproduced (05.09.): `figma-cli node tree --help`, `node bindings --help` and
-    `var export --help` show the subcommand help through all three paths here (the alias, the
-    panel launcher `~/.figma-ds-cli/bin/figma-cli`, `node src/index.js`); the program name is
-    "index", not "figma-ds-cli", and `--port` has no default in the code. Please re-run and add
-    `type -a figma-cli` plus the exact command line. On the side note: `--port` is the CDP
-    port (9222), 3456 is the daemon — two different things, as the help text says
+
 
 ## Done
 
@@ -495,3 +485,15 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   → fixed: the same family first (`Label/L, Label/M, Label/M Regular, …`), then `(+12 more,
     run figma-cli styles for all)` (`suggestStyleNames`, `tests/text-styles.test.js`),
     commit db1d854
+
+- [x] `cli` · **`--help` on `node tree`, `node bindings`, `var export` prints the top-level help of "figma-ds-cli"**
+  **Repro:** `figma-cli node tree --help`, `figma-cli node bindings --help`, `figma-cli var export --help`
+  **Observed:** `Usage: figma-ds-cli [options] [command]` with `--port <number> CDP port … (default: 9222)` and the full command list; the subcommand's own flags (`--json`) never appear. `figma-cli render --help`, `delete --help`, `check --help` show their own flags.
+  **Expected:** the subcommand's usage and flags, like every other command. The "figma-ds-cli" name and CDP port 9222 also contradict `status` (daemon on 3456).
+  **Context:** 2.1.2, panel
+  → your shell, found by you at 09:15: the loop ran `figma-cli $c --help` with `c="node tree"`,
+    and zsh does not word-split an unquoted variable — argv was `["node tree", "--help"]`, an
+    unknown command plus `--help`, which prints the top-level help (`${=c}` gives the subcommand
+    help). What the CLI got wrong: the usage line said "index" on the lazy path and
+    "figma-ds-cli" on the load-everything path; it says `figma-cli` on both now
+    (`tests/cli-entry.test.js`). `--port` 9222 is the CDP port, 3456 the daemon — as the help says

@@ -573,6 +573,15 @@ const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 
 const program = new Command();
 
+// Named here, not in a command module: `setup.js` used to set "figma-ds-cli" as an import
+// side effect, so the usage line read "index" when one module was loaded and "figma-ds-cli"
+// when all were — a panel session took the second for a different binary. `figma-cli` is
+// what the launcher, the alias and every doc call it.
+program
+  .name('figma-cli')
+  .description('CLI for managing Figma design systems')
+  .version(pkg.version);
+
 program.option('--port <number>', 'CDP port for Figma connection (default: 9222, env: FIGMA_PORT)');
 
 program.hook('preAction', (thisCommand) => {

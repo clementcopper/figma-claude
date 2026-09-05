@@ -171,6 +171,14 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
   the server, with "Unable to establish connection to Figma after 10 seconds" — the CLI exits 1
   either way, but the sentence is not about the connection. `figma.getNodeById` (sync) still
   answers null in 0.3 s; not adopted yet, noted for the next lookup-message complaint.
+- **The reporter's shell is part of the reproduction.** `figma-cli $c --help` with
+  `c="node tree"` in zsh hands the CLI one argument, `"node tree"`, because zsh does not
+  word-split unquoted variables; the top-level help that came back was read as a different
+  binary ("figma-ds-cli" — `setup.js` named the program as an import side effect, so the name
+  depended on which modules had loaded). The panel's transcript
+  (`~/.claude/projects/<panel>/<session>.jsonl`) holds the exact command line and the tool
+  result; read it before trying to reproduce a paraphrase. The CLI's own fault was the
+  two-faced name, fixed in `cli-core.js`.
 
 ## Fork Decisions (clementcopper)
 

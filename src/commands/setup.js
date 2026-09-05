@@ -29,11 +29,6 @@ import {
   stopDaemon
 } from '../lib/cli-core.js';
 
-program
-  .name('figma-ds-cli')
-  .description('CLI for managing Figma design systems')
-  .version(pkg.version);
-
 // Top-level shortcut: `figma-cli import <source>` — auto-detects the source
 // type and routes to the right importer.
 // Supported: DESIGN.md (Figma extraction format), Tailwind config, CSS custom

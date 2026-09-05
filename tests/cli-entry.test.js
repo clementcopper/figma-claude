@@ -23,6 +23,15 @@ describe('entry point', () => {
     assert.match(out, /unknown command/i);
   });
 
+  // The usage line said "index" when one module was loaded and "figma-ds-cli" when all were
+  // (`setup.js` named the program as an import side effect). A panel session read the second
+  // as a different binary. One name, the one people type, on every path.
+  it('names the program figma-cli on the lazy path and on the load-everything path', () => {
+    assert.match(run('node', 'tree', '--help').out, /^Usage: figma-cli node tree/);
+    assert.match(run('--help').out, /^Usage: figma-cli \[options\]/);
+    assert.match(run('--version').out, /^\d+\.\d+\.\d+/);
+  });
+
   it('reaches the create subcommands config.js registers', () => {
     const { out } = run('create', 'rect', '--help');
     assert.doesNotMatch(out, /unknown command/i);
