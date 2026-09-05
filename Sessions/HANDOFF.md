@@ -1,36 +1,41 @@
-# Handoff — 2026-09-04 18:09
+# Handoff — 2026-09-05 08:14
 Arbeitsverzeichnis: /Users/danielmartin/figma-cli
 
 ## Stand
-swift-host Review-Pass abgeschlossen und gepusht (`7b1f86e..18502f3`, 9 Commits auf `master`).
-Sechs Bugs gefixt (Timeouts nie erzwungen, Transcript-Scan 1 320 → 14 ms, ⌘Q-Bounds, Data Race
-`FigmaWatcher.snapshot`, Effort-Chip-Farbe eingefroren, leeres Fenster ohne `claude` auf PATH),
-~900 tote Zeilen raus (alte `StatusLineView`, Spike-Meter, `respawning`, `PaddedCell`, …).
-CoreChecks 490 grün. Bundle 1.0.1 gebaut und gestartet (PID 84576). Plan liegt in
-`~/.claude/plans/check-mal-bitte-den-eager-pike.md`.
+Review-Plan vom 4.9. (`~/.claude/plans/schau-dir-mal-die-synthetic-bubble.md`) komplett
+abgearbeitet: Pakete A–E, Tier 2, Peripherie, drei Konventionen, DESIGN.md-Hex-Fix. 61 Commits
+seit `7ed0be5`, alle gepusht, CI grün (Node 18/20/22 + swift). Suite 697 → 923 Tests,
+`figma-client.js` 5680 → 3430 Zeilen. Memory: `review-2026-09-04.md`. Die Panel-Session
+`fc-designdone-a361a882` hat danach ~40 Befehle in Designdone/„CLI Lab" getestet und sechs
+Befunde in `FEEDBACK.md ## Open` eingetragen.
 
 ## Mitten drin
-- Nichts. Arbeitsbaum sauber, `Sessions/` und Memory sind die einzigen ungetrackten Änderungen.
+- Die sechs Panel-Befunde sind ungefixt. Mein Vorschlag an Daniel (23:55): 1, 2, 3, 5 jetzt,
+  4 und 6 später. Antwort steht aus.
+  1. `get 9999:9999 --json` → Klartext, Exit 0 (`src/commands/canvas-ops.js`, `get`)
+  2. `node bindings <bad> --json` → JSON-Fehler, aber Exit 0 (`node-ops.js`, `out.error`-Zweig)
+  3. `render '<Frame><Text>x</Frame>'` → Warnung, ✓ Rendered, leerer Frame, Exit 0
+  4. `bg="var:missing"` → grauer Platzhalter, Exit 0; Wunsch `--strict-vars`
+  5. `node tree --help`, `node bindings --help`, `var export --help` → Top-Level-Hilfe (nicht reproduziert)
+  6. `node tree --json` liefert Zeilen, keinen Baum (Designfrage)
 
 ## Nächster Schritt
-Daniel prüft in der laufenden 1.0.1: Fenster ziehen (Bänder folgen ohne `windowDidResize`?),
-View ▸ Appearance wechseln (Effort-Chip folgt?). Dann CI-Lauf für 18502f3 auf GitHub ansehen.
-Bei Befund: `cd swift-host && swift run CoreChecks` als Baseline, Fix als eigener Commit.
+`/feedback-triage` — dann je Befund RED-Test zuerst, wie in A–E. Für 5 erst reproduzieren:
+`node src/index.js node tree --help | head -3`.
 
 ## Schon probiert, geht nicht
-- System Events `quit` per `unix id` auf eine zweite App-Instanz tut nichts (Prozess lief weiter);
-  Fenster-Zugriff über System Events ohne Accessibility-Recht auch nicht. Exakt per PID beenden:
-  `NSRunningApplication(processIdentifier:).terminate()` (Swift-Snippet im Scratchpad, weg nach Clear).
-- Live-Test für A6 (fehlendes `claude`) braucht Daniels `panel.json` — nicht angefasst, nur Check.
-- `swift build` warnt immer „could not determine XCTest paths“ — Command Line Tools, kein Fehler.
+- Daemon-Integrationstest flackert unter Suite-Last (1 von ~5 Läufen), allein nie; Ursache ist
+  Timing, nicht Code. Erneut laufen lassen, bevor eine Änderung verdächtigt wird.
+- `curl http://127.0.0.1:9222/json` hing gestern minutenlang (Figma-seitig); Figma-Neustart half.
+- Eine unbekannte Node-ID meldet Figma selbst als „Unable to establish connection to Figma after
+  10 seconds" — das ist Figmas Text, kein Verbindungsproblem.
 
 ## Was Daniel entschieden hat
-- Alle drei großen Löschungen freigegeben: alte Balken-Ansicht + Probe, ThroughputMeter/`[spike]`,
-  Controller-Umbau (lazy vars, `FigmaWatcher.onChange` settbar).
-- Er hatte seine alte Panel-Instanz (PID 33825) selbst beendet — mein Verdacht, das AppleScript
-  hätte sie getroffen, war falsch; die drei Einträge dazu sind wieder gelöscht.
+- Alle 80 aufruferlosen `FigmaClient`-Methoden löschen (2249 Zeilen), auf die Zahl hin.
+- Smart-X-Einzeiler bleiben; DESIGN.md-Hex-Fix gemacht.
+- Testseite für Live-Läufe: Designdone / „CLI Lab" (Harness: `PARITY_PAGE="CLI Lab"`).
+- Pronomen für andere Sessions bleiben dem Satzanfang überlassen, keine Regel.
 
 ## Erledigt und vom Tisch
-- `--render-statusline` Probe und README-Zeile entfernt; `--render-rings --bar` zeigt die echte Ansicht.
-- Doku-Dubletten (formatTokens, secondaryRowText, RenderProbe.about, measureCwd) bereinigt.
-- Learnings in `LEARNINGS.md` § Swift host + `.claude/rules/swift-host.md` (45 Zeilen) committet.
+- Alles aus dem Plan; Tier-2-Konventionen (ID-Listen, delete, --json) inklusive.
+- `docs scripting-the-cli` ist das Thema, das Panel-Sessions dafür lesen.

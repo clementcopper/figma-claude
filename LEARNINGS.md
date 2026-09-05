@@ -146,6 +146,11 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **A first test on old code finds a bug in it.** `variables-export.js` had no test for
   weeks; the first one read "SemiBold" as 700 because heaviest-first matching hit "bold"
   inside "semibold". Longest match wins.
+- **The panel session is the review's last test.** After 60 commits and a green suite, one
+  message to the running panel session ("which commands did you run, what did they answer")
+  brought six findings in forty calls — two exit-code holes, an accepted broken JSX, a help
+  bug. Ask it with concrete questions and insist on command plus output; it answers in
+  FEEDBACK.md and by SendMessage.
 - **A daemon can be integration-tested without Figma.** `tests/daemon-live.test.js` spawns
   `src/daemon.js` in Plugin Mode on a free port with a temp HOME for the token file; body cap,
   socket identity, hot-reload cleanup and the idle timer are all observable that way, and all

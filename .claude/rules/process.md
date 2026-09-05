@@ -12,3 +12,4 @@ Distilled from `LEARNINGS.md` § Process and § Fork Decisions. `npm install` fi
 - **A `.gitignore` pattern without a leading slash reaches into subdirectories, case-insensitively on macOS.** `screenshot.png` swallowed `swift-host/Screenshot.png` in silence; anchor it (`/screenshot.png`) and `git check-ignore -v` anything a document links to.
 - **Cache dependencies, never build products.** Content-keyed caches holding absolute paths hit after a repo rename and broke every compile.
 - **Verify an agent's finding against the code before it enters a plan;** of ~60 review findings one was wrong (`fontWeight`) and would have removed a working check. A fix is done when its test was seen red.
+- **After a fix series, ask the running panel session to test with concrete commands** (SendMessage, command + output, filed in FEEDBACK.md); six findings in forty calls after a green suite of 923.
