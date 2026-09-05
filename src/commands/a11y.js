@@ -27,6 +27,23 @@ export function a11yExitCode(result) {
 
 const LEVELS = ['AA', 'AAA'];
 
+/**
+ * What `touch`, `focus` and `audit` count as interactive: an INSTANCE or COMPONENT, a name
+ * matching this pattern, or a node with prototype reactions. One source; it used to be
+ * written out three times and named nowhere a user could read it.
+ */
+export const INTERACTIVE_PATTERN = /button|btn|link|tab|toggle|switch|checkbox|radio|input|select|dropdown|menu|icon-btn|close|nav|click|tap|cta/i;
+const INTERACTIVE_HELP = `interactive = INSTANCE, COMPONENT, a name matching ${INTERACTIVE_PATTERN.source.replace(/\|/g, '|')}, or prototype reactions`;
+
+/** The closing line of `a11y touch`: nothing found is not a pass. Empty when issues are listed. */
+export function touchSummary(result) {
+  if (result.issues && result.issues.length) return '';
+  if (!result.total) {
+    return chalk.yellow(`  0 interactive elements found — ${INTERACTIVE_HELP}\n`);
+  }
+  return chalk.green(`  All ${result.total} interactive elements meet minimum size! ✓\n`);
+}
+
 /** `--level` as WCAG spells it; anything else is an error, like `vision --type banana`. */
 export function parseLevel(raw) {
   const level = String(raw || '').toUpperCase();
@@ -160,7 +177,7 @@ a11y
 
 a11y
   .command('vision [nodeId]')
-  .description('Simulate color blindness (protanopia, deuteranopia, tritanopia, achromatopsia)')
+  .description('Simulate color blindness: creates one recoloured COPY of the frame per type on the canvas, next to the source (protanopia, deuteranopia, tritanopia, achromatopsia). The copies stay; their ids come back in `clones` (also under --json)')
   .option('--type <type>', 'Type: protanopia, deuteranopia, tritanopia, achromatopsia, all', 'all')
   .option('--json', 'Output as JSON')
   .action(async (nodeId, options) => {
@@ -169,7 +186,7 @@ a11y
     const code = `(async () => {
       const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage.selection[0];
-      if (!root) return { error: 'Select a frame or provide a node ID' };
+      if (!root) return { error: targetId ? 'Node not found: ' + targetId : 'Select a frame or provide a node ID' };
 
       // Color blindness simulation matrices (Brettel/Vienot models)
       const matrices = {
@@ -345,7 +362,7 @@ a11y
 
 a11y
   .command('touch [nodeId]')
-  .description('Check touch target sizes (WCAG 2.5.8: min 24x24, recommended 44x44)')
+  .description('Check touch target sizes (WCAG 2.5.8: min 24x24, recommended 44x44). ' + INTERACTIVE_HELP)
   .option('--min <size>', 'Minimum target size in px', '44')
   .option('--json', 'Output as JSON')
   .action(async (nodeId, options) => {
@@ -358,7 +375,7 @@ a11y
 
       const minSize = ${minSize};
       const results = [];
-      const interactivePatterns = /button|btn|link|tab|toggle|switch|checkbox|radio|input|select|dropdown|menu|icon-btn|close|nav|click|tap|cta/i;
+      const interactivePatterns = ${INTERACTIVE_PATTERN};
 
       function traverse(node) {
         if (node.visible === false) return;
@@ -425,7 +442,7 @@ a11y
         });
         console.log('');
       } else {
-        console.log(chalk.green('  All interactive elements meet minimum size! ✓\n'));
+        console.log(touchSummary(result));
       }
     } catch (e) {
       console.log(a11yErrorOutput('Touch target check failed: ' + e.message, options)); process.exitCode = 1;
@@ -555,7 +572,7 @@ a11y
 
 a11y
   .command('focus [nodeId]')
-  .description('Show reading/focus order of interactive elements')
+  .description('Show reading/focus order of interactive elements. ' + INTERACTIVE_HELP)
   .option('--json', 'Output as JSON')
   .action(async (nodeId, options) => {
     await checkConnection();
@@ -564,7 +581,7 @@ a11y
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage.selection[0] || figma.currentPage;
       if (!root) return { error: 'Node not found' };
 
-      const interactivePatterns = /button|btn|link|tab|toggle|switch|checkbox|radio|input|select|dropdown|menu|icon-btn|close|nav|click|tap|cta/i;
+      const interactivePatterns = ${INTERACTIVE_PATTERN};
       const elements = [];
 
       function getAbsolutePosition(node) {
@@ -718,7 +735,7 @@ a11y
       }
       ${COLOR_SNIPPET}
 
-      const interactivePatterns = /button|btn|link|tab|toggle|switch|checkbox|radio|input|select|dropdown|menu|icon-btn|close|nav|click|tap|cta/i;
+      const interactivePatterns = ${INTERACTIVE_PATTERN};
       const level = ${JSON.stringify(level)};
       const issues = [];
       let textCount = 0, interactiveCount = 0;

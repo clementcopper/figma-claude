@@ -800,6 +800,7 @@ If permission error (macOS 13+): System Settings > Privacy & Security > App Mana
 - **`--json` for anything you read back:** `find`, `get`, `node tree`, `node bindings`,
   `spec`, `sizes`, `combos`, `a11y *`, `check`, `var export`. Errors come as
   `{ "ok": false, "error": "…" }`; diagnostics go to stderr, so stdout stays parseable.
+  `node tree --json` carries both forms: `tree` (nested objects) and `lines` (the text).
 - **Node-id lists take any shape:** `1:2,1:3`, `1:2 1:3`, one per line, or a JSON array —
   the same for `--node`, `delete`, `section add`, `component combine`, `stagger`.
 - **`delete` is explicit:** by id it lists every node it removed and fails on a missing id;

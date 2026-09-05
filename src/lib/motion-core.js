@@ -170,6 +170,12 @@ export function parseKeys(str, valueType = 'FLOAT') {
     .map((part) => {
       const toks = part.split(':').map((t) => t.trim());
       const t = parseFloat(toks[0]);
+      // Checked here, in the CLI's words: sent through, Figma answered with "Expected number,
+      // received null at .keyframes[1].timelinePosition".
+      const numeric = valueType !== 'COLOR' && (toks[1] === undefined || toks[1] === '' || isNaN(parseFloat(toks[1])));
+      if (isNaN(t) || numeric || (valueType === 'COLOR' && !toks[1])) {
+        throw new Error(`Bad keyframe ${JSON.stringify(part)}: expected t:v[:ease], e.g. "0:0, 0.4:1:ease-out"`);
+      }
       const value = toValue(valueType, toks[1]);
       const k = { timelinePosition: t, value };
       if (toks[2]) k.easing = mapEasing(toks[2]);

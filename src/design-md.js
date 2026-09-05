@@ -7,7 +7,7 @@
  * ready for figma-cli's `tokens import` pipeline.
  *
  * Expected document layout:
- *   ## 11. Machine-readable tokens
+ *   ## N. Machine-readable tokens   (last section; N depends on --sections)
  *   ```json design-tokens
  *   { "color": {...}, "typography": {...}, "spacing": {...},
  *     "radius": {...}, "shadow": {...}, "fonts": [...] }

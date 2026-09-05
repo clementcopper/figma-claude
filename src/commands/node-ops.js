@@ -1,5 +1,6 @@
 // Commands: node-ops (extracted from index.js)
 import chalk from 'chalk';
+import { buildNodeTree } from '../lib/node-tree.js';
 import { deletePlan, deleteNodesCode, formatDeleteResult } from '../lib/delete-nodes.js';
 import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import {
@@ -26,7 +27,7 @@ node
   .description('Show node tree structure')
   .option('-d, --depth <n>', 'Max depth', '3')
   .option('-l, --limit <n>', 'Max lines to print before truncating (0 = no cap)', '400')
-  .option('--json', 'Print { lines, shown, total } as JSON')
+  .option('--json', 'Print { tree, lines, shown, total } as JSON — `tree` is nested { id, name, type, w, h, children }, `lines` the text form')
   .action(async (nodeId, options) => {
     await checkConnection();
 
@@ -58,7 +59,8 @@ node
         }
       }
       printNode(root);
-      return { text: lines.join('\\n'), lines, shown: lines.length, total };
+      ${buildNodeTree.toString()}
+      return { text: lines.join('\\n'), lines, shown: lines.length, total, tree: buildNodeTree(root, maxDepth) };
     })()`;
 
     try {
@@ -68,7 +70,7 @@ node
         process.exitCode = 1;
         return;
       }
-      if (options.json) { console.log(JSON.stringify({ lines: result.lines, shown: result.shown, total: result.total })); return; }
+      if (options.json) { console.log(JSON.stringify({ tree: result.tree, lines: result.lines, shown: result.shown, total: result.total })); return; }
       console.log(result.text);
       if (result.total > result.shown) {
         console.log(chalk.yellow(

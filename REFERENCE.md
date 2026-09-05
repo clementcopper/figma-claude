@@ -180,6 +180,7 @@ more than the command's own budget on a large file.
 ```bash
 node src/index.js node tree                    # Show tree structure
 node src/index.js node tree "1:234" -d 5       # Deeper depth
+node src/index.js node tree "1:234" --json     # { tree: nested {id,name,type,w,h,children}, lines, shown, total }
 node src/index.js node bindings                # Show variable bindings
 node src/index.js node to-component "1:234"    # Convert to component
 node src/index.js node delete "1:234"          # Delete by ID

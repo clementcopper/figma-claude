@@ -76,6 +76,9 @@ program
       if (autoSplit) {
         md = md.replace('-->\n', `-->\n\n> **Structure trees auto-split** (~${Math.round(structTokens / 1000)}k tokens — too large for one AI context): per-page trees are in \`DESIGN-structure/\`. Use \`--no-split\` to force a single file.\n`);
       }
+      // `snapshot` and `rules gen` create their directory; this one died on ENOENT after the
+      // whole extraction had run.
+      mkdirSync(dirname(outPath), { recursive: true });
       writeFileSync(outPath, md);
 
       const written = [outPath];

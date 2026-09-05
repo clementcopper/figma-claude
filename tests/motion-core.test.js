@@ -237,3 +237,11 @@ test('staggerOptionsError names the missing option', () => {
   assert.match(staggerOptionsError({ field: 'opacity', to: '1' }), /--from/);
   assert.match(staggerOptionsError({ field: 'opacity', from: 'abc', to: '1' }), /--from/);
 });
+
+// `motion add … --keys "0:0, banana"` leaked Figma's "Expected number, received null at
+// .keyframes[1].timelinePosition"; the neighbours say "Unknown easing … Try …".
+test('parseKeys names a malformed keyframe and the format', () => {
+  assert.throws(() => parseKeys('0:0, banana'), /Bad keyframe "banana": expected t:v\[:ease\], e\.g\. "0:0, 0\.4:1:ease-out"/);
+  assert.throws(() => parseKeys('0:0, x:1'), /Bad keyframe "x:1"/);
+  assert.throws(() => parseKeys('0:0, 0.4:abc'), /Bad keyframe "0\.4:abc"/);
+});

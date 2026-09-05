@@ -731,7 +731,7 @@ tokens
 
 tokens
   .command('import-design-md <file>')
-  .description('Import tokens from a DESIGN.md (Figma extraction format with `## 11. Machine-readable tokens` JSON block). Creates color, radius, and typography variables. Also prints a context summary for figmachat.')
+  .description('Import tokens from a DESIGN.md (Figma extraction format: the `Machine-readable tokens` section at the end, a ```json design-tokens block; its number varies with --sections). Creates color, radius, and typography variables. Also prints a context summary for figmachat.')
   .option('-c, --collection <name>', 'Collection name (defaults to the design system name)')
   .option('--print-context', 'Just print the figmachat context summary, do not create variables')
   .action(async (file, options) => {

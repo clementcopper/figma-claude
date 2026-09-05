@@ -42,6 +42,14 @@ export function loadRules(dir) {
   return out;
 }
 
+/** Why no contract was written: the file, or only the part of it that was looked at. */
+export function noComponentSetsMessage(options = {}) {
+  if (options.only) return `No component set matches ${JSON.stringify(options.only)}.`;
+  if (options.selection) return 'No component sets found in the selection.';
+  if (options.pages) return `No component sets found in the selected scope (pages matching ${JSON.stringify(options.pages)}).`;
+  return 'No component sets found in this file.';
+}
+
 const rulesCmd = program
   .command('rules')
   .description('Per-component YAML contracts (generate, list) enforced by `figma-cli check`');
@@ -74,7 +82,7 @@ rulesCmd
         sets = sets.filter(s => want.some(w => s.node.n.toLowerCase().includes(w)));
       }
       if (!sets.length) {
-        spinner.warn(options.only ? `No component set matches "${options.only}".` : 'No component sets found in this file.');
+        spinner.warn(noComponentSetsMessage(options));
         console.log(chalk.gray('  Contracts are generated per COMPONENT SET (a component with variants).'));
         process.exit(0);
       }
