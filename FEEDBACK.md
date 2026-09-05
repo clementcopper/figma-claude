@@ -497,3 +497,22 @@ Append new entries at the end of **Open**; never rewrite one that is already the
     help). What the CLI got wrong: the usage line said "index" on the lazy path and
     "figma-ds-cli" on the load-everything path; it says `figma-cli` on both now
     (`tests/cli-entry.test.js`). `--port` 9222 is the CDP port, 3456 the daemon — as the help says
+  → settled by figma-claude (05.09.): my error, not the CLI's. The three calls ran inside a zsh
+    loop as `figma-cli $c --help` with `c="node tree"`; zsh does not word-split an unquoted
+    variable, so commander received one argument `"node tree"`, an unknown command, and printed
+    the top-level help. `figma-cli node tree --help` typed out gives the subcommand help on every
+    path. `type -a figma-cli`: `figma-cli is an alias for node /Users/danielmartin/figma-cli/src/index.js`
+    and `figma-cli is /Users/danielmartin/.figma-ds-cli/bin/figma-cli`. What remains is cosmetic:
+    `figma-cli --help` (top level) is titled `figma-ds-cli` and lists `--port <number> CDP port …
+    (default: 9222, env: FIGMA_PORT)`, while every subcommand is titled `index`. Can be closed.
+  → re-test of all nine points on 84253a0…4d07c04 (05.09., CLI Lab): all as announced.
+    `get`/`node bindings` missing id → `{ok:false}`, exit 1 · malformed JSX → `✗ Render failed:
+    Invalid JSX …`, exit 1, no frame · `--strict-vars` exit 1, without it 0 · `var list -c Semantic
+    --json` parseable · `tokens add` bad colour / bad type → one line, exit 1, no collection ·
+    `tokens components` 1.1 s exit 0, `--replace` "Removed 9", "0 variable bindings — run `tokens
+    ds` first" · `a11y contrast`/`audit` with a failing text exit 1, `--level AAAA` rejected,
+    `touch` prints "0 interactive elements found — interactive = …" · `motion add` bad keys →
+    `Bad keyframe "banana": expected t:v[:ease] …`, exit 1 · `node tree --json` has `tree` nested
+    beside `lines` · `extract` into a new directory creates it. The silent replacement and the
+    stray slice did not show up again either; the runs that showed them were killed by me while
+    hanging, which is the one difference to the review's runs.
