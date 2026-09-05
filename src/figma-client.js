@@ -8,7 +8,7 @@
 import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
-import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle } from './lib/text-styles.js';
+import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle, suggestStyleNames } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
 import { KNOWN_PROPS, PROP_ALIASES } from './lib/jsx-props.js';
 import { coerceNumericProps } from './lib/jsx-numeric.js';
@@ -168,6 +168,7 @@ export const TEXT_STYLE_PRELUDE = `
           ${weightKey.toString()}
           ${buildStyleIndex.toString()}
           ${matchTextStyle.toString()}
+          ${suggestStyleNames.toString()}
 
           globalThis.__textStyleWarnings = [];
           globalThis.__textStyleApplied = [];
@@ -223,9 +224,12 @@ export const TEXT_STYLE_PRELUDE = `
               const style = cache.index[name];
               if (!style) {
                 const available = Object.keys(cache.index).filter(n => n.indexOf('/') >= 0);
+                const hint = suggestStyleNames(name, available, 8);
                 globalThis.__textStyleWarnings.push(
                   'text style "' + name + '" not found' +
-                  (available.length ? ' — available: ' + available.slice(0, 8).join(', ') : ' (this file has none)')
+                  (available.length
+                    ? ' — available: ' + hint.names.join(', ') + (hint.more ? ' (+' + hint.more + ' more, run figma-cli styles for all)' : '')
+                    : ' (this file has none)')
                 );
                 return;
               }
@@ -919,12 +923,15 @@ export class FigmaClient {
     // Parse children
     const childElements = this.parseChildren(children);
 
-    // Warn if children content exists but nothing was parsed
+    // Content that parses to nothing is a broken tag, not an empty frame. This used to be a
+    // console.warn followed by "✓ Rendered" and an empty 100×100 frame, exit 0.
     const trimmedChildren = children.trim();
     if (trimmedChildren && childElements.length === 0) {
-      console.warn('[render] Warning: Frame has content but no elements were parsed.');
-      console.warn('[render] Content:', trimmedChildren.slice(0, 200) + (trimmedChildren.length > 200 ? '...' : ''));
-      console.warn('[render] Supported elements: <Frame>, <Text>, <Rectangle>, <Rect>, <Image>, <Icon>');
+      throw new Error(
+        'Invalid JSX: content inside <Frame> parsed to no element (an unclosed tag?). ' +
+        'Supported: <Frame>, <Text>, <Rectangle>, <Rect>, <Image>, <Icon>. Content: ' +
+        trimmedChildren.slice(0, 200) + (trimmedChildren.length > 200 ? '…' : '')
+      );
     }
 
     // Pre-fetch any icon SVGs before code generation

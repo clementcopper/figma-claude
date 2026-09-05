@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { normalizeWeight, buildStyleIndex, matchTextStyle } from '../src/lib/text-styles.js';
+import { normalizeWeight, buildStyleIndex, matchTextStyle, suggestStyleNames } from '../src/lib/text-styles.js';
 
 // A trimmed version of a real file's text styles (Fira Sans design system):
 // slash-grouped names, three weights sharing one size, two families.
@@ -130,5 +130,25 @@ describe('matchTextStyle', () => {
   it('returns nearest: null on an empty style set', () => {
     const r = matchTextStyle({ styles: [], size: 16, weightStyle: 'Regular' });
     assert.strictEqual(r.nearest, null);
+  });
+});
+
+// `textStyle="Label/M SemiBold"` in a file with 21 styles listed 8 names, no marker, and none
+// of the Label/* family the caller was looking for. The family the name asks for comes first,
+// then the rest, and the cut is visible.
+describe('suggestStyleNames', () => {
+  const NAMES = ['Display/XL', 'Display/L', 'Display/M', 'Heading/H1', 'Heading/H2', 'Heading/H3', 'Heading/H4',
+    'Body/L', 'Body/M', 'Body/S', 'Label/L', 'Label/M', 'Label/M Regular', 'Label/S', 'Code/S'];
+
+  it('puts the same family first and counts the rest', () => {
+    const r = suggestStyleNames('Label/M SemiBold', NAMES);
+    assert.deepStrictEqual(r.names.slice(0, 4), ['Label/L', 'Label/M', 'Label/M Regular', 'Label/S']);
+    assert.strictEqual(r.names.length, 8);
+    assert.strictEqual(r.more, NAMES.length - 8);
+  });
+
+  it('shows everything when it fits, with nothing more', () => {
+    const r = suggestStyleNames('Nope', ['A/1', 'B/2']);
+    assert.deepStrictEqual(r, { names: ['A/1', 'B/2'], more: 0 });
   });
 });

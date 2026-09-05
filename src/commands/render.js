@@ -56,6 +56,11 @@ function warnUnknownProps(jsxStrings) {
   } catch {}
 }
 
+/** `--strict-vars`: an unresolved `var:` reference fails the render (the frame stays). */
+export function strictVarsFailed(unresolved, options) {
+  return Boolean(options && options.strictVars && Array.isArray(unresolved) && unresolved.length > 0);
+}
+
 function printUnresolvedVars(unresolved) {
   if (!unresolved || unresolved.length === 0) return;
   console.log(chalk.yellow(`\n\u26a0 ${unresolved.length} variable reference(s) could not be resolved:`));
@@ -192,6 +197,7 @@ program
   .option('--keep-wrapper', 'Keep an outer flex Frame as a parent — disables the auto-split that turns "N items in a flex wrapper" into independent canvas items')
   .option('-c, --collection <name>', 'Pin var:<name> resolution to this variable collection (case-insensitive, fuzzy match). Per-attr `var:collection:name` overrides this.')
   .option('--verify [scale]', 'After rendering, return a screenshot of the result (saves PNG, prints JSON) — replaces a separate `figma-cli verify` roundtrip. Optional scale, default 1; raise it (--verify 3) when small type or thin strokes have to be judged')
+  .option('--strict-vars', 'Exit 1 when a var:<name> reference did not resolve (the frame is still rendered, with a grey placeholder)')
   .option('--no-auto-style', "Don't auto-apply a matching text style to <Text> that names none (textStyle= still works)")
   .action(async (rawJsx, options) => {
     const jsx = unescapeShell(rawJsx);
@@ -272,6 +278,9 @@ program
       console.log(chalk.green('✓ Rendered: ' + result.id));
       if (result.name) console.log(chalk.gray('  name: ' + result.name));
       printUnresolvedVars(result.unresolved);
+      if (strictVarsFailed(result.unresolved, options)) {
+        console.log(chalk.red('✗ --strict-vars: unresolved variable reference(s); the frame was rendered, exit 1')); process.exitCode = 1;
+      }
       printLayoutWarnings(result.layoutWarnings);
       printTextStyles(result.textStyles);
       recordCreated([result]);
@@ -307,6 +316,7 @@ program
   .option('--as-component', 'After rendering, convert each resulting frame to a Figma component')
   .option('-c, --collection <name>', 'Pin var:<name> resolution to this variable collection (case-insensitive, fuzzy match). Per-attr `var:collection:name` overrides this.')
   .option('--verify [scale]', 'After rendering, return a screenshot of each result (saves PNGs, prints JSON). Optional scale, default 1')
+  .option('--strict-vars', 'Exit 1 when a var:<name> reference did not resolve (the frames are still rendered, with grey placeholders)')
   .option('--no-auto-style', "Don't auto-apply a matching text style to <Text> that names none (textStyle= still works)")
   .action(async (jsxArrayStr, options) => {
     await checkConnection();
@@ -346,6 +356,9 @@ program
         console.log(chalk.cyan(`\n${results.length} frames created`));
         recordCreated(results);
         printUnresolvedVars(unresolvedVars);
+        if (strictVarsFailed(unresolvedVars, options)) {
+          console.log(chalk.red('✗ --strict-vars: unresolved variable reference(s); the frames were rendered, exit 1')); process.exitCode = 1;
+        }
         printLayoutWarnings(layoutWarnings);
         printTextStyles(textStyles);
 

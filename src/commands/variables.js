@@ -27,12 +27,46 @@ const variables = program
   .alias('var')
   .description('Manage design tokens/variables');
 
+/**
+ * Plugin code for `var list`. The collection filter is the `var delete-all -c` rule:
+ * case-insensitive, whole name or substring. Returns { name, type, collection } per variable.
+ */
+export function listVariablesCode({ collection, type } = {}) {
+  const colFilter = collection
+    ? `const fl = ${JSON.stringify(collection.toLowerCase())};
+cols = cols.filter(c => c.name.toLowerCase() === fl || c.name.toLowerCase().includes(fl));`
+    : '';
+  const typeFilter = type ? `.filter(v => v.resolvedType === ${JSON.stringify(type.toUpperCase())})` : '';
+  return `(async () => {
+let cols = await figma.variables.getLocalVariableCollectionsAsync();
+${colFilter}
+const byId = {};
+for (const c of cols) byId[c.id] = c.name;
+const vars = (await figma.variables.getLocalVariablesAsync()).filter(v => byId[v.variableCollectionId])${typeFilter};
+return vars.map(v => ({ name: v.name, type: v.resolvedType, collection: byId[v.variableCollectionId] }));
+})()`;
+}
+
 variables
   .command('list')
-  .description('List all variables')
-  .action(() => {
-    checkConnectionSync();
-    figmaUse('variable list');
+  .description('List local variables (name, type, collection)')
+  .option('-c, --collection <name>', 'Only this collection (case-insensitive, whole name or substring)')
+  .option('-t, --type <type>', 'Only this type: COLOR, FLOAT, STRING, BOOLEAN')
+  .option('--json', 'Print a JSON array of { name, type, collection }')
+  .action(async (options) => {
+    await checkConnection();
+    try {
+      const vars = await fastEval(listVariablesCode(options));
+      if (options.json) { console.log(JSON.stringify(vars || [])); return; }
+      if (!vars || !vars.length) {
+        const scope = [options.collection && `in a collection matching ${JSON.stringify(options.collection)}`, options.type && `of type ${options.type.toUpperCase()}`].filter(Boolean).join(' ');
+        console.log(chalk.yellow(scope ? `No variables ${scope}` : 'No local variables'));
+        return;
+      }
+      for (const v of vars) console.log(`${v.name} (${v.type})  ${chalk.gray(v.collection)}`);
+    } catch (e) {
+      handleEvalError(e);
+    }
   });
 
 variables

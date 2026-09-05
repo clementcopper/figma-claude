@@ -81,6 +81,27 @@ export function buildStyleIndex(styles) {
 }
 
 /**
+ * Names to offer for a `textStyle` that does not exist: the family the name asks for
+ * (`Label/…` for `Label/M SemiBold`) first, then the rest, at most `max`, and how many were
+ * cut. The old list showed the first 8 of 21 with no marker and none of the wanted family.
+ */
+export function suggestStyleNames(name, names, max) {
+  var limit = max || 8;
+  var list = names || [];
+  var slash = String(name || '').indexOf('/');
+  var prefix = slash > 0 ? String(name).slice(0, slash + 1).toLowerCase() : null;
+  var same = [];
+  var other = [];
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i];
+    if (prefix && n.toLowerCase().indexOf(prefix) === 0) same.push(n);
+    else other.push(n);
+  }
+  var ordered = same.concat(other);
+  return { names: ordered.slice(0, limit), more: Math.max(0, ordered.length - limit) };
+}
+
+/**
  * Pick the text style a `<Text>` without an explicit `textStyle` should get.
  *
  * Exact matches only: same font size, same weight/italic. Guessing across

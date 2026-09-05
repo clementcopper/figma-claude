@@ -15,7 +15,8 @@ node src/index.js tokens spacing         # Spacing tokens
 ### Manage Variables
 
 ```bash
-node src/index.js var list               # Show all variables
+node src/index.js var list               # Every local variable: name (TYPE) collection
+node src/index.js var list -c Semantic   # One collection (case-insensitive, substring ok); --json for scripts
 node src/index.js var list -t COLOR      # Filter by type
 node src/index.js var visualize          # Show colors on canvas
 node src/index.js var create "name" -c "ColId" -t COLOR -v "#3b82f6"
@@ -410,6 +411,8 @@ round caps need a vector path (`figma.createNodeFromSvg` with `stroke-linecap="r
 **Undo:** `figma-cli undo` removes the node(s) created by the last render / render-batch.
 
 **Verify in one call:** `figma-cli render '<Frame>...' --verify` (also on render-batch) returns a screenshot JSON of the result.
+
+**Unresolved `var:` references** render as grey placeholders with a warning and exit 0; `--strict-vars` (render and render-batch) keeps the frame and exits 1 instead. Malformed JSX (an unclosed tag) is an error before anything reaches the canvas.
 
 **WRONG vs RIGHT:**
 ```
