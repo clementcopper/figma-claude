@@ -39,8 +39,19 @@ wrong instrument and reports one too many. Tag each entry with the area it conce
 Append new entries at the end of **Open**; never rewrite one that is already there.
 
 ## Open
-
 <!-- new entries go here -->
+
+- [ ] `cli` · **`--help` on `node tree`, `node bindings`, `var export` prints the top-level help of "figma-ds-cli"**
+  **Repro:** `figma-cli node tree --help`, `figma-cli node bindings --help`, `figma-cli var export --help`
+  **Observed:** `Usage: figma-ds-cli [options] [command]` with `--port <number> CDP port … (default: 9222)` and the full command list; the subcommand's own flags (`--json`) never appear. `figma-cli render --help`, `delete --help`, `check --help` show their own flags.
+  **Expected:** the subcommand's usage and flags, like every other command. The "figma-ds-cli" name and CDP port 9222 also contradict `status` (daemon on 3456).
+  **Context:** 2.1.2, panel
+  → not reproduced (05.09.): `figma-cli node tree --help`, `node bindings --help` and
+    `var export --help` show the subcommand help through all three paths here (the alias, the
+    panel launcher `~/.figma-ds-cli/bin/figma-cli`, `node src/index.js`); the program name is
+    "index", not "figma-ds-cli", and `--port` has no default in the code. Please re-run and add
+    `type -a figma-cli` plus the exact command line. On the side note: `--port` is the CDP
+    port (9222), 3456 is the daemon — two different things, as the help text says
 
 ## Done
 
@@ -298,3 +309,189 @@ Append new entries at the end of **Open**; never rewrite one that is already the
     Ursache war). Eine gedeckelte Skala wird ab jetzt im JSON gemeldet statt still angewandt.
     Live geprüft an `915:5252`: 36 px bei Skala 1, 108 px bei 3, und bei `-s 100` sauber auf
     2000 px gedeckelt
+
+- [x] `cli` · **`get <missing-id> --json` answers with plain text, exit 0**
+  **Repro:** `figma-cli get 9999:9999 --json`
+  **Observed:** `No node found` (no JSON), exit code 0
+  **Expected:** `{ "ok": false, "error": "…" }` and a non-zero exit, as `docs scripting-the-cli` promises for `--json` errors. `node tree 9999:9999 --json` and `a11y contrast 9999:9999 --json` do exactly that (exit 1).
+  **Context:** 2.1.2, panel (FigmaClaude.app), daemon 3456, file Designdone, page CLI Lab
+  → fixed: `get` runs through the daemon and answers `{ ok: false, error }` / a red line, exit 1
+    (`src/lib/cli-output.js`, `tests/cli-output.test.js`), commit 84253a0. Note: a missing id
+    currently takes Figma's own 10 s lookup and comes back as "Unable to establish connection";
+    that text is Figma's, the exit code is 1 either way
+
+- [x] `cli` · **`node bindings <missing-id> --json` returns `ok:false` but exits 0**
+  **Repro:** `figma-cli node bindings 9999:9999 --json; echo $?`
+  **Observed:** `{"ok":false,"error":"Node not found: 9999:9999"}`, exit 0
+  **Expected:** exit 1 — the same case on `node tree --json` and `a11y contrast --json` exits 1. A script that trusts the exit code passes here.
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone
+  → fixed: exit 1 in the error branch; `tests/exit-codes.test.js` now also sees `{ ok: false }`
+    JSON lines and template-literal ✗ lines (that made seven more silent failures visible),
+    commit 84253a0
+
+- [x] `cli` · **`render` with malformed JSX renders an empty frame and exits 0**
+  **Repro:** `figma-cli render '<Frame name="CLI-Test-Broken"><Text>x</Frame>'`
+  **Observed:** `[render] Warning: Frame has content but no elements were parsed.` then `✓ Rendered: 1013:10`, exit 0. An empty 100×100 frame on the canvas.
+  **Expected:** exit 1 — "exit code is the truth" for render. A prop error (`gap="8pxx"`) exits 1 correctly; an unclosed tag does not.
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone, page CLI Lab
+  → fixed: content that parses to no element is an error before anything reaches the canvas —
+    `✗ Render failed: Invalid JSX: content inside <Frame> parsed to no element (an unclosed
+    tag?) …`, exit 1, no frame (`tests/jsx-unclosed-tag.test.js`), commit db1d854
+
+- [x] `cli` · **`render` with an unresolvable `var:` renders a grey placeholder and exits 0**
+  **Repro:** `figma-cli render '<Frame name="CLI-Test-NoVar" w={100} h={100} bg="var:gibt-es-nicht" />' --collection Semantic`
+  **Observed:** `✓ Rendered: 1013:11`, `⚠ 1 variable reference(s) could not be resolved: gibt-es-nicht`, exit 0
+  **Expected:** in a bind-everything workflow an unbound fill is the failure the audit exists for; exit 1, or at least a flag (`--strict-vars`) that makes it one. A script chaining renders never sees the warning.
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone, page CLI Lab
+  → built: `--strict-vars` on `render` and `render-batch` — the frame stays, exit 1. The default
+    is unchanged on purpose: a placeholder is what you want while iterating
+    (`tests/render-strict-vars.test.js`, `docs scripting-the-cli`, REFERENCE.md), commit db1d854
+
+- [x] `docs` · **`node tree --json` is text lines wrapped in JSON, not a tree**
+  **Repro:** `figma-cli node tree 1013:7 --json`
+  **Observed:** `{"lines":["FRAME: CLI-Test-Card (320x118) [1013:7]","  TEXT: Lab-Test 1 (270x26) [1013:8]", …],"shown":3,"total":3}`
+  **Expected:** `docs scripting-the-cli` lists `node tree` under "`--json` for anything you read back"; a reader expects nested objects with id/name/type/w/h/children, not indentation to parse. If the line form is intended, the docs should say so.
+  **Context:** 2.1.2, panel, file Designdone
+  → built: `node tree --json` now carries `tree` (nested `{ id, name, type, w, h, children }`)
+    beside `lines` (`src/lib/node-tree.js`, `tests/node-tree.test.js`), documented in
+    REFERENCE.md and `docs scripting-the-cli`, commit 8edee41
+
+- [x] `cli` · **`tokens add` with an invalid value or type prints the red line but exits 0**
+  **Repro:** `figma-cli tokens add "lab/test-bad" "#zz" -c "CLI-Lab-Test" -t COLOR; echo $?` and `figma-cli tokens add "lab/x" 1 -c "CLI-Lab-Test" -t NOPE; echo $?`
+  **Observed:** `✗ Failed to create token: lab/test-bad`, exit 0 (both cases)
+  **Expected:** exit 1 — `docs scripting-the-cli` names `tokens` among the commands where "exit code is the truth"
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone
+  → fixed: value and type are validated before Figma sees them (`✗ Invalid color "#zz"`,
+    `✗ Unknown type "NOPE". Use: COLOR, FLOAT, STRING, BOOLEAN`), exit 1. The old path had also
+    created the collection and a valueless variable — that is where your `CLI-Lab-Test (5)`
+    came from (`validateTokenInput`, `tests/tokens-result.test.js`), commit 84253a0
+
+- [x] `cli` · **`tokens import` with malformed JSON says "Could not read file"**
+  **Repro:** `printf '{nope' > bad.json; figma-cli tokens import bad.json -c "CLI-Lab-Test"`
+  **Observed:** `✗ Could not read file: …/bad.json`, exit 1 — the same line as for a file that does not exist
+  **Expected:** a parse error naming the JSON problem; the file was read fine. Exit 1 is right.
+  **Context:** 2.1.2, panel
+  → fixed: `✗ Invalid JSON in <file>: <parser message>`; reading and parsing are separate
+    failures (`parseTokensFile`), commit 1e075de
+
+- [x] `docs` · **`render`'s unresolved-variable hint points to `var list --collection`, which does not exist**
+  **Repro:** `figma-cli render '<Frame w={100} h={100} bg="var:gibt-es-nicht" />' --collection Semantic`, then `figma-cli var list --collection Semantic`
+  **Observed:** hint: `Check \`figma-cli var list\` (optionally with --collection).` — then `error: unknown option '--collection'`, exit 1. `var list --help` lists no options at all; `-c` fails the same way.
+  **Expected:** either the flag, or a hint that names a command that takes one (`var export --json` does filter nothing either)
+  **Context:** 2.1.2, panel
+  → built: `var list -c <name>` (case-insensitive, substring, the `var delete-all -c` rule),
+    `-t <type>` (REFERENCE.md had promised it) and `--json`; the hint is true now
+    (`tests/var-list-code.test.js`), commit db1d854
+
+- [x] `cli` · **`motion add` with malformed `--keys` leaks Figma's raw validation error**
+  **Repro:** `figma-cli motion add 1014:28 --field opacity --keys "0:0, banana"`
+  **Observed:** `✖ Error: in applyManualKeyframeTrack: Property "track" failed validation: Expected number, received null at .keyframes[1].timelinePosition`, exit 1
+  **Expected:** the same friendliness as the neighbours: unknown field says `Unknown motion field "wobble". Try opacity, …`, unknown easing says `Unknown easing "swoosh". Try …`. Here the key format (`t:v[:ease]`) should be named. Exit 1 is right.
+  **Context:** 2.1.2, panel, Figma Motion Beta, file Designdone, page CLI Lab
+  → fixed: `✖ Bad keyframe "banana": expected t:v[:ease], e.g. "0:0, 0.4:1:ease-out"`, exit 1
+    (`parseKeys`, `tests/motion-core.test.js`), commit 8edee41
+
+- [x] `cli` · **`tokens components` reports "9 components with variables"; none carries a binding and no collection appears**
+  **Repro:** `figma-cli tokens components` on an empty page, then `figma-cli node bindings 1014:91 --json` (Button / Primary) and `figma-cli node bindings 1014:95 --json` (Card), and a list of local collections
+  **Observed:** `✔ 9 components with variables` — bindings: `{}` on both; collections before and after: `Primitives (54), Semantic (35), CLI-Lab-Test (5)`, unchanged. A stray `SLICE "Slice 1"` (`1014:100`, 100×100 at 426,-121) also appeared on the page, id directly after the last component `1014:99`; the page had held only my two motion frames before the run.
+  **Expected:** either bound fills plus a collection, or a line that says "hex only". And no slice.
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone, page CLI Lab
+  → bindings: the line counted conversions; it now counts bindings and says `9 components, 0
+    variable bindings — run \`tokens ds\` first for the IDS collection`, commit 1e075de.
+    SLICE: not reproduced — three runs on CLI Lab created no slice, and nothing in `src/`,
+    `plugin/` or `app/` calls `createSlice`. If it appears again, note which command ran before
+
+- [x] `cli` · **`tokens components` never exits after printing its success summary**
+  **Repro:** `figma-cli tokens components` (and again with `--replace`), page CLI Lab, in a shell script
+  **Observed:** `✓ IDS Base Components created!` … `Total: 9 components on canvas` within ~15 s, then the process stays alive: 5:23 min, 2:32 min and 1:49 min in three runs, until I killed it (exit 143). The daemon answered `eval` and `status` normally in the meantime, so nothing was blocked but the command itself. Every other command in ~80 calls this session returned.
+  **Expected:** exit 0 right after the summary. A script that chains commands never gets past this one.
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone, page CLI Lab
+  → fixed, reproduced first (SIGTERM after 45 s, three runs): the nine frames went through a
+    direct CDP client whose websocket was never closed. Through the daemon the command
+    returns in 0.9 s, exit 0, commit 1e075de
+
+- [x] `cli` · **`tokens components` replaces the previous run's components silently; `--replace` reports "Removed 0"**
+  **Repro:** `figma-cli tokens components` three times on the same page — plain, plain, `--replace` — with `figma-cli eval` listing the page's COMPONENT children between runs
+  **Observed:** after run 1: `Button / Primary … Badge / Error` = `1014:91` … `1014:99`. After runs 2 and 3: still exactly one of each name, now `1014:152` … `1014:160`; `find "Button / Primary" --json` returns only the new id, the old ones are gone. Run 3 printed `✔ Removed 0 earlier element(s)`. Run 2 had no `--replace` at all.
+  **Expected:** without `--replace` the earlier nine stay (the help says the flag "removes an earlier run's components of the same names first", so the plain run should not); with `--replace` the count of removed elements should be 9, not 0. As it is, the flag and the message both say the opposite of what happened.
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone, page CLI Lab
+  → `--replace` "Removed 0": fixed — the count was a bare last expression the daemon's eval
+    does not hand back; it removed all 18 and now says so (`tests/destructive-guards.test.js`),
+    commit 1e075de. The silent replacement WITHOUT `--replace` did not reproduce: two plain runs
+    left 18 components (`1015:4980…4988` and `1015:5008…5016`) on the page
+
+- [x] `cli` · **`a11y contrast|text|audit` exit 0 although elements fail**
+  **Repro:** frame with one 1.56:1 text and one 9px text; `figma-cli a11y contrast 1014:161; echo $?`, `figma-cli a11y audit 1014:161 --json >/dev/null; echo $?`
+  **Observed:** `✗ Fail: 1/5` / audit `Score: C`, `failing: 1` in the JSON — exit 0 in every case. Only a missing node exits 1.
+  **Expected:** `docs scripting-the-cli` lists `a11y` among "exit code is the truth"; `check` exits 1 on any violation. A CI gate on `a11y` today has to parse the JSON. Either exit 1 on `failing > 0`, or the docs should say the code covers only command failure.
+  **Context:** 2.1.2, panel, daemon 3456, file Designdone, page CLI Lab
+  → changed: `contrast|text|touch` exit 1 when an element fails, `audit` on an error-severity
+    issue (warnings alone stay 0), the `check` rule; `--json` unchanged (`a11yExitCode`,
+    `tests/a11y-json-errors.test.js`, `docs scripting-the-cli`), commit 84253a0
+
+- [x] `cli` · **`a11y contrast --level AAAA` is accepted silently and runs as AA**
+  **Repro:** `figma-cli a11y contrast 1014:161 --level AAAA`
+  **Observed:** header and thresholds identical to the AA run (`need 4.5:1`), exit 0. `a11y vision --type banana` rejects with `✗ Unknown type. Use: …`, exit 1.
+  **Expected:** the same rejection for an unknown level.
+  **Context:** 2.1.2, panel
+  → fixed: `✗ Unknown level "AAAA". Use: AA, AAA`, exit 1, on `contrast` and `audit`
+    (`parseLevel`), commit 84253a0
+
+- [x] `cli` · **`a11y vision --json` writes simulation copies onto the canvas, one set per run**
+  **Repro:** `figma-cli a11y vision 1014:161` then `figma-cli a11y vision 1014:161 --type protanopia --json`, then list the page's children
+  **Observed:** four new frames `CLI-A11y-Lab (Protanopia|Deuteranopia|Tritanopia|Achromatopsia)` after the first run, a fifth `(Protanopia)` after the `--json` run; nothing removed, nothing deduplicated. The text output says "Created simulation copies", the JSON output does not.
+  **Expected:** a read command with `--json` should not change the file, or its JSON should carry the created ids so a script can clean up. Also `--help` says nothing about canvas side effects.
+  **Context:** 2.1.2, panel, page CLI Lab
+  → docs: the JSON did carry the ids — `clones: [{ id, name, type }]` — the text mode's
+    "Created simulation copies" had no JSON twin. The help now says that copies are created
+    and where their ids come back, commit 8edee41. No dedupe: a second run is a second set
+
+- [x] `cli` · **`a11y vision 9999:9999 --json` says "Select a frame or provide a node ID" although one was given**
+  **Repro:** `figma-cli a11y vision 9999:9999 --json`
+  **Observed:** `{"ok":false,"error":"Select a frame or provide a node ID"}`, exit 1. The five sibling subcommands say `Node not found` for the same id.
+  **Expected:** `Node not found: 9999:9999`. Exit 1 is right.
+  **Context:** 2.1.2, panel
+  → fixed: `Node not found: 9999:9999` when an id was given, commit 8edee41
+
+- [x] `docs` · **`a11y touch` / `focus` decide "interactive" by node name; nothing says so**
+  **Repro:** 20×20 frame named `A11y-SmallTarget` → `a11y touch 1014:161`: `Pass: 0/0`, "All interactive elements meet minimum size! ✓". `figma-cli rename-batch '{"1014:166":"Button / Small"}'` → same command: `total: 2, failing: 1, critical: 1`.
+  **Observed:** a clickable-looking element with no "Button" in its name is invisible to the check and the green line reads as a pass. `a11y touch --help` and `docs` do not name the detection rule.
+  **Expected:** the help should say what counts as interactive (name patterns? prototype reactions?) and the empty result should read "0 interactive elements found" rather than "All … meet minimum size".
+  **Context:** 2.1.2, panel, page CLI Lab
+  → fixed: touch and focus help name the rule (INSTANCE, COMPONENT, a name matching
+    button|btn|link|…, or prototype reactions; `INTERACTIVE_PATTERN`, one source instead of
+    three copies); an empty result reads `0 interactive elements found — …`, commit 8edee41
+
+- [x] `cli` · **`rules gen --pages "CLI Lab"` says "No component sets found in this file" when the scope, not the file, is empty**
+  **Repro:** `figma-cli rules gen <dir> --pages "CLI Lab"` (the file has `Btn` and others on another page; `--pages Components --only Btn` generates fine)
+  **Observed:** `⚠ No component sets found in this file.`, exit 0, no directory created
+  **Expected:** "…in the selected scope (pages matching cli lab)". Minor.
+  **Context:** 2.1.2, panel
+  → fixed: `No component sets found in the selected scope (pages matching "CLI Lab")` /
+    `… in the selection` (`noComponentSetsMessage`, `tests/rules-scope-message.test.js`),
+    commit 8edee41
+
+- [x] `cli` · **`extract` fails with ENOENT when the output path's directory does not exist**
+  **Repro:** `figma-cli extract <scratch>/newdir/DESIGN.md --pages "CLI Lab" --sections identity` (also with `--split`)
+  **Observed:** `✖ Extraction failed: ENOENT: no such file or directory, open '…/newdir/DESIGN.md'`, exit 1, after the full extraction ran. Into an existing directory the same command succeeds, `--split` included.
+  **Expected:** create the parent directory (`snapshot` and `rules gen` create theirs), or fail before extracting.
+  **Context:** 2.1.2, panel, file Designdone
+  → fixed: the parent directory is created before the write, like `snapshot` and `rules gen`
+    (`tests/extract-outdir.test.js`), commit 8edee41
+
+- [x] `docs` · **`tokens import-design-md --help` names `## 11. Machine-readable tokens`; `extract` writes it as `## 12.`**
+  **Repro:** `figma-cli tokens import-design-md --help` vs `grep -n "^## 1[12]\." DESIGN.md` on a fresh extract
+  **Observed:** help: "Figma extraction format with `## 11. Machine-readable tokens` JSON block"; extract: `## 11. Extending this system`, `## 12. Machine-readable tokens`. With `--sections tokens` the same block is `## 1.`. `check --roundtrip` passes, so the parser copes; the help text is what is stale.
+  **Expected:** the help names the section by title, not by number, or names the right number.
+  **Context:** 2.1.2, panel
+  → fixed: the help names the section by title and says the number varies with `--sections`,
+    commit 8edee41
+
+- [x] `cli` · **`render`'s "text style not found — available: …" lists 8 of 21 styles with no truncation marker**
+  **Repro:** `figma-cli render '<Frame><Text textStyle="Label/M SemiBold">x</Text></Frame>'` in a file with 21 text styles (`figma-cli styles`)
+  **Observed:** `⚠ text style "Label/M SemiBold" not found — available: Display/XL, Display/L, Display/M, Heading/H1, Heading/H2, Heading/H3, Heading/H4, Body/L` — exactly 8 names, no "…", and the `Label/*` family I was looking for is not among them. The text renders as Inter Regular with no style, exit 0.
+  **Expected:** either the full list, or the nearest matches (`Label/M`, `Label/M Regular`) like the size-based hint does ("nearest: Code/S"), plus a "+13 more" marker.
+  **Context:** 2.1.2, panel, file Designdone
+  → fixed: the same family first (`Label/L, Label/M, Label/M Regular, …`), then `(+12 more,
+    run figma-cli styles for all)` (`suggestStyleNames`, `tests/text-styles.test.js`),
+    commit db1d854

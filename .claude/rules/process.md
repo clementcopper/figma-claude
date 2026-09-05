@@ -13,3 +13,4 @@ Distilled from `LEARNINGS.md` § Process and § Fork Decisions. `npm install` fi
 - **Cache dependencies, never build products.** Content-keyed caches holding absolute paths hit after a repo rename and broke every compile.
 - **Verify an agent's finding against the code before it enters a plan;** of ~60 review findings one was wrong (`fontWeight`) and would have removed a working check. A fix is done when its test was seen red.
 - **After a fix series, ask the running panel session to test with concrete commands** (SendMessage, command + output, filed in FEEDBACK.md); six findings in forty calls after a green suite of 923.
+- **A convention lands only where the guard can see it;** the exit-code guard knew one spelling of ✗ and missed the template literal and the `{ ok: false }` line for a day. Widen the test first and let it list the sites.

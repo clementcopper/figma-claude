@@ -159,6 +159,18 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
   Explore agents found ~60 items; one (`TextNode.fontWeight` "does not exist") was wrong and
   would have removed a working check. Verify every finding against the code or a reproduction
   before it enters a plan.
+- **A convention lands only where the guard can see it.** The scripting contract ("exit code
+  is the truth", `{ ok: false }` under `--json`) was documented on 4.9. and guarded by
+  `tests/exit-codes.test.js`; the next day the panel found `node bindings --json` and
+  `tokens add` exiting 0. The guard's regex knew `chalk.red('✗` in single quotes — not the
+  template literal, not the JSON line. Widened, it flagged nine more sites at once. When a
+  rule is written down, grep for every spelling of the thing it rules, and let the test list
+  them before the fix.
+- **A read command's error is Figma's error, worded by Figma.** `getNodeByIdAsync` on an id
+  that does not exist answers within 0.3 s the first time and, once Figma has looked it up on
+  the server, with "Unable to establish connection to Figma after 10 seconds" — the CLI exits 1
+  either way, but the sentence is not about the connection. `figma.getNodeById` (sync) still
+  answers null in 0.3 s; not adopted yet, noted for the next lookup-message complaint.
 
 ## Fork Decisions (clementcopper)
 

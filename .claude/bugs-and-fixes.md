@@ -198,3 +198,55 @@ no token / wrong token / real Origin → 403.
 the file never appeared and every run said "Select an image or frame first"; `raw` was a
 passthrough. Native path for both modes, `exportAsync` for remove-bg, `raw` deleted;
 `tests/figma-use-remnants.test.js` scans for the next one.
+
+## The Exit-Code Guard Read Only One Spelling of "Failed" (2026-09-05, panel feedback)
+
+**Symptom:** `node bindings 9999:9999 --json` printed `{"ok":false,…}` and exited 0; `tokens add
+lab/bad "#zz" -t COLOR` printed a red ✗ and exited 0 — after `tests/exit-codes.test.js` had been
+green for a day and `docs scripting-the-cli` promised "exit code is the truth".
+
+**Cause:** the guard's regex matched `chalk.red('✗` with a single quote only. A template
+literal (`` chalk.red(`✗ …`) ``) and a `JSON.stringify({ ok: false` line are the same failure
+in two other spellings, and neither was looked at.
+
+**Fix:** the regex reads all three, the window is eight lines (`check` explains on two branches
+before its one `process.exit(1)`); that made nine silent failures visible at once (blocks,
+doctor, rules list, rename-batch among them), all set now. `get` moved from `figmaUse` — a
+bare string return, printed as-is — to `fastEval` with `{ error }` and `errorOutput`
+(`src/lib/cli-output.js`).
+
+## `tokens add` Created Half a Token Before Failing (2026-09-05, panel feedback)
+
+**Symptom:** `tokens add lab/bad "#zz" -c CLI-Lab-Test -t COLOR` printed a twelve-line Figma
+validation dump and exit 0 — and the collection now held a `lab/bad` with no value; the
+reporter's `CLI-Lab-Test (5)` was made of those.
+
+**Cause:** value and type went to Figma unchecked; `createVariableCollection` and
+`createVariable` succeed, `setValueForMode` throws.
+
+**Fix:** `validateTokenInput(value, type)` before the eval — the colour rule from
+`src/lib/color.js`, the four type names — so a bad input creates nothing; a Figma error that
+still gets through shows its first line.
+
+## `tokens components` Never Exited (2026-09-05, panel feedback)
+
+**Symptom:** the summary printed after ~15 s, then the process stayed alive until killed (5:23,
+2:32, 1:49 min in the reporter's runs; SIGTERM at 45 s in mine).
+
+**Cause:** the nine frames were rendered through `getFigmaClient()` — a direct CDP websocket
+that nothing closes. `extract` had met the same hang and carried a `process.exit(0)` for it.
+
+**Fix:** `fastRender` (the daemon owns the render, as `cli-core.js` says above it); 0.9 s, exit 0.
+The `--replace` count came back as 0 for the same family of reason: a bare last expression
+the daemon eval does not return — `componentsCleanupCode` is a function with `return removed`.
+
+## Malformed JSX Rendered an Empty Frame (2026-09-05, panel feedback)
+
+**Symptom:** `render '<Frame name="X"><Text>x</Frame>'` printed `[render] Warning: Frame has
+content but no elements were parsed.` then `✓ Rendered`, exit 0, an empty 100×100 frame.
+
+**Cause:** `parseJSX` only warned when the frame's content parsed to zero elements.
+
+**Fix:** it throws `Invalid JSX: content inside <Frame> parsed to no element (an unclosed
+tag?) … Content: <Text>x`; `render` exits 1 and nothing reaches the canvas
+(`tests/jsx-unclosed-tag.test.js`).
