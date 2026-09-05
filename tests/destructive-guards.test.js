@@ -19,6 +19,14 @@ describe('tokens components cleanup', () => {
     assert.match(code, /\.remove\(\)/);
     assert.match(code, /"O'Neil"/);
   });
+
+  // Live: `--replace` removed all 18 earlier components and printed "Removed 0". The count sat
+  // as a bare last expression, which the daemon's eval does not hand back; a function returns it.
+  it('hands the count back as a return value', () => {
+    const code = componentsCleanupCode(['Card'], { replace: true });
+    assert.match(code, /^\s*\(\(\) => \{/);
+    assert.match(code, /return removed;/);
+  });
 });
 
 describe('gradient --apply-to', () => {

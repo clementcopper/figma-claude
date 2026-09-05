@@ -10,7 +10,7 @@ import {
   daemonExec,
   fastEval,
   figmaUse,
-  getFigmaClient,
+  fastRender,
   handleEvalError,
   hexToRgb
 } from '../lib/cli-core.js';
@@ -52,6 +52,15 @@ export function validateTokenInput(value, type) {
   if (type === 'FLOAT' && isNaN(parseFloat(value))) return `${JSON.stringify(value)} is not a number (type FLOAT)`;
   if (type === 'BOOLEAN' && value !== 'true' && value !== 'false') return `${JSON.stringify(value)} is not a boolean — use true or false`;
   return null;
+}
+
+/** The JSON of a `tokens import` file; an unparseable one names the file and the problem. */
+export function parseTokensFile(content, file) {
+  try {
+    return JSON.parse(content);
+  } catch (e) {
+    throw new Error(`Invalid JSON in ${file}: ${e.message}`);
+  }
 }
 
 export function resultOrThrow(result, lastError = figmaUse.lastError) {
@@ -547,12 +556,18 @@ tokens
     }
 
     // Read JSON file
-    let tokensData;
+    let content;
     try {
-      const content = readFileSync(file, 'utf8');
-      tokensData = JSON.parse(content);
+      content = readFileSync(file, 'utf8');
     } catch (error) {
       console.log(chalk.red(`✗ Could not read file: ${file}`));
+      process.exit(1);
+    }
+    let tokensData;
+    try {
+      tokensData = parseTokensFile(content, file);
+    } catch (error) {
+      console.log(chalk.red('✗ ' + error.message));
       process.exit(1);
     }
 
@@ -1072,14 +1087,16 @@ return count;
  */
 export function componentsCleanupCode(names, { replace } = {}) {
   if (!replace) return null;
-  return `
+  // A function, not bare statements: the count was the last expression, and the daemon's
+  // eval handed nothing back — 18 removed, "Removed 0" printed.
+  return `(() => {
 const names = ${JSON.stringify(names)};
 let removed = 0;
 figma.currentPage.children.forEach(n => {
   if (names.includes(n.name)) { n.remove(); removed++; }
 });
-removed
-`;
+return removed;
+})()`;
 }
 
 const IDS_COMPONENT_NAMES = ['Button / Primary', 'Button / Secondary', 'Button / Outline', 'Input', 'Card', 'Badge / Default', 'Badge / Success', 'Badge / Warning', 'Badge / Error'];
@@ -1134,9 +1151,10 @@ tokens
     ];
 
     try {
-      const client = await getFigmaClient();
+      // Through the daemon (fastRender), never a direct FigmaClient: its CDP websocket was
+      // never closed and kept the process alive for minutes after the summary.
       for (const { jsx } of jsxComponents) {
-        await client.render(jsx);
+        await fastRender(jsx);
       }
       spinner.succeed('9 frames created');
     } catch (e) { spinner.fail('Frame creation failed: ' + e.message); process.exitCode = 1; }
@@ -1159,10 +1177,13 @@ tokens
     let row0X = 0, row1X = 0;
     const gap = 32;
     let converted = 0;
+    let bound = 0;
     const conversionErrors = [];
 
     for (const comp of componentOrder) {
       const convertSingle = `
+(async () => {
+let bound = 0;
 const f = figma.currentPage.children.find(n => n.name === ${JSON.stringify(comp.name)} && n.type === 'FRAME');
 if (f) {
   const vars = await figma.variables.getLocalVariablesAsync();
@@ -1172,22 +1193,23 @@ if (f) {
   if (vFill && f.fills && f.fills.length > 0) {
     const fills = JSON.parse(JSON.stringify(f.fills));
     fills[0] = figma.variables.setBoundVariableForPaint(fills[0], 'color', vFill);
-    f.fills = fills;
+    f.fills = fills; bound++;
   }` : ''}
   ${comp.varStroke ? `
   const vStroke = findVar(${JSON.stringify(comp.varStroke)});
   if (vStroke && f.strokes && f.strokes.length > 0) {
     const strokes = JSON.parse(JSON.stringify(f.strokes));
     strokes[0] = figma.variables.setBoundVariableForPaint(strokes[0], 'color', vStroke);
-    f.strokes = strokes;
+    f.strokes = strokes; bound++;
   }` : ''}
   const c = figma.createComponentFromNode(f);
   c.x = ${comp.row === 0 ? row0X : row1X};
   c.y = ${comp.row === 0 ? 0 : 80};
 }
-`;
+return bound;
+})()`;
       try {
-        resultOrThrow(figmaUse(evalArg(convertSingle), { silent: true }));
+        bound += Number(resultOrThrow(figmaUse(evalArg(convertSingle), { silent: true }))) || 0;
         converted++;
         if (comp.row === 0) row0X += comp.width + gap;
         else row1X += comp.width + 24;
@@ -1196,7 +1218,10 @@ if (f) {
     if (conversionErrors.length) {
       spinner.fail(`${converted} of ${componentOrder.length} components converted — ${conversionErrors[0]}`); process.exitCode = 1;
     } else {
-      spinner.succeed(`${converted} components with variables`);
+      // Said "with variables" whatever happened; without the IDS collection nothing binds.
+      spinner.succeed(bound
+        ? `${converted} components, ${bound} variable binding(s)`
+        : `${converted} components, 0 variable bindings — run \`tokens ds\` first for the IDS collection`);
     }
 
     await new Promise(r => setTimeout(r, 100));
