@@ -44,7 +44,7 @@ blocksCmd
     await checkConnection();
     const block = getBlock(id);
     if (!block) {
-      console.log(chalk.red(`✗ Block "${id}" not found.`));
+      console.log(chalk.red(`✗ Block "${id}" not found.`)); process.exitCode = 1;
       console.log(`Run ${chalk.cyan('blocks list')} to see available blocks.`);
       return;
     }

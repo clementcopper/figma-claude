@@ -444,7 +444,7 @@ program
     if (nodeMajor >= 18) {
       console.log(chalk.green(`✓ Node.js ${nodeVersion}`));
     } else {
-      console.log(chalk.red(`✗ Node.js ${nodeVersion} (need 18+)`));
+      console.log(chalk.red(`✗ Node.js ${nodeVersion} (need 18+)`)); process.exitCode = 1;
     }
 
     // 2. Platform
@@ -484,7 +484,7 @@ program
         console.log(chalk.red('✗ Remote debugging port not responding')); process.exitCode = 1;
       }
     } catch {
-      console.log(chalk.red(`✗ Remote debugging not available (port ${cdpPort} closed)`));
+      console.log(chalk.red(`✗ Remote debugging not available (port ${cdpPort} closed)`)); process.exitCode = 1;
       console.log(chalk.gray('  → Run: node src/index.js connect'));
     }
 

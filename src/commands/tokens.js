@@ -16,6 +16,7 @@ import {
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
 import { COLOR_SNIPPET } from '../lib/plugin-color.js';
+import { parseHexColor, invalidColorMessage } from '../lib/color.js';
 
 // ============ COLLECTIONS ============
 
@@ -36,6 +37,23 @@ const collections = program
  * back to a literal ("Created spacing scale") on null, so a disconnected Figma got five green
  * checkmarks and nothing was created. Null is a failure; the last eval error is its message.
  */
+const TOKEN_TYPES = ['COLOR', 'FLOAT', 'STRING', 'BOOLEAN'];
+
+/**
+ * `tokens add`'s two inputs against each other, before Figma sees them. Sent through as they
+ * were, `#zz -t COLOR` created the collection and the variable and then failed on the value —
+ * a half-made token and a twelve-line validation dump. Returns the error line, or null.
+ * An empty type means auto-detect, which cannot fail.
+ */
+export function validateTokenInput(value, type) {
+  if (!type) return null;
+  if (!TOKEN_TYPES.includes(type)) return `Unknown type ${JSON.stringify(type)}. Use: ${TOKEN_TYPES.join(', ')}`;
+  if (type === 'COLOR' && !parseHexColor(value)) return invalidColorMessage(value);
+  if (type === 'FLOAT' && isNaN(parseFloat(value))) return `${JSON.stringify(value)} is not a number (type FLOAT)`;
+  if (type === 'BOOLEAN' && value !== 'true' && value !== 'false') return `${JSON.stringify(value)} is not a boolean — use true or false`;
+  return null;
+}
+
 export function resultOrThrow(result, lastError = figmaUse.lastError) {
   if (result === null || result === undefined) {
     throw lastError instanceof Error ? lastError : new Error('Figma returned no result');
@@ -1199,13 +1217,16 @@ tokens
   .option('-c, --collection <name>', 'Collection name', 'Tokens')
   .option('-t, --type <type>', 'Type: COLOR, FLOAT, STRING, BOOLEAN (auto-detected if not set)')
   .action((name, value, options) => {
+    const type = (options.type || '').toUpperCase();
+    const invalid = validateTokenInput(value, type);
+    if (invalid) { console.log(chalk.red('✗ ' + invalid)); process.exitCode = 1; return; }
     checkConnectionSync();
 
     const code = `(async () => {
 ${COLOR_SNIPPET}
 
 const value = ${JSON.stringify(value)};
-let type = '${options.type || ''}';
+let type = ${JSON.stringify(type)};
 if (!type) {
   if (value.startsWith('#')) type = 'COLOR';
   else if (!isNaN(parseFloat(value))) type = 'FLOAT';
@@ -1232,7 +1253,7 @@ return 'Created ' + type.toLowerCase() + ${JSON.stringify(` token: ${name}`)};
       const result = resultOrThrow(figmaUse(evalArg(code), { silent: true }));
       console.log(chalk.green(result || `✓ Created token: ${name}`));
     } catch (error) {
-      console.log(chalk.red(`✗ Failed to create token: ${name}`));
+      console.log(chalk.red(`✗ Failed to create token: ${name} — ${String(error.message).split('\n')[0]}`)); process.exitCode = 1;
     }
   });
 

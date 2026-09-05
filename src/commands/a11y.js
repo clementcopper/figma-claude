@@ -12,6 +12,28 @@ import {
 // ============ ACCESSIBILITY (a11y) ============
 
 /** One failure line: `{ ok: false, error }` under --json (what `check --json` does), red text otherwise. */
+/**
+ * Exit code of a finished check: 1 when an element fails (`failing` for contrast and touch,
+ * `errors` for text, an error-severity issue for audit), 0 for a clean run or warnings only.
+ * `check` behaves the same way, and `docs scripting-the-cli` lists a11y beside it.
+ */
+export function a11yExitCode(result) {
+  if (!result) return 0;
+  if (result.score !== undefined && Array.isArray(result.issues)) {
+    return result.issues.some((i) => i.severity === 'error') ? 1 : 0;
+  }
+  return (result.failing || 0) > 0 || (result.errors || 0) > 0 ? 1 : 0;
+}
+
+const LEVELS = ['AA', 'AAA'];
+
+/** `--level` as WCAG spells it; anything else is an error, like `vision --type banana`. */
+export function parseLevel(raw) {
+  const level = String(raw || '').toUpperCase();
+  if (!LEVELS.includes(level)) throw new Error(`Unknown level ${JSON.stringify(String(raw))}. Use: ${LEVELS.join(', ')}`);
+  return level;
+}
+
 export function a11yErrorOutput(message, options) {
   return options && options.json ? JSON.stringify({ ok: false, error: message }) : chalk.red('✗ ' + message);
 }
@@ -27,7 +49,8 @@ a11y
   .option('--json', 'Output as JSON')
   .action(async (nodeId, options) => {
     await checkConnection();
-    const level = options.level.toUpperCase();
+    let level;
+    try { level = parseLevel(options.level); } catch (e) { console.log(a11yErrorOutput(e.message, options)); process.exitCode = 1; return; }
     const code = `(async () => {
       const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
@@ -107,6 +130,8 @@ a11y
     try {
       const result = await fastEval(code);
       if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
+      // A failing element is a failed check: exit 1, like `check`, in both output modes.
+      if (a11yExitCode(result)) process.exitCode = 1;
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -380,6 +405,8 @@ a11y
     try {
       const result = await fastEval(code);
       if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
+      // A failing element is a failed check: exit 1, like `check`, in both output modes.
+      if (a11yExitCode(result)) process.exitCode = 1;
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -497,6 +524,8 @@ a11y
     try {
       const result = await fastEval(code);
       if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
+      // A failing element is a failed check: exit 1, like `check`, in both output modes.
+      if (a11yExitCode(result)) process.exitCode = 1;
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -659,7 +688,8 @@ a11y
   .option('--json', 'Output as JSON')
   .action(async (nodeId, options) => {
     await checkConnection();
-    const level = options.level.toUpperCase();
+    let level;
+    try { level = parseLevel(options.level); } catch (e) { console.log(a11yErrorOutput(e.message, options)); process.exitCode = 1; return; }
     const code = `(async () => {
       const targetId = ${JSON.stringify(nodeId || null)};
       const root = targetId ? await figma.getNodeByIdAsync(targetId) : figma.currentPage;
@@ -796,6 +826,8 @@ a11y
     try {
       const result = await fastEval(code);
       if (result.error) { console.log(a11yErrorOutput(result.error, options)); process.exitCode = 1; return; }
+      // A failing element is a failed check: exit 1, like `check`, in both output modes.
+      if (a11yExitCode(result)) process.exitCode = 1;
 
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));

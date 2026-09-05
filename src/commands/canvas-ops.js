@@ -15,6 +15,7 @@ import {
   hexToRgb
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
+import { errorOutput } from '../lib/cli-output.js';
 import { parseHexColor, invalidColorMessage } from '../lib/color.js';
 
 // ============ CANVAS ============
@@ -1356,15 +1357,17 @@ program
   .command('get [nodeId]')
   .description('Get properties of node or selection (pretty JSON; --json for one line)')
   .option('--json', 'One-line JSON instead of pretty-printed')
-  .action((nodeId, options) => {
-    checkConnectionSync();
+  .action(async (nodeId, options) => {
+    await checkConnection();
     const nodeSelector = nodeId
       ? `const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});`
       : `const node = figma.currentPage.selection[0];`;
-    let code = `(async () => {
+    // `{ error }` rather than a bare string: the string used to print as-is with exit 0, so a
+    // `--json` consumer got "No node found" as its whole stdout.
+    const code = `(async () => {
 ${nodeSelector}
-if (!node) return 'No node found';
-return JSON.stringify({
+if (!node) return { error: ${nodeId ? JSON.stringify('Node not found: ' + nodeId) : "'Nothing selected in Figma'"} };
+return {
   id: node.id,
   name: node.name,
   type: node.type,
@@ -1381,9 +1384,15 @@ return JSON.stringify({
   fills: node.fills?.length,
   strokes: node.strokes?.length,
   children: node.children?.length
-}${options.json ? '' : ', null, 2'});
+};
 })()`;
-    figmaUse(evalArg(code), { silent: false });
+    try {
+      const result = await fastEval(code);
+      if (result?.error) { console.log(errorOutput(result.error, options)); process.exitCode = 1; return; }
+      console.log(options.json ? JSON.stringify(result) : JSON.stringify(result, null, 2));
+    } catch (e) {
+      handleEvalError(e);
+    }
   });
 
 // ============ FIND ============

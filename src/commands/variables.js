@@ -637,7 +637,7 @@ program
     }
     const missing = pairs.filter(p => !p.id || !p.name);
     if (missing.length) {
-      console.log(chalk.red(`✗ ${missing.length} entr${missing.length === 1 ? 'y is' : 'ies are'} missing id or name. Expected each entry to have both.`));
+      console.log(chalk.red(`✗ ${missing.length} entr${missing.length === 1 ? 'y is' : 'ies are'} missing id or name. Expected each entry to have both.`)); process.exitCode = 1;
       return;
     }
 

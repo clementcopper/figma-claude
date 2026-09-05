@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { resultOrThrow } from '../src/commands/tokens.js';
+import { resultOrThrow, validateTokenInput } from '../src/commands/tokens.js';
 
 // `figmaUse(code, { silent: true })` answers null for any error, and the tokens presets did
 // `result?.trim() || 'Created spacing scale'`: against a disconnected Figma, `tokens ds`
@@ -16,5 +16,29 @@ describe('resultOrThrow', () => {
   it('throws on null, carrying the eval error when there is one', () => {
     assert.throws(() => resultOrThrow(null, new Error('Plugin not connected')), /Plugin not connected/);
     assert.throws(() => resultOrThrow(null), /no result/i);
+  });
+});
+
+// `tokens add lab/bad "#zz" -t COLOR` and `-t NOPE` reached Figma and came back as a
+// twelve-line validation dump ("Expected boolean, received null …"). The two inputs the
+// command controls — the value against its type, the type against the four it offers — are
+// checked here first, in the words the neighbours use ("Unknown type … Use: …").
+describe('validateTokenInput', () => {
+  it('accepts a hex colour, a number, a boolean and a string for their types', () => {
+    assert.strictEqual(validateTokenInput('#ff0000', 'COLOR'), null);
+    assert.strictEqual(validateTokenInput('12', 'FLOAT'), null);
+    assert.strictEqual(validateTokenInput('true', 'BOOLEAN'), null);
+    assert.strictEqual(validateTokenInput('anything', 'STRING'), null);
+    assert.strictEqual(validateTokenInput('anything', ''), null); // auto-detected later
+  });
+  it('names a bad colour', () => {
+    assert.match(validateTokenInput('#zz', 'COLOR'), /#zz/);
+  });
+  it('names a bad number and a bad boolean', () => {
+    assert.match(validateTokenInput('abc', 'FLOAT'), /FLOAT/);
+    assert.match(validateTokenInput('yes', 'BOOLEAN'), /true or false/);
+  });
+  it('rejects an unknown type with the choices', () => {
+    assert.match(validateTokenInput('1', 'NOPE'), /Unknown type "NOPE"\. Use: COLOR, FLOAT, STRING, BOOLEAN/);
   });
 });

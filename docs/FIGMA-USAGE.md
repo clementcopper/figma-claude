@@ -794,6 +794,8 @@ If permission error (macOS 13+): System Settings > Privacy & Security > App Mana
 
 - **Exit code is the truth.** A failed `render`, `eval`, `run`, `tokens`, `motion` or
   `a11y` command exits 1 — treat non-zero as "not done", never parse the red line.
+  `a11y contrast|text|touch` also exit 1 when an element fails, `a11y audit` on an
+  error-severity issue (warnings alone stay 0) — the same rule as `check`.
 - **`--json` for anything you read back:** `find`, `get`, `node tree`, `node bindings`,
   `spec`, `sizes`, `combos`, `a11y *`, `check`, `var export`. Errors come as
   `{ "ok": false, "error": "…" }`; diagnostics go to stderr, so stdout stays parseable.

@@ -137,5 +137,6 @@ rulesCmd
       if (bits.length) console.log(chalk.gray(`  enforces: ${bits.join(', ')}`));
     }
     for (const e of errors) console.log(chalk.red(`✗ ${e.file}: ${e.message}`));
+    if (errors.length) process.exitCode = 1;
     console.log(chalk.gray(`\n${rules.length} contract(s) in ${show(inDir)}/`));
   });

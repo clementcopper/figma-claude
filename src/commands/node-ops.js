@@ -137,7 +137,7 @@ node
     try {
       const out = await fastEval(code);
       if (out?.error) {
-        console.log(options.json ? JSON.stringify({ ok: false, error: out.error }) : chalk.yellow('○ ' + out.error));
+        console.log(options.json ? JSON.stringify({ ok: false, error: out.error }) : chalk.yellow('○ ' + out.error)); process.exitCode = 1;
         return;
       }
       if (options.json) { console.log(JSON.stringify(out.results)); return; }
