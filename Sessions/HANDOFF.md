@@ -1,41 +1,40 @@
-# Handoff — 2026-09-05 08:14
+# Handoff — 2026-09-06 11:04
 Arbeitsverzeichnis: /Users/danielmartin/figma-cli
 
 ## Stand
-Review-Plan vom 4.9. (`~/.claude/plans/schau-dir-mal-die-synthetic-bubble.md`) komplett
-abgearbeitet: Pakete A–E, Tier 2, Peripherie, drei Konventionen, DESIGN.md-Hex-Fix. 61 Commits
-seit `7ed0be5`, alle gepusht, CI grün (Node 18/20/22 + swift). Suite 697 → 923 Tests,
-`figma-client.js` 5680 → 3430 Zeilen. Memory: `review-2026-09-04.md`. Die Panel-Session
-`fc-designdone-a361a882` hat danach ~40 Befehle in Designdone/„CLI Lab" getestet und sechs
-Befunde in `FEEDBACK.md ## Open` eingetragen.
+Zwei Pakete am 05.09., alles auf master gepusht, Suite 956 grün, CoreChecks 533:
+1. `/feedback-triage`: 22 Panel-Befunde geschlossen (Commits 84253a0 … ee2e4ac). Kern: der
+   Exit-Code-Wächter kannte nur eine Schreibweise von ✗; erweitert, neun stille Stellen gefixt.
+   Neu: `--strict-vars`, `node tree --json` mit `tree`, `var list -c/-t/--json`, a11y Exit 1 bei
+   Verstoß, `tokens components` beendet sich (0,9 s), Programmname überall `figma-cli`.
+2. Swift-Host 1.1.0 (f0a8308): Sessionnamen `fc-<datei>-<seite>` beim Start, nach dem ersten
+   Prompt `/rename fc-<w1>-<w2>` per Haiku (`SessionRenamer.swift`, README § Session names).
+   Ledger `~/.figma-ds-cli/session-names.json`. Live bestätigt: Tab 19:07:59 → `fc-initial-greeting`
+   19:08:16. Daniel beobachtet es im Betrieb; FEEDBACK.md ist leer.
 
 ## Mitten drin
-- Die sechs Panel-Befunde sind ungefixt. Mein Vorschlag an Daniel (23:55): 1, 2, 3, 5 jetzt,
-  4 und 6 später. Antwort steht aus.
-  1. `get 9999:9999 --json` → Klartext, Exit 0 (`src/commands/canvas-ops.js`, `get`)
-  2. `node bindings <bad> --json` → JSON-Fehler, aber Exit 0 (`node-ops.js`, `out.error`-Zweig)
-  3. `render '<Frame><Text>x</Frame>'` → Warnung, ✓ Rendered, leerer Frame, Exit 0
-  4. `bg="var:missing"` → grauer Platzhalter, Exit 0; Wunsch `--strict-vars`
-  5. `node tree --help`, `node bindings --help`, `var export --help` → Top-Level-Hilfe (nicht reproduziert)
-  6. `node tree --json` liefert Zeilen, keinen Baum (Designfrage)
+- Nichts halb offen. Beobachtungen aus dem Betrieb kommen als `app`-Einträge in FEEDBACK.md.
 
 ## Nächster Schritt
-`/feedback-triage` — dann je Befund RED-Test zuerst, wie in A–E. Für 5 erst reproduzieren:
-`node src/index.js node tree --help | head -3`.
+Nächste Session beginnt mit dem Hook-Zähler; wenn > 0: `/feedback-triage`. Sonst frei.
+Für Panel-Befunde zum Rename zuerst: `cat ~/.figma-ds-cli/session-names.json` und
+`for f in ~/.claude/sessions/*.json; do node -e 'const j=require(process.argv[1]);console.log(j.name,j.nameSource,j.status)' $f; done`
 
 ## Schon probiert, geht nicht
-- Daemon-Integrationstest flackert unter Suite-Last (1 von ~5 Läufen), allein nie; Ursache ist
-  Timing, nicht Code. Erneut laufen lassen, bevor eine Änderung verdächtigt wird.
-- `curl http://127.0.0.1:9222/json` hing gestern minutenlang (Figma-seitig); Figma-Neustart half.
-- Eine unbekannte Node-ID meldet Figma selbst als „Unable to establish connection to Figma after
-  10 seconds" — das ist Figmas Text, kein Verbindungsproblem.
+- Figma antwortet auf eine fehlende Node-ID nach dem ersten Lookup mit „Unable to establish
+  connection to Figma after 10 seconds" — Figmas Text, Exit 1 trotzdem. `figma.getNodeById`
+  (sync) liefert null in 0,3 s; nicht umgebaut, in LEARNINGS notiert.
+- `tokens components`-Befunde „stiller Ersatz ohne --replace" und „fremder SLICE" reproduzieren
+  nicht (drei Läufe); wenn sie wiederkommen, den Befehl davor notieren.
+- Daemon-Integrationstest flackert unter Suite-Last (1 von ~5); allein nie. Erst wiederholen.
 
 ## Was Daniel entschieden hat
-- Alle 80 aufruferlosen `FigmaClient`-Methoden löschen (2249 Zeilen), auf die Zahl hin.
-- Smart-X-Einzeiler bleiben; DESIGN.md-Hex-Fix gemacht.
-- Testseite für Live-Läufe: Designdone / „CLI Lab" (Harness: `PARITY_PAGE="CLI Lab"`).
-- Pronomen für andere Sessions bleiben dem Satzanfang überlassen, keine Regel.
+- Sessionnamen: FC vorn, zwei Aufgabenwörter, immer eindeutig; Startname Datei + Seite; Haiku
+  benennt nach dem ersten Prompt. Vorschlag „erst ein Prompt mit ≥ 3 Inhaltswörtern" offen
+  gelassen — erst beobachten.
+- a11y: Exit 1 bei Verstoß (audit nur bei error); `--strict-vars` als Flag, Default bleibt.
+- Push macht Daniel selbst.
 
 ## Erledigt und vom Tisch
-- Alles aus dem Plan; Tier-2-Konventionen (ID-Listen, delete, --json) inklusive.
-- `docs scripting-the-cli` ist das Thema, das Panel-Sessions dafür lesen.
+- Alle 22 Feedback-Einträge inklusive #5 (zsh-Loop des Reporters, kein CLI-Bug).
+- Panel-Session hat Rule-Split in `Design/.claude/rules` selbst gemacht; nichts hier zu tun.

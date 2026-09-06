@@ -219,6 +219,17 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 - **Splitting a transcript into lines costs 1 320 ms at 17 MB; scanning the bytes for the marker costs 14 ms.** `countCompactions` ran on every status line render (Claude Code renders as often as every 300 ms), so the producer spent more time counting than the session spent between counts. Work on `Data` with `range(of:)` and look only at the lines that carry the marker.
 - **⌘Q never sends `windowWillClose`.** `NSApplication.terminate` skips the window delegates, so a save hung there was skipped on the most common way out and the position came from the launch before. Anything that must happen on exit belongs in `applicationWillTerminate`; closing the window ends the app through `applicationShouldTerminateAfterLastWindowClosed` and arrives there too.
 - **A `layer.backgroundColor = colour.cgColor` set once in `init` is frozen.** The effort chip stayed light after a switch to dark while the hairlines beside it followed, because those resolve in `updateLayer`. One `TintedView` paints a palette colour there; every fixed-colour surface goes through it.
+- **A name set with `-n` is one Claude Code never touches again** (`nameSource: user`), so a
+  task-shaped name has to be typed by the host: `/rename <name>` exists as a slash command, and
+  `SessionRenamer` types it only when the registry row (`~/.claude/sessions/<pid>.json`, found by
+  `sessionId`) says `idle`, no question shows, the keyboard was quiet 3 s and the tab still runs
+  that session. Registry confirms within 10 s; the first live run renamed 17 s after start.
+- **`claude -p` pays a full session start: 22 s wall for 4 s CPU.** `--strict-mcp-config`
+  without a config skips every MCP server and halves it (12.6 s); the `-p` run does not appear in
+  the registry. A 20 s timeout would have killed the very call it guarded — 60 s now.
+- **The first poll has no page when the daemon restarts with the app.** `waitForFirstPoll` is
+  0.6 s and the page comes only from the eval; the file survives via the `panel.json` fallback,
+  so the first tab was `fc-designdone` without `-cli-lab`. Tolerated: the rename replaces it.
 
 ## Dead Ends
 

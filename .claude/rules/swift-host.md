@@ -45,3 +45,4 @@ Distilled from `LEARNINGS.md` § Swift host. Stories and measurements there.
 - **XCTest needs full Xcode;** with Command Line Tools only, the checks run as a plain executable target (`CoreChecks`).
 - **Text into the user's terminal only when Claude is idle, shows no question, and the keyboard has been quiet for 3 s** (`shouldInject`, `SessionRenamer.swift`); the registry row `~/.claude/sessions/<pid>.json` says busy or idle, the host finds it by `sessionId`.
 - **A session name is handed out once, ever:** registry ∪ ledger (`~/.figma-ds-cli/session-names.json`), written before `claude` starts; a collision gets `-2`.
+- **`claude -p` costs a full session start; `--strict-mcp-config` without a config halves it** (22 s → 12.6 s); give it a minute, not 20 s.
