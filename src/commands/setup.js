@@ -26,6 +26,7 @@ import {
   saveConfig,
   startDaemon,
   startFigma,
+  startFigmaPlain,
   stopDaemon
 } from '../lib/cli-core.js';
 
@@ -738,7 +739,9 @@ program
     if (options.safe) {
       console.log(chalk.hex('#4ECDC4')('  🔒 Safe Mode ') + chalk.gray('(plugin-based, no patching required)\n'));
 
-      // Stop any existing daemon
+      // Stop any existing daemon. In Pipe Mode this daemon holds Figma's debugging pipe, and
+      // closing the pipe quits the Figma it launched — so leaving Pipe for Safe can take Figma
+      // down with it.
       stopDaemon();
 
       // Remembered so `daemon start` / `daemon restart` bring the daemon back in Plugin Mode —
@@ -746,6 +749,24 @@ program
       // wait, and the panel's Restart button goes through those commands.
       config.mode = 'safe';
       saveConfig(config);
+
+      // Safe Mode runs the plugin inside an ordinary Figma, so one must be running. If leaving
+      // the previous mode left none (the Pipe teardown above quits Figma), bring a plain one
+      // back — no port, no pipe. Settle first: the pipe close is not instant, and relaunching
+      // while the old instance is still dying would open two.
+      await new Promise(r => setTimeout(r, 2000));
+      if (!isFigmaRunning()) {
+        const figSpinner = ora('Starting Figma for the plugin...').start();
+        try {
+          startFigmaPlain();
+          for (let i = 0; i < 15 && !isFigmaRunning(); i++) await new Promise(r => setTimeout(r, 1000));
+          isFigmaRunning()
+            ? figSpinner.succeed('Figma started')
+            : figSpinner.warn('Figma not detected yet — open it, then run the plugin');
+        } catch {
+          figSpinner.warn('Could not start Figma automatically — open it, then run the plugin');
+        }
+      }
 
       // Start daemon in plugin mode
       const daemonSpinner = ora('Starting daemon in Safe Mode...').start();

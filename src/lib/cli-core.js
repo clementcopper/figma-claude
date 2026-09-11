@@ -25,7 +25,7 @@ import { parseIdList } from './id-list.js';
 import { extractGradient, extractMesh, buildMeshFromColors, buildFigmaPaint, buildCssString } from '../gradient-extractor.js';
 import {
   nullDevice, killPort, getPortPid, portHolderCommand, sleepAfterStop,
-  startFigmaApp, killFigmaApp,
+  startFigmaApp, startFigmaPlainApp, killFigmaApp,
   getFigmaVersion, isFigmaRunning, platformName
 } from '../platform.js';
 
@@ -576,6 +576,11 @@ function startFigma() {
   startFigmaApp(figmaPath, port);
 }
 
+// Launch Figma with no debug flags, for Safe Mode (the plugin runs inside an ordinary Figma).
+function startFigmaPlain() {
+  startFigmaPlainApp(getFigmaPath());
+}
+
 function killFigma() {
   killFigmaApp();
 }
@@ -1060,6 +1065,7 @@ export {
   smartPosCode,
   startDaemon,
   startFigma,
+  startFigmaPlain,
   stopDaemon,
   unescapeShell,
   varLoadingCode

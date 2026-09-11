@@ -88,6 +88,18 @@ export function startFigmaApp(figmaPath, port) {
   }
 }
 
+// --- Start Figma with no flags ---
+// Safe Mode runs the plugin inside an ordinary Figma; it needs no debug port and no pipe. Used
+// when leaving a mode that owned Figma (Pipe closes the pipe and Figma quits with it) so the
+// user has a Figma to run the plugin in.
+export function startFigmaPlainApp(figmaPath) {
+  if (PLATFORM === 'darwin') {
+    execSync('open -a Figma', { stdio: 'pipe' });
+  } else {
+    spawn(figmaPath, [], { detached: true, stdio: 'ignore' }).unref();
+  }
+}
+
 // --- Browser Mode (drive Figma via CDP in a normal browser) ---
 //
 // Browser Mode is the "never touch the local app" alternative to the Yolo
