@@ -16,6 +16,7 @@ import {
 import { evalArg } from '../lib/eval-arg.js';
 import { exportScaleSnippet } from '../lib/verify-export.js';
 import { formatEvalOutput } from '../lib/eval-output.js';
+import { exportSizeLabel } from '../lib/export-line.js';
 import { explainEvalError, inPanel } from '../lib/connection-help.js';
 
 // ============ EXPORT ============
@@ -59,7 +60,8 @@ return {
       ? `screenshot.${format.toLowerCase()}`
       : options.output;
     writeFileSync(outputFile, buffer);
-    console.log(chalk.green('✓'), `Screenshot: ${result.name} (${result.width}x${result.height}) → ${outputFile}`);
+    // A page has no size; the label is empty then instead of "(nullxnull)".
+    console.log(chalk.green('✓'), `Screenshot: ${result.name}${exportSizeLabel(result)} → ${outputFile}`);
   });
 
 exp
@@ -95,7 +97,7 @@ return {
       ? `node-export.${format.toLowerCase()}`
       : options.output;
     writeFileSync(outputFile, buffer);
-    console.log(chalk.green('✓'), `Exported ${result.name} (${result.width}x${result.height}) to ${outputFile}`);
+    console.log(chalk.green('✓'), `Exported ${result.name}${exportSizeLabel(result)} to ${outputFile}`);
   });
 
 exp
