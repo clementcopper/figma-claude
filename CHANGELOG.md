@@ -59,6 +59,14 @@
   string no longer comes back as a silent success, and a finished eval clears its timer.
   The window, the notifications and the daemon's "not connected" message all say `FigCli`,
   the name Figma shows in the menu.
+- **Pipe Mode keeps umlauts and stops crawling on big results.** The pipe codec decoded every
+  64 KB chunk as UTF-8 on its own, so an `ä` that straddled a chunk cut came back as two
+  replacement characters — any node name, at any 64 KB boundary of a large answer. It also
+  appended each chunk to one string and searched it from the start again: quadratic, 4.5 s of
+  codec time on a 25 MB frame. Chunks now stay Buffers until the NUL, only the new chunk is
+  searched. Measured on an 8.6 MB PNG export returned as a number array: 65.6 s before,
+  13.6 s after (Safe Mode: 21.6 s). Returned as base64 it takes 7.1 s, which is what the
+  `export` commands should send next.
 - **`eval` no longer runs timed-out code a second time.** Its own classifier treated any error
   message containing "timeout" as a dead connection and took the sync path, which sent the same
   code again; a daemon-reported `Execution timeout (2s)` therefore ran twice and, in Safe Mode,

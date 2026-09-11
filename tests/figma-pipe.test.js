@@ -15,6 +15,37 @@ test('PipeCodec reassembles frames split across chunks and drops torn ones', () 
   assert.equal(PipeCodec.encode({ id: 9, method: 'x' }), '{"id":9,"method":"x"}\0');
 });
 
+test('PipeCodec keeps a multibyte character that a chunk boundary splits', () => {
+  // The pipe hands over 64 KB chunks with no regard for UTF-8; decoding each chunk on its
+  // own turned "Schaltfläche" into "Schaltfl��che" whenever the ä straddled the cut.
+  const frame = Buffer.from(JSON.stringify({ name: 'Schaltfläche ❤️ Überschrift' }) + '\0');
+  for (const needle of ['ä', '❤', 'Ü']) {
+    const cut = frame.indexOf(Buffer.from(needle)) + 1;      // inside the sequence
+    const codec = new PipeCodec();
+    const out = [...codec.decode(frame.subarray(0, cut)), ...codec.decode(frame.subarray(cut))];
+    assert.deepEqual(out, [{ name: 'Schaltfläche ❤️ Überschrift' }], `split inside ${needle}`);
+  }
+});
+
+test('PipeCodec decodes a 25 MB frame in linear time', () => {
+  // A Runtime.evaluate result carrying an export (8.6 MB PNG as a number array, ~30 MB of
+  // JSON) arrives in ~400 chunks. Appending each to one string and searching it from the
+  // start again cost 4.5 s of pure codec time on top of the transfer.
+  // Measured as a ratio against decoding the same frame in one piece, so the suite's load
+  // (this runs beside 100 other files) moves both numbers alike: the old codec sat at ~15x,
+  // a linear one at ~1x.
+  const frame = Buffer.from(JSON.stringify({ id: 1, result: { bytes: Array.from({ length: 7_000_000 }, (_, i) => i & 255) } }) + '\0');
+  const time = (fn) => { const s = performance.now(); fn(); return performance.now() - s; };
+  const whole = time(() => assert.equal(new PipeCodec().decode(frame).length, 1));
+  const chunked = time(() => {
+    const codec = new PipeCodec();
+    let messages = 0;
+    for (let offset = 0; offset < frame.length; offset += 65536) messages += codec.decode(frame.subarray(offset, offset + 65536)).length;
+    assert.equal(messages, 1);
+  });
+  assert.ok(chunked < whole * 4, `chunked ${Math.round(chunked)} ms vs whole ${Math.round(whole)} ms`);
+});
+
 /** A browser that answers by method, and can push events. */
 function fakeBrowser(answer) {
   const fromBrowser = new PassThrough();

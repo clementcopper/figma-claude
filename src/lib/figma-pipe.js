@@ -18,21 +18,31 @@ import { EventEmitter } from 'node:events';
 import { spawn as nodeSpawn } from 'node:child_process';
 import net from 'node:net';
 
-/** NUL-framed JSON: bytes in, complete messages out. Pure, so the framing is unit-tested. */
+/**
+ * NUL-framed JSON: bytes in, complete messages out. Pure, so the framing is unit-tested.
+ *
+ * Chunks stay Buffers until a frame is complete: the pipe cuts every 64 KB with no regard
+ * for UTF-8, and decoding chunk by chunk turned an `ä` on the cut into two U+FFFD. Only the
+ * new chunk is searched for the NUL — appending to one string and scanning it from the
+ * start again was quadratic, 4.5 s of codec time for a 25 MB export result.
+ */
 export class PipeCodec {
-  constructor() { this.buffer = ''; }
+  constructor() { this.pending = []; }
 
   /** @param {Buffer|string} chunk @returns {object[]} every message completed by this chunk */
   decode(chunk) {
-    this.buffer += chunk.toString('utf8');
+    let buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
     const out = [];
     let end;
-    while ((end = this.buffer.indexOf('\0')) >= 0) {
-      const raw = this.buffer.slice(0, end);
-      this.buffer = this.buffer.slice(end + 1);
+    while ((end = buf.indexOf(0)) >= 0) {
+      this.pending.push(buf.subarray(0, end));
+      const raw = Buffer.concat(this.pending).toString('utf8');
+      this.pending = [];
+      buf = buf.subarray(end + 1);
       if (!raw) continue;
       try { out.push(JSON.parse(raw)); } catch { /* a torn frame is dropped, never re-thrown into the reader */ }
     }
+    if (buf.length) this.pending.push(buf);
     return out;
   }
 
