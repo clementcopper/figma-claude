@@ -259,7 +259,7 @@ const DEFAULT_TIMEOUT_MS = 90000;
 
 async function evalViaPlugin(code, retryCount = 0, timeoutMs = DEFAULT_TIMEOUT_MS) {
   if (!isPluginConnected()) {
-    throw new Error('Plugin not connected. Start the Figma CLI Bridge plugin in Figma.');
+    throw new Error('Plugin not connected. Run the FigCli plugin in Figma (Plugins → Development → FigCli).');
   }
 
   return new Promise((resolve, reject) => {
@@ -652,7 +652,6 @@ wss.on('connection', (ws) => {
       const msg = JSON.parse(data.toString());
 
       if (msg.type === 'hello') {
-        console.log(`[daemon] Plugin version: ${msg.version}`);
         // The file the plugin runs in. /health used to know a file only from the CDP page
         // title, so in Safe Mode it said null and FIGMA_FILE pinning never compared anything.
         pluginFile = typeof msg.file === 'string' && msg.file ? msg.file : null;

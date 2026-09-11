@@ -91,7 +91,7 @@ describe('daemon', () => {
     // CLI's FIGMA_FILE pin had nothing to compare. The plugin now says which file it runs in.
     const health = async () => (await fetch(`http://127.0.0.1:${d.port}/health`, { headers: { 'X-Daemon-Token': TOKEN } })).json();
     const ws = await plugin(d.port);
-    ws.send(JSON.stringify({ type: 'hello', mode: 'plugin', version: 'test', file: 'Design System' }));
+    ws.send(JSON.stringify({ type: 'hello', mode: 'plugin', file: 'Design System' }));
     await sleep(100);
     assert.strictEqual((await health()).file, 'Design System');
     ws.close();

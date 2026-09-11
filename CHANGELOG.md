@@ -49,6 +49,16 @@
 
 ### Fixed
 
+- **Safe Mode runs the same `eval` code as the other modes.** The plugin decided where to put
+  `return` by looking for the last `;`, so `let p = 1\nreturn p`, `if (x) { … }` and
+  `const a = 1; const b = 2` were a SyntaxError in Safe Mode only; the CDP path had stopped
+  guessing in 2.1.2. `plugin/code.js` now asks the sandbox which wrapper compiles, the way
+  `src/lib/eval-wrap.js` does, and `tests/plugin-executor.test.js` runs the plugin in Node
+  against the same shapes and holds both paths equal. Also in the plugin: `--timeout` now
+  reaches it (the UI iframe dropped the number, every Safe Mode eval had 90 s), a thrown
+  string no longer comes back as a silent success, and a finished eval clears its timer.
+  The window, the notifications and the daemon's "not connected" message all say `FigCli`,
+  the name Figma shows in the menu.
 - **Safe Mode survives a daemon restart.** Every daemon start minted a new session token; the
   plugin keeps its copy in `clientStorage` and asks for a new one only when it has none, so
   after the idle respawn it knocked with the old token forever and the CLI saw "Plugin not

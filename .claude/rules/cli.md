@@ -20,7 +20,7 @@ Distilled from `LEARNINGS.md` § Figma Plugin API, § `render` bugs, § Text Sty
 - **Writing `fontSize`/`fontName`/`lineHeight`/`letterSpacing` clears `textStyleId`** (measured). Only `textAlignHorizontal` stays bound; conflicting props are reported, not applied.
 - **Remote library styles have no name lookup.** Harvest the `textStyleId`s already used in the document (`findAllWithCriteria` + `getStyleByIdAsync`); `getLocalTextStylesAsync` is local only.
 - **`loadAllPagesAsync()` is not free** (outlasts the 60 s sync budget on 5235 instances); load pages only after a lookup has missed.
-- **Don't retry: `layoutGrow` for `grow={1}`** (use `layoutSizingHorizontal/Vertical = 'FILL'`), **guessing the `eval` wrapper by regex** (`src/lib/eval-wrap.js` asks `new Function(src)`).
+- **Don't retry: `layoutGrow` for `grow={1}`** (use `layoutSizingHorizontal/Vertical = 'FILL'`), **guessing the `eval` wrapper by regex** (`src/lib/eval-wrap.js` asks `new Function(src)`; `plugin/code.js` asks `eval` the same question, and `tests/plugin-executor.test.js` holds both paths equal on every shape).
 
 ## Generators and runtime rules
 
