@@ -72,6 +72,14 @@
   "padding and layout live on the parent <Frame>" instead of `did you mean "w"?` (a suggestion
   now has to fit the word's length). REFERENCE.md carries the measured payload numbers at real
   sizes and the request/answer ceilings.
+- **`diagnose` knows Pipe Mode, and the daemon keeps a log.** The port row said "✗ Remote
+  debugging not available (port 9222 closed) → Run: connect" above "✓ Connected" in Pipe Mode,
+  and told a panel session to run the command its rules forbid; it now reads the daemon's mode
+  and prints `○ … (Pipe Mode: CDP runs over Figma's pipe, no port needed)`, and the "126+ blocks
+  remote debugging" warning appears only where the port is the way in
+  (`src/lib/diagnose-rows.js`). The daemon's own output went to `stdio: 'ignore'`, so a
+  transient "Not connected" seen from the panel could not be traced; it goes to
+  `~/.figma-ds-cli/daemon.log` now (truncated on start, a handed-over successor appends).
 - **`fig-status` knows Pipe and Safe Mode.** Its "CDP" row probed port 9222 and said
   "✗ not reachable" beside a green daemon in Pipe Mode, which has no port by design. The row is
   "Link" now and comes from the daemon's `/health` like everything else: `pipe (no port)`,

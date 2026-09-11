@@ -526,7 +526,7 @@ whole-command wall times unless noted):
 | `node tree --json`, 96 KB | 750 ms | — |
 | `extract --pages`, 1 227 nodes, 149 KB | 2.95 s | — |
 | `render-batch`, 6 frames, 425 nodes, `--strict-vars --verify` | 24 s | — |
-| `render`, 400 styled `<Text>` (94 KB JSX) | 17.6 s | — |
+| `render`, 400 styled `<Text>` (94 KB JSX) | 17.6 s hidden, 21.4 s visible (unstyled control 15.2 s) | — |
 | 8 `eval` in parallel, each sleeping 300 ms | 1.29 s wall | — |
 
 How big a call can be: `/exec` reads a request body up to 64 MB, and the CLI accepts an answer
