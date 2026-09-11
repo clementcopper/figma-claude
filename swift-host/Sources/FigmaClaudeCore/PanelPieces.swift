@@ -43,9 +43,12 @@ public func modeLabel(_ mode: FigmaMode) -> String {
 /// no flag; Yolo now needs `--patch` since Pipe took the default. Port of `app/src/main.ts:564`.
 public func connectArguments(mode: FigmaMode?) -> [String] {
     switch mode ?? .pipe {
-    case .pipe: return ["connect"]
+    // --no-wait for the two modes whose connect blocks a long time (Pipe ~20 s for the document,
+    // Safe up to 90 s for the plugin): the panel's status card shows the next step immediately
+    // and the watcher turns the dot green once the connection actually completes.
+    case .pipe: return ["connect", "--no-wait"]
     case .yolo: return ["connect", "--patch"]
-    case .safe: return ["connect", "--safe"]
+    case .safe: return ["connect", "--safe", "--no-wait"]
     case .browser: return ["connect", "--browser"]
     }
 }

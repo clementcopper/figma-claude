@@ -49,11 +49,28 @@ final class StatusOverlay: NSView {
         closeButton.isHidden = true
         actionButton.isHidden = true
 
-        // Spinner and check/cross share the leading slot; only one is ever visible, the stack
-        // collapses the hidden one.
-        let leading = NSStackView(views: [spinner, symbol])
-        leading.orientation = .horizontal
-        leading.setContentHuggingPriority(.required, for: .horizontal)
+        // Spinner and check/cross share one fixed 16×16 slot, both centred in it — so the card's
+        // geometry is identical whether it shows the spinner (begin) or the mark (finish), and
+        // the leading glyph lines up with the first line of text rather than floating above it.
+        let glyph = NSView()
+        glyph.translatesAutoresizingMaskIntoConstraints = false
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        symbol.translatesAutoresizingMaskIntoConstraints = false
+        symbol.imageScaling = .scaleProportionallyUpOrDown
+        glyph.addSubview(spinner)
+        glyph.addSubview(symbol)
+        NSLayoutConstraint.activate([
+            glyph.widthAnchor.constraint(equalToConstant: 16),
+            glyph.heightAnchor.constraint(equalToConstant: 16),
+            spinner.centerXAnchor.constraint(equalTo: glyph.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: glyph.centerYAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: 16),
+            spinner.heightAnchor.constraint(equalToConstant: 16),
+            symbol.centerXAnchor.constraint(equalTo: glyph.centerXAnchor),
+            symbol.centerYAnchor.constraint(equalTo: glyph.centerYAnchor),
+            symbol.widthAnchor.constraint(equalToConstant: 16),
+            symbol.heightAnchor.constraint(equalToConstant: 16),
+        ])
 
         let buttons = NSStackView(views: [actionButton, closeButton])
         buttons.orientation = .horizontal
@@ -64,7 +81,7 @@ final class StatusOverlay: NSView {
         textColumn.alignment = .leading
         textColumn.spacing = 8
 
-        let row = NSStackView(views: [leading, textColumn])
+        let row = NSStackView(views: [glyph, textColumn])
         row.orientation = .horizontal
         row.alignment = .top
         row.spacing = 10

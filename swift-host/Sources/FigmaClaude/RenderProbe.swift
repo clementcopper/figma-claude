@@ -10,25 +10,32 @@ enum RenderProbe {
     /// The status card with a long, multi-line result — the case the button toast used to cut
     /// off. Drawn on the window ground so the card's border and shadow read as they do live.
     static func overlay(to path: String) {
-        let card = StatusOverlay(frame: .zero)
-        // The real composed result line — concise, emoji-free, and it names the next step that
-        // used to hide in the Figma menu.
-        card.finish(ok: true, text: actionResultLine(title: "Connect",
+        // Both states the user sees: the spinner while connecting, and the composed result — so
+        // their margins can be compared side by side and the spinner state is not left unstyled.
+        let spinning = StatusOverlay(frame: .zero)
+        spinning.begin(actionProgressText("Connect"))
+        let done = StatusOverlay(frame: .zero)
+        done.finish(ok: true, text: actionResultLine(title: "Connect",
                                                      health: Health(mode: "safe", plugin: false)))
-        card.layoutSubtreeIfNeeded()
-        let size = card.fittingSize
+        for c in [spinning, done] { c.layoutSubtreeIfNeeded() }
 
         let margin: CGFloat = 20
-        let canvas = NSView(frame: NSRect(x: 0, y: 0,
-                                          width: size.width + 2 * margin,
-                                          height: size.height + 2 * margin))
+        let gap: CGFloat = 16
+        let sTop = spinning.fittingSize, sDone = done.fittingSize
+        let width = margin * 2 + max(sTop.width, sDone.width)
+        let height = margin * 2 + sTop.height + gap + sDone.height
+        let canvas = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         canvas.wantsLayer = true
         canvas.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        card.frame = NSRect(x: margin, y: margin, width: size.width, height: size.height)
-        canvas.addSubview(card)
+        // Non-flipped: y grows up, so the first card goes at the top with the higher y.
+        done.frame = NSRect(x: margin, y: margin, width: sDone.width, height: sDone.height)
+        spinning.frame = NSRect(x: margin, y: margin + sDone.height + gap,
+                                width: sTop.width, height: sTop.height)
+        canvas.addSubview(done)
+        canvas.addSubview(spinning)
         canvas.layoutSubtreeIfNeeded()
 
-        FileHandle.standardError.write("[probe] overlay \(size.width)x\(size.height)\n".data(using: .utf8)!)
+        FileHandle.standardError.write("[probe] overlay spinner \(sTop.width)x\(sTop.height) done \(sDone.width)x\(sDone.height)\n".data(using: .utf8)!)
         guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return }
         canvas.cacheDisplay(in: canvas.bounds, to: rep)
         guard let data = rep.representation(using: .png, properties: [:]) else { return }

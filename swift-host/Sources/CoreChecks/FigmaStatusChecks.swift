@@ -93,6 +93,14 @@ enum FigmaStatusTests {
                                        health: Health(mode: "yolo", cdp: false), mode: .yolo)
             Checks.expect(figmaGone.map(\.state), [.warn, .off, .warn])
 
+            // Yolo with the port open but no file attached (daemon has no cdp link yet). The port
+            // dot is green — the port IS reachable — but the Daemon dot must NOT be: it lights
+            // only on a real link. This was the "all green, no connection" bug.
+            let portNoFile = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222,
+                                        health: Health(mode: "yolo", cdp: false), mode: .yolo)
+            Checks.expect(portNoFile.map(\.state), [.ok, .ok, .warn])
+            Checks.expect(portNoFile[2].value, "no connection to Figma")
+
             // Safe Mode: no port, so only two dots — Figma and Daemon. The Daemon row carries the
             // transport and the connection: plugin connected is a working link.
             let safeMode = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,

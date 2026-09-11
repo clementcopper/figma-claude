@@ -133,9 +133,10 @@ public func statusRows(figmaRunning: Bool, cdpOk: Bool, cdpPort: Int,
     let daemonUp = health != nil
     let pluginConnected = health?.plugin == true
     let pipeHeld = health?.pipe == true
-    let cdpUp = cdpOk || health?.cdp == true
-    // A connection you can actually run an eval on (pipe-held-but-loading is not one yet).
-    let connected = cdpUp || pluginConnected
+    // The daemon's OWN link into Figma — it has attached to a design file and can eval. NOT the
+    // bare port probe: a reachable port only means Figma is debuggable, not that the daemon is
+    // driving a file. Counting `cdpOk` here painted the Daemon dot green with no file open.
+    let connected = health?.cdp == true || pluginConnected
 
     var rows = [
         StatusRow(label: "Figma",
@@ -143,12 +144,12 @@ public func statusRows(figmaRunning: Bool, cdpOk: Bool, cdpPort: Int,
                   value: figmaRunning ? "running" : "not running"),
     ]
 
-    // The CDP dot only where a port exists.
+    // The CDP dot only where a port exists, and it reflects the port probe itself.
     switch mode {
     case .yolo, .browser:
         rows.append(StatusRow(label: "CDP",
-                              state: cdpUp ? .ok : .off,
-                              value: cdpUp ? "port \(cdpPort)" : "not reachable"))
+                              state: cdpOk ? .ok : .off,
+                              value: cdpOk ? "port \(cdpPort)" : "not reachable"))
     case .pipe, .safe:
         break
     }

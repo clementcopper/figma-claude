@@ -621,7 +621,7 @@ async function connectBrowser(config) {
   }
 }
 
-async function connectPipe(config) {
+async function connectPipe(config, wait = true) {
   console.log(chalk.hex('#4ECDC4')('  🔌 Pipe Mode ') + chalk.gray('(Figma over --remote-debugging-pipe — no patch, no port)\n'));
 
   // Is a pipe-mode daemon already holding a Figma? Then there is nothing to launch.
@@ -679,9 +679,11 @@ async function connectPipe(config) {
   }
 
   // Figma loads its file for ~20 s; /health.cdp turns true when the design context is ready.
+  // --no-wait (the panel) skips this: its status card shows "Figma is loading…" and the
+  // watcher's poll turns it green when the document actually attaches.
   let connected = false;
   const MAX_WAIT_S = 60;
-  for (let i = 0; i < MAX_WAIT_S; i++) {
+  for (let i = 0; wait && i < MAX_WAIT_S; i++) {
     await new Promise(r => setTimeout(r, 1000));
     try {
       const health = JSON.parse(curlDaemon('/health'));
@@ -708,6 +710,7 @@ program
   .option('--browser', 'Use Browser Mode (drive Figma in a Chromium browser via CDP — never modifies the Figma app)')
   .option('--patch', 'Use Yolo Mode: patch Figma\'s app.asar for the debug port (the old default; Pipe Mode needs no patch)')
   .option('--pipe', 'Use Pipe Mode: launch Figma with --remote-debugging-pipe, no patch, no port (default on macOS/Linux)')
+  .option('--no-wait', 'Return as soon as the daemon is up, without waiting for the plugin/document (the panel uses this so its status card updates live)')
   .action(async (options) => {
     // Fun welcome message
     console.log(chalk.hex('#FF6B35')('\n  ✨ Hey designer! ') + chalk.white("Don't be afraid of the terminal!"));
@@ -727,7 +730,7 @@ program
     const canPipe = process.platform === 'darwin' || process.platform === 'linux';
     const usePipe = !options.safe && !options.patch && (options.pipe || canPipe);
     if (usePipe) {
-      await connectPipe(config);
+      await connectPipe(config, options.wait !== false);
       return;
     }
 
@@ -806,7 +809,10 @@ program
       const pluginSpinner = ora('Waiting for plugin connection...').start();
       let pluginConnected = false;
       const PLUGIN_CONNECT_MAX_WAIT_S = 90;
-      for (let i = 0; i < PLUGIN_CONNECT_MAX_WAIT_S; i++) {
+      // --no-wait (the panel) skips the wait entirely: the status card already tells the user to
+      // run the FigCli plugin, and the watcher turns the dot green once it connects.
+      const waitForPlugin = options.wait !== false;
+      for (let i = 0; waitForPlugin && i < PLUGIN_CONNECT_MAX_WAIT_S; i++) {
         await new Promise(r => setTimeout(r, 1000));
         try {
           const healthRes = curlDaemon('/health');

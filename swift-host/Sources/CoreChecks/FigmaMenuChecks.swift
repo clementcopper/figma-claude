@@ -252,12 +252,13 @@ enum FigmaMenuTests {
     }
 
     static func connectFlags() {
-        Checks.expect(connectArguments(mode: .pipe), ["connect"])
+        // Pipe and Safe carry --no-wait so the panel returns without blocking on the connection.
+        Checks.expect(connectArguments(mode: .pipe), ["connect", "--no-wait"])
         Checks.expect(connectArguments(mode: .yolo), ["connect", "--patch"])
-        Checks.expect(connectArguments(mode: .safe), ["connect", "--safe"])
+        Checks.expect(connectArguments(mode: .safe), ["connect", "--safe", "--no-wait"])
         Checks.expect(connectArguments(mode: .browser), ["connect", "--browser"])
         // An unset mode is pipe, the CLI's default on macOS/Linux.
-        Checks.expect(connectArguments(mode: nil), ["connect"])
+        Checks.expect(connectArguments(mode: nil), ["connect", "--no-wait"])
         Checks.expect(FigmaMode(rawValue: "pipe"), .pipe)
         Checks.expect(FigmaMode(rawValue: "safe"), .safe)
         Checks.expect(FigmaMode(rawValue: "nonsense"), nil)
