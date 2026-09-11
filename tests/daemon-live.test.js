@@ -146,6 +146,51 @@ describe('the sync CLI path carries a large answer', () => {
   });
 });
 
+describe('bin/fig-status', () => {
+  // The script probed port 9222 for its "CDP" row, so Pipe Mode — no port by design — showed
+  // "✗ not reachable" beside a green daemon. It now reads the link from /health like the CLI.
+  const FAKE = join(ROOT, 'tests', 'helpers', 'fake-figma.mjs');
+  const figStatus = (d) => new Promise((resolve) => {
+    const p = spawn('bash', [join(ROOT, 'bin', 'fig-status')], {
+      // FIGMA_PORT=1: nothing listens there, so a real Figma on 9222 cannot colour the result.
+      env: { ...process.env, HOME: d.home, DAEMON_PORT: String(d.port), FIGMA_PORT: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    p.stdout.on('data', (c) => { out += c; });
+    p.on('exit', () => resolve(out.replace(/\x1b\[[0-9;]*m/g, '')));
+  });
+  const row = (out, label) => (out.split('\n').find((l) => l.includes(`  ${label}`)) || '').replace(/[│\s]+$/, '').trim();
+
+  it('shows the pipe as the link and the file from /health in Pipe Mode', async () => {
+    const d = await startDaemon({ mode: 'pipe', env: { FIGMA_PIPE_LAUNCH: '1', FIGMA_BINARY: FAKE, FAKE_FIGMA_FILE: 'Pipe Dream' } });
+    try {
+      const health = () => fetch(`http://127.0.0.1:${d.port}/health`, { headers: { 'X-Daemon-Token': TOKEN } }).then((r) => r.json());
+      for (let i = 0; i < 80 && !(await health().catch(() => ({}))).cdp; i++) await sleep(100);
+      const out = await figStatus(d);
+      assert.match(row(out, 'Link'), /✓\s+pipe/, out);
+      assert.match(row(out, 'Daemon'), /✓\s+port \d+ \(pipe\)/, out);
+      assert.match(row(out, 'File'), /Pipe Dream$/, out);
+    } finally { d.stop(); }
+  });
+
+  it('shows the plugin as the link in Safe Mode, and waits for it while it is away', async () => {
+    const d = await startDaemon();
+    try {
+      let out = await figStatus(d);
+      assert.match(row(out, 'Link'), /○\s+waiting for the FigCli plugin/, out);
+      const ws = await plugin(d.port);
+      ws.send(JSON.stringify({ type: 'hello', mode: 'plugin', file: 'Design System' }));
+      await sleep(100);
+      out = await figStatus(d);
+      assert.match(row(out, 'Link'), /✓\s+plugin/, out);
+      assert.match(row(out, 'Daemon'), /\(safe\)/, out);
+      assert.match(row(out, 'File'), /Design System$/, out);
+      ws.close();
+    } finally { d.stop(); }
+  });
+});
+
 describe('daemon start sweeps hot-reload copies of dead daemons', () => {
   it('removes a copy whose pid is gone and keeps one whose pid lives', async () => {
     // shutdown() removes a daemon's own copy; a killed or crashed daemon left its copy in

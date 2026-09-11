@@ -59,6 +59,12 @@
   string no longer comes back as a silent success, and a finished eval clears its timer.
   The window, the notifications and the daemon's "not connected" message all say `FigCli`,
   the name Figma shows in the menu.
+- **`fig-status` knows Pipe and Safe Mode.** Its "CDP" row probed port 9222 and said
+  "✗ not reachable" beside a green daemon in Pipe Mode, which has no port by design. The row is
+  "Link" now and comes from the daemon's `/health` like everything else: `pipe (no port)`,
+  `plugin` / `waiting for the FigCli plugin`, or the port; the file name comes from there too
+  instead of a second CLI call. Covered by `tests/daemon-live.test.js` against a pipe-mode and
+  a plugin-mode daemon.
 - **`export screenshot` / `export node` work above 1 MB.** The sync path ran curl through
   `execSync` with Node's default 1 MB `maxBuffer`; any export past that died with ENOBUFS,
   which `figmaEvalSync` took for a dead daemon — a 60 s direct-CDP attempt and then

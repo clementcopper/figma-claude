@@ -59,27 +59,57 @@ else
     FIGMA_ICON="○"; FIGMA_COLOR="$YELLOW"; FIGMA_VAL="not running"
 fi
 
-# ── CDP ──
-if curl -s --max-time 3 -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
-    CDP_ICON="✓"; CDP_COLOR="$GREEN"; CDP_VAL="port ${CDP_PORT}"
-else
-    CDP_ICON="✗"; CDP_COLOR="$RED"; CDP_VAL="not reachable"
-fi
-
-# ── Daemon ──
+# ── Daemon: one /health read; the Link and File rows derive from it ──
+# The daemon knows its transport (mode pipe/safe/yolo/browser, and whether the link is up).
+# Probing port 9222 here showed "✗ not reachable" beside a green daemon in Pipe Mode, which
+# has no port by design.
 DAEMON_TOKEN=$(get_daemon_token)
-DAEMON_ICON="○"; DAEMON_COLOR="$YELLOW"; DAEMON_VAL="not running"
+H_STATUS=""; H_MODE=""; H_CDP=""; H_PIPE=""; H_PLUGIN=""; H_FILE=""
 if [ -n "$DAEMON_TOKEN" ]; then
     DAEMON_HEALTH=$(curl -s --max-time 3 -H "X-Daemon-Token: $DAEMON_TOKEN" http://localhost:${DAEMON_PORT:-3456}/health 2>/dev/null)
-    if echo "$DAEMON_HEALTH" | grep -q '"status":"ok"'; then
-        DAEMON_MODE=$(echo "$DAEMON_HEALTH" | node -e 'let r=""; process.stdin.on("data", d => r += d).on("end", () => { let d = {}; try { d = JSON.parse(r) } catch {} process.stdout.write(d.cdp ? "CDP" : d.plugin ? "Plugin" : "unknown") })' 2>/dev/null)
-        DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port ${DAEMON_PORT:-3456} (${DAEMON_MODE})"
+    if [ -n "$DAEMON_HEALTH" ]; then
+        # Unit separator, not tab: `read` collapses runs of whitespace IFS, so an empty field
+        # (plugin: null in Pipe Mode) shifted the file name into the wrong variable.
+        IFS=$'\x1f' read -r H_STATUS H_MODE H_CDP H_PIPE H_PLUGIN H_FILE < <(echo "$DAEMON_HEALTH" | node -e '
+let r = ""; process.stdin.on("data", d => r += d).on("end", () => {
+  let d = {}; try { d = JSON.parse(r) } catch {}
+  const file = String(d.file || "").replace(" – Figma", "").replace(" - Figma", "").replace(/[\x1f\n]/g, " ");
+  process.stdout.write([d.status || "", d.mode || "", d.cdp ? "1" : "", d.pipe ? "1" : "", d.plugin ? "1" : "", file].join("\x1f"));
+})' 2>/dev/null)
     fi
 fi
 
-# ── Active file ──
+DAEMON_ICON="○"; DAEMON_COLOR="$YELLOW"; DAEMON_VAL="not running"
+if [ "$H_STATUS" = "ok" ] || [ "$H_STATUS" = "disconnected" ]; then
+    DAEMON_ICON="✓"; DAEMON_COLOR="$GREEN"; DAEMON_VAL="port ${DAEMON_PORT:-3456} (${H_MODE:-unknown})"
+fi
+
+# ── Link: how the daemon reaches Figma ──
+if [ -n "$H_MODE" ]; then
+    case "$H_MODE" in
+        pipe)
+            if [ -n "$H_PIPE" ] && [ -n "$H_CDP" ]; then LINK_ICON="✓"; LINK_COLOR="$GREEN"; LINK_VAL="pipe (no port)"
+            else LINK_ICON="○"; LINK_COLOR="$YELLOW"; LINK_VAL="pipe — waiting for the document"; fi ;;
+        safe)
+            if [ -n "$H_PLUGIN" ]; then LINK_ICON="✓"; LINK_COLOR="$GREEN"; LINK_VAL="plugin"
+            else LINK_ICON="○"; LINK_COLOR="$YELLOW"; LINK_VAL="waiting for the FigCli plugin"; fi ;;
+        *)
+            if [ -n "$H_CDP" ]; then LINK_ICON="✓"; LINK_COLOR="$GREEN"; LINK_VAL="port ${CDP_PORT}"
+            elif [ -n "$H_PLUGIN" ]; then LINK_ICON="✓"; LINK_COLOR="$GREEN"; LINK_VAL="plugin"
+            else LINK_ICON="✗"; LINK_COLOR="$RED"; LINK_VAL="port ${CDP_PORT} not reachable"; fi ;;
+    esac
+# No daemon: the port is the only thing left to ask.
+elif curl -s --max-time 3 -o /dev/null -w "%{http_code}" http://localhost:${CDP_PORT}/json 2>/dev/null | grep -q "200"; then
+    LINK_ICON="✓"; LINK_COLOR="$GREEN"; LINK_VAL="port ${CDP_PORT} (no daemon)"
+else
+    LINK_ICON="✗"; LINK_COLOR="$RED"; LINK_VAL="not reachable"
+fi
+
+# ── Active file: from /health; the `files` command only when the daemon has no name ──
 FILE_ICON=" "; FILE_COLOR="$NC"; FILE_VAL="—"
-if [ -n "$CLI" ] && [ -n "$DAEMON_TOKEN" ]; then
+if [ -n "$H_FILE" ]; then
+    FILE_VAL="$H_FILE"
+elif [ -n "$CLI" ] && [ -n "$DAEMON_TOKEN" ]; then
     FILES_JSON=$(node "$CLI" files 2>/dev/null)
     if [ -n "$FILES_JSON" ] && ! echo "$FILES_JSON" | grep -q '"error"'; then
         ACTIVE=$(echo "$FILES_JSON" | node -e '
@@ -99,7 +129,7 @@ echo -e "  ${DIM}┌${SEP}┐${NC}"
 printf "  \033[2m│\033[0m  \033[1mStatus\033[0m%36s\033[2m│\033[0m\n" ""
 echo -e "  ${DIM}├${SEP}┤${NC}"
 box_row "Figma   " "$FIGMA_ICON"  "$FIGMA_COLOR"  "$FIGMA_VAL"
-box_row "CDP     " "$CDP_ICON"    "$CDP_COLOR"    "$CDP_VAL"
+box_row "Link    " "$LINK_ICON"   "$LINK_COLOR"   "$LINK_VAL"
 box_row "Daemon  " "$DAEMON_ICON" "$DAEMON_COLOR" "$DAEMON_VAL"
 box_row "File    " "$FILE_ICON"   "$FILE_COLOR"   "$FILE_VAL"
 echo -e "  ${DIM}└${SEP}┘${NC}"

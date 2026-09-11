@@ -106,7 +106,7 @@ It **hot-reloads `figma-client.js`** by copying it to a temp module when its mti
 | What | Where |
 |---|---|
 | `fig-start` — connect + pick among the open Figma files | `bin/fig-start` |
-| `fig-status` — Figma / CDP / daemon / active file at a glance | `bin/fig-status` |
+| `fig-status` — Figma / link (pipe, plugin or port) / daemon / active file at a glance, all from `/health` | `bin/fig-status` |
 | Non-destructive `connect` — never quits a Figma that is already debuggable | `src/lib/connect-plan.js`, used in `src/commands/setup.js` |
 | Claude Panel — Claude Code in a floating window next to Figma | `app/` (Electron; own `package.json`, own `npm test`) |
 | `fig-feedback-setup` — installs the machine-side half on a new machine: the feedback rule and its hooks, the Framelink MCP server, and the SessionStart hook that prints the handoff after a `/clear` | `bin/fig-feedback-setup`, `.gitattributes` |
