@@ -180,6 +180,10 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
   result; read it before trying to reproduce a paraphrase. The CLI's own fault was the
   two-faced name, fixed in `cli-core.js`.
 
+### Figma's allowedDomains refuses an IP literal (2026-09-11)
+
+Live Safe Mode test: the FigCli import failed with "'ws://127.0.0.1:3456' must be a valid URL". Figma validates each `networkAccess.allowedDomains` entry as a URL and accepts `ws://`/`wss://` with an explicit port, but only with `localhost` — a raw IP is refused (checked against Figma's manifest docs). Broken since 508e059 tightened the list from `["*"]` to per-port `127.0.0.1` entries; nobody re-imported the plugin until a real Safe Mode run, so no test and no session caught it. `plugin/manifest.json` and `plugin/ui.html` now use `localhost`; `tests/plugin-manifest.test.js` guards both ends (valid ws URL on localhost, and every ui.html port allowed) — Figma's own validator is not in the suite. Same session, testing the three modes live: connect --patch recorded config.mode only when it actually patched, so an already-patched Figma kept mode=pipe and a later `daemon restart` took the pipe-handoff path with no pipe. Live testing a mode switch catches what a green unit suite cannot.
+
 ### A flag's "required" comment is a claim (2026-09-10)
 
 `browserDebugArgs` passed `--remote-allow-origins=*` with the comment "required for CDP WebSocket connects on Chrome 111+". Chrome 111 only refuses handshakes that carry an `Origin` header it was not told to allow; the CLI connects from Node with `ws`, which sends none. Three connections against a throwaway Brave without the flag settled it in one run: Node client without Origin → open, Node client with `Origin: http://evil.example` → 403, a page's `new WebSocket(webSocketDebuggerUrl)` → refused. With `*`, that page would have been in. Rule: before keeping a security-relevant flag, run the three connections — the real client, a forged one, and the thing the flag is supposed to keep out.

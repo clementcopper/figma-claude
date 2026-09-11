@@ -46,3 +46,4 @@ Distilled from `LEARNINGS.md` § Figma Plugin API, § `render` bugs, § Text Sty
 - **A module that adds subcommands to another module's group must be in `command-map.js`** for that group; the map test checks subcommand contributors too.
 - **`fetch failed` from the daemon does not mean Figma is gone.** A daemon holds one CDP link fixed at startup and outlives it; say the request did not get through, name `status` / `daemon restart`.
 - **Figma strips only `remote-debugging-port`; `--remote-debugging-pipe` works unpatched** (fds 3/4, `figma` after ~23 s, 46 ms/eval). A pipe holder must live as long as Figma; the pipe-mode plan is in `~/.claude/plans/der-yolo-mode-ist-golden-goose.md`.
+- **Figma's `allowedDomains` refuses IP literals; use `localhost`.** `ws://127.0.0.1:3456` fails the plugin import ("must be a valid URL"); `ws://localhost:3456` (explicit ports are fine) works. `tests/plugin-manifest.test.js` guards it against the ui.html port list.
