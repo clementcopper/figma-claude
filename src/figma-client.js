@@ -11,7 +11,7 @@ import { designTargets } from './lib/figma-pipe.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle, suggestStyleNames } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
-import { KNOWN_PROPS, PROP_ALIASES } from './lib/jsx-props.js';
+import { KNOWN_PROPS, suggestProp } from './lib/jsx-props.js';
 import { coerceNumericProps } from './lib/jsx-numeric.js';
 import { matchRootFrame } from './lib/root-frame.js';
 
@@ -1116,22 +1116,6 @@ export class FigmaClient {
   validateJsxProps(jsx) {
     // The vocabulary lives in src/lib/jsx-props.js so the docs test can read it too.
     const known = KNOWN_PROPS;
-    const aliases = PROP_ALIASES;
-
-    const levenshtein = (a, b) => {
-      const m = a.length, n = b.length;
-      const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
-      for (let j = 0; j <= n; j++) d[0][j] = j;
-      for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-          d[i][j] = Math.min(
-            d[i - 1][j] + 1, d[i][j - 1] + 1,
-            d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-          );
-        }
-      }
-      return d[m][n];
-    };
 
     const warnings = [];
     const tagRegex = /<(Frame|Text|Icon|Rect|Rectangle|Ellipse|Circle|Image|Slot|Instance)([^>]*?)\/?>/g;
@@ -1143,17 +1127,9 @@ export class FigmaClient {
       const props = this.parseProps(m[2] || '');
       for (const prop of Object.keys(props)) {
         if (valid.includes(prop)) continue;
-        let suggestion = aliases[prop] || null;
-        if (!suggestion) {
-          // Typo detection: closest known prop within edit distance 2
-          let best = null, bestDist = 3;
-          for (const k of valid) {
-            const dist = levenshtein(prop.toLowerCase(), k.toLowerCase());
-            if (dist < bestDist) { best = k; bestDist = dist; }
-          }
-          suggestion = best;
-        }
-        warnings.push({ tag, prop, suggestion });
+        // Alias, typo within the word's length, or the parent-Frame hint (src/lib/jsx-props.js).
+        const { suggestion, hint } = suggestProp(prop, valid, tag);
+        warnings.push({ tag, prop, suggestion, hint });
       }
     }
     return warnings;

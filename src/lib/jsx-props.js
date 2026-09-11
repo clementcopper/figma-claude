@@ -65,3 +65,41 @@ export const ALL_PROPS = [...new Set(Object.values(known).flat().filter(Boolean)
 
 /** Common wrong names -> the prop that actually works. */
 export const PROP_ALIASES = aliases;
+
+// Layout props that are right in spirit and wrong on <Text>: the parent Frame owns them.
+const LAYOUT_ON_PARENT = new Set(['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl', 'padding', 'gap', 'flex', 'items', 'justify', 'wrap']);
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return d[m][n];
+}
+
+/**
+ * What to say about an unknown prop: an alias when the name is a known wrong one, a typo
+ * correction when a valid prop is close enough FOR THE WORD'S LENGTH, and for a layout prop on
+ * <Text> the real answer. A flat "edit distance below 3" offered `w` for `pb` — every
+ * one-letter prop is two edits from any two-letter word.
+ *
+ * @returns {{ suggestion: string|null, hint: string|null }}
+ */
+export function suggestProp(prop, valid, tag) {
+  if (aliases[prop]) return { suggestion: aliases[prop], hint: null };
+  if (tag === 'Text' && LAYOUT_ON_PARENT.has(prop)) {
+    return { suggestion: null, hint: 'padding and layout live on the parent <Frame>' };
+  }
+  const lower = String(prop).toLowerCase();
+  const maxDist = Math.max(1, Math.floor(lower.length / 2));
+  let best = null, bestDist = maxDist + 1;
+  for (const k of valid || []) {
+    const dist = levenshtein(lower, k.toLowerCase());
+    if (dist < bestDist) { best = k; bestDist = dist; }
+  }
+  return { suggestion: best, hint: null };
+}

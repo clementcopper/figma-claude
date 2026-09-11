@@ -43,7 +43,7 @@ function warnUnknownProps(jsxStrings) {
       for (const w of client.validateJsxProps(j)) {
         console.log(chalk.yellow(
           `\u26a0 Unknown prop ${JSON.stringify(w.prop)} on <${w.tag}>` +
-          (w.suggestion ? ` — did you mean ${JSON.stringify(w.suggestion)}?` : ' (ignored)')
+          (w.suggestion ? ` — did you mean ${JSON.stringify(w.suggestion)}?` : w.hint ? ` — ${w.hint}` : ' (ignored)')
         ));
       }
       // Not a typo but the same class of silence: the prop is right, and the layout ignores it.
