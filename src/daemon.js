@@ -3,8 +3,11 @@
 /**
  * Figma CLI Daemon
  *
- * Supports two modes:
- * - Yolo Mode (CDP): Direct connection via Chrome DevTools Protocol (fast, requires patching)
+ * Supports three modes:
+ * - Pipe Mode (CDP over --remote-debugging-pipe): the daemon launches Figma and holds its
+ *   debugging pipe — no patch, no port. Default on macOS/Linux since 2026-09-11.
+ * - Yolo Mode (CDP over the port): direct connection via Chrome DevTools Protocol (requires
+ *   the app.asar patch, or Browser Mode)
  * - Safe Mode (Plugin): Connection via Figma plugin WebSocket (secure, no patching)
  *
  * Security features:
@@ -21,8 +24,11 @@ import { readFileSync, statSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { spawn } from 'child_process';
 import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
 import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
+import { spawnFigmaWithPipe, inheritedPipe } from './lib/figma-pipe.js';
+import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -83,7 +89,7 @@ function removeHotReloadCopy() {
 }
 
 const PORT = parseInt(process.env.DAEMON_PORT) || 3456;
-const MODE = process.env.DAEMON_MODE || 'auto'; // 'auto', 'cdp', 'plugin'
+const MODE = process.env.DAEMON_MODE || 'auto'; // 'auto', 'cdp', 'plugin', 'pipe'
 const IDLE_TIMEOUT_MS = parseInt(process.env.DAEMON_IDLE_TIMEOUT) || 60 * 60 * 1000; // Default: 60 minutes (long interactive design sessions have quiet stretches; the CLI also auto-restarts the daemon if it ever does shut down)
 
 // ============ SECURITY ============
@@ -121,6 +127,9 @@ let idleTimer = null;
 
 function resetIdleTimer() {
   lastActivityTime = Date.now();
+  // Pipe Mode: this process holds Figma's debugging pipe, and Figma may quit when it goes.
+  // It lives as long as Figma does; the pipe closing is what ends it.
+  if (MODE === 'pipe') return;
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
     const idleSecs = Math.round((Date.now() - lastActivityTime) / 1000);
@@ -138,6 +147,10 @@ let isCdpConnecting = false;
 let lastHealthCheck = 0;
 let lastHealthResult = false;
 const HEALTH_CACHE_MS = 30000; // Cache health for 30 seconds (reduces overhead)
+
+// Figma's debugging pipe (Pipe Mode): { transport, toBrowser, fromBrowser, child? }
+let pipe = null;
+let handingOff = false;
 
 // Plugin Client (Safe Mode)
 let pluginWs = null;
@@ -202,14 +215,25 @@ async function getCdpClient() {
   isCdpConnecting = true;
   try {
     const ClientClass = await getFigmaClient();
-    cdpClient = new ClientClass();
+    // Connect on a LOCAL client and publish it only once it is fully connected — with its
+    // execution context found. cdpClient used to be assigned before connect resolved, so
+    // during the ~500 ms context scan cdpClient.ws was already open; isCdpHealthy (which
+    // evals `1`, valid in any context) reported healthy, /health went green, and an eval
+    // arriving in that window ran in the default context where `figma` is undefined.
+    const client = new ClientClass();
     // FIGMA_FILE pins the daemon to a specific open file (substring match on the
     // tab title). Without it Figma's first design tab wins, which silently sends
     // commands to the wrong file when several are open.
-    await cdpClient.connect(process.env.FIGMA_FILE || null);
+    if (MODE === 'pipe') {
+      if (!pipe || pipe.transport.closed) throw new Error('Figma pipe is not open — run figma-cli connect');
+      await client.connectViaPipe(pipe.transport, process.env.FIGMA_FILE || null);
+    } else {
+      await client.connect(process.env.FIGMA_FILE || null);
+    }
+    cdpClient = client;
     lastHealthCheck = Date.now();
     lastHealthResult = true;
-    console.log('[daemon] Connected to Figma via CDP (Yolo Mode)');
+    console.log(`[daemon] Connected to Figma via CDP (${MODE === 'pipe' ? 'Pipe' : 'Yolo'} Mode)`);
   } finally {
     isCdpConnecting = false;
   }
@@ -286,7 +310,18 @@ async function executeEval(code, timeoutMs = DEFAULT_TIMEOUT_MS) {
   return evalViaCdp(wrapCodeIfNeeded(code));
 }
 
+/** A small JSON body (1 MB cap); null when empty or malformed. /exec has its own 64 MB reader. */
+function readJsonBody(req, limit = 1024 * 1024) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; if (raw.length > limit) { raw = ''; req.destroy(); } });
+    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : null); } catch { resolve(null); } });
+    req.on('error', () => resolve(null));
+  });
+}
+
 function getMode() {
+  if (MODE === 'pipe') return 'pipe';
   if (MODE === 'plugin') return 'safe';
   if (MODE === 'cdp') return 'yolo';
   // Auto: return what's actually connected
@@ -331,6 +366,9 @@ async function handleRequest(req, res) {
       mode: mode,
       plugin: pluginConnected,
       cdp: cdpHealthy,
+      // Pipe Mode: this daemon holds Figma's debugging pipe. `cdp` says whether a file is
+      // attached; `pipe` says Figma is ours even while it is still loading.
+      pipe: MODE === 'pipe' && !!pipe && !pipe.transport.closed,
       // Which open file this daemon is bound to. The CLI compares it against
       // FIGMA_FILE and rebinds when they diverge — otherwise commands silently
       // hit whichever file happened to be first when the daemon started.
@@ -340,16 +378,79 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Force reconnect (CDP only)
+  // The open design files, as `/json` on the port lists them. Pipe Mode has no port, so the
+  // CLI's `files`, bin/fig-status and the panel ask here.
+  if (req.url === '/files') {
+    try {
+      let files;
+      if (MODE === 'pipe') {
+        if (!pipe || pipe.transport.closed) throw new Error('Figma pipe is not open');
+        const ClientClass = await getFigmaClient();
+        files = await ClientClass.listPagesViaPipe(pipe.transport);
+      } else {
+        const answer = await fetch(`http://127.0.0.1:${getCdpPort()}/json`, { signal: AbortSignal.timeout(2000) });
+        files = (await answer.json())
+          .filter((p) => p.url && /figma\.com\/(design|file|board)\//.test(p.url))
+          .map((p) => ({ title: p.title, id: p.id, url: p.url }));
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(files));
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+    return;
+  }
+
+  // Hand Figma's pipe to a fresh daemon process and step down. `daemon restart` in Pipe Mode:
+  // a plain stop-and-start would drop the pipe, and Figma may quit with it. The successor gets
+  // the two pipe sockets as its fds 3 and 4 (Node duplicates a stream's descriptor into the
+  // child), waits for this process to release the port, and carries on with the same Figma.
+  if (req.url === '/handoff' && req.method === 'POST') {
+    if (MODE !== 'pipe' || !pipe || pipe.transport.closed) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not in Pipe Mode, or the pipe is closed' }));
+      return;
+    }
+    let successor;
+    try {
+      successor = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore', pipe.toBrowser, pipe.fromBrowser],
+        env: { ...process.env, DAEMON_MODE: 'pipe', FIGMA_PIPE_INHERIT: '1', FIGMA_PIPE_LAUNCH: '' },
+      });
+      successor.unref();
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Could not spawn the successor: ${error.message}` }));
+      return;
+    }
+    handingOff = true;
+    console.log(`[daemon] Handing the pipe to daemon pid ${successor.pid}`);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'handing-off', pid: successor.pid }));
+    // Let the answer leave, then free the port for the successor. shutdown() leaves the pipe
+    // alone while handingOff is set; our copies of the descriptors close with the process,
+    // the successor's duplicates keep Figma's pipe open.
+    setTimeout(shutdown, 200);
+    return;
+  }
+
+  // Force reconnect. POST {"file": "…"} rebinds to another open file without a restart —
+  // the only way to rebind in Pipe Mode, where a restart means handing over the pipe.
   if (req.url === '/reconnect') {
     try {
+      if (req.method === 'POST') {
+        const body = await readJsonBody(req);
+        if (body && typeof body.file === 'string') process.env.FIGMA_FILE = body.file;
+      }
       if (cdpClient) {
         try { cdpClient.close(); } catch {}
         cdpClient = null;
       }
       await getCdpClient();
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'reconnected', mode: 'yolo' }));
+      res.end(JSON.stringify({ status: 'reconnected', mode: getMode(), file: cdpClient && cdpClient.pageTitle || null }));
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
@@ -612,8 +713,14 @@ wss.on('connection', (ws) => {
 // unhandled 'error' while the CLI had already written ITS pid to the PID file,
 // so isDaemonRunning() saw a dead pid and respawned endlessly (daemon churn →
 // non-deterministic double execution).
+let bindAttempts = 0;
 httpServer.on('error', (err) => {
   if (err && err.code === 'EADDRINUSE') {
+    // A handed-over daemon starts while its predecessor is still closing the port.
+    if (process.env.FIGMA_PIPE_INHERIT === '1' && bindAttempts++ < 25) {
+      setTimeout(() => httpServer.listen(PORT, '127.0.0.1'), 200);
+      return;
+    }
     console.log(`[daemon] Port ${PORT} already owned by another daemon — exiting (singleton).`);
     process.exit(0);
   }
@@ -638,7 +745,8 @@ function shutdown() {
   console.log('[daemon] Shutting down...');
   if (idleTimer) clearTimeout(idleTimer);
   removeHotReloadCopy();
-  if (cdpClient) cdpClient.close();
+  if (cdpClient && !handingOff) cdpClient.close();
+  if (pipe && !handingOff) pipe.transport.close();
   if (pluginWs) pluginWs.close();
   httpServer.close(() => process.exit(0));
   // Node 18: close() stops accepting but keeps serving open keep-alive sockets (fetch keeps
@@ -649,8 +757,49 @@ function shutdown() {
   setTimeout(() => process.exit(0), 3000);
 }
 
-// In auto/cdp mode, pre-connect to Figma
-if (MODE !== 'plugin') {
+// ============ PIPE MODE (default on macOS/Linux) ============
+
+function openPipe() {
+  if (process.env.FIGMA_PIPE_INHERIT === '1') {
+    pipe = inheritedPipe();
+    console.log('[daemon] Took over Figma\'s debugging pipe from the previous daemon');
+  } else if (process.env.FIGMA_PIPE_LAUNCH === '1') {
+    const binary = process.env.FIGMA_BINARY || getFigmaBinaryPath();
+    const launched = spawnFigmaWithPipe(binary);
+    pipe = launched;
+    console.log(`[daemon] Launched Figma with --remote-debugging-pipe (pid ${launched.child.pid})`);
+    launched.child.on('exit', (code, signal) => console.log(`[daemon] Figma exited (${code ?? signal})`));
+  } else {
+    // A daemon respawned by the CLI after Figma quit must not launch Figma on its own — that
+    // would open Figma from a random `figma-cli` command. `connect` sets FIGMA_PIPE_LAUNCH.
+    console.error('[daemon] Pipe Mode needs a Figma to hold: run figma-cli connect');
+    process.exit(2);
+  }
+  pipe.transport.on('close', () => {
+    if (handingOff) return;
+    console.log('[daemon] Figma\'s debugging pipe closed — shutting down');
+    shutdown();
+  });
+  pipe.transport.on('error', (e) => console.error('[daemon] pipe error:', e.message));
+}
+
+// Figma loads its file for ~20 s after launch; until a design page and the `figma` context
+// exist, connectViaPipe throws. Keep trying in the background so /health turns green on its
+// own — the CLI's `connect` polls /health and never sends work before that.
+async function pipeConnectLoop() {
+  while (pipe && !pipe.transport.closed && !handingOff) {
+    if (!(cdpClient && cdpClient.ws && cdpClient.ws.readyState === 1)) {
+      try { await getCdpClient(); } catch { /* not yet */ }
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
+if (MODE === 'pipe') {
+  openPipe();
+  pipeConnectLoop();
+} else if (MODE !== 'plugin') {
+  // In auto/cdp mode, pre-connect to Figma
   getCdpClient().catch(err => {
     console.log('[daemon] CDP not available, waiting for plugin connection...');
   });

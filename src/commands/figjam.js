@@ -9,7 +9,9 @@ import { FigmaClient } from '../figma-client.js';
 import {
   program,
   checkConnection,
-  fastEval
+  fastEval,
+  curlDaemon,
+  isDaemonRunning
 } from '../lib/cli-core.js';
 
 // ============ EXPORT ============
@@ -424,9 +426,17 @@ program
   .command('files')
   .description('List open Figma design files as JSON')
   .action(async () => {
+    // The daemon knows the files in every mode: over the port in Yolo/Browser, and over the
+    // pipe in Pipe Mode where there is no port to read. Ask it first; fall back to a direct
+    // CDP read only when no daemon answers (which cannot work in Pipe Mode anyway).
+    try {
+      if (isDaemonRunning()) {
+        console.log(curlDaemon('/files', { timeout: 5000 }).trim());
+        return;
+      }
+    } catch { /* fall through to the direct read */ }
     try {
       const pages = await FigmaClient.listPages();
-      // Filter to actual design/board files only (exclude blobs, webpack, feed, tabs)
       const designFiles = pages.filter(p =>
         p.url && (p.url.includes('/design/') || p.url.includes('/board/'))
       );

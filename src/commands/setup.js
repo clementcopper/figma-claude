@@ -619,6 +619,84 @@ async function connectBrowser(config) {
   }
 }
 
+async function connectPipe(config) {
+  console.log(chalk.hex('#4ECDC4')('  🔌 Pipe Mode ') + chalk.gray('(Figma over --remote-debugging-pipe — no patch, no port)\n'));
+
+  // Is a pipe-mode daemon already holding a Figma? Then there is nothing to launch.
+  let pipeHeld = false;
+  try {
+    const health = JSON.parse(curlDaemon('/health'));
+    pipeHeld = health && health.mode === 'pipe' && health.pipe === true;
+  } catch {}
+
+  // A patched/browser Figma may already answer on the port; leave it alone if so.
+  let cdpReachable = false;
+  try {
+    const probe = await fetch(`http://localhost:${getCdpPort()}/json`, { signal: AbortSignal.timeout(2000) });
+    cdpReachable = probe.ok;
+  } catch {}
+
+  const action = resolveConnectAction({ cdpReachable, figmaRunning: isFigmaRunning(), pipeHeld, pipe: true });
+
+  if (action === 'reuse-pipe') {
+    console.log(chalk.green('  ✓ A Pipe Mode daemon is already driving Figma (left untouched).\n'));
+    config.mode = 'pipe'; config.patched = false; saveConfig(config);
+    return;
+  }
+
+  if (action === 'reuse') {
+    // Figma already exposes the debug port (a patched app, or a browser). Use it rather than
+    // launching a second Figma; the daemon connects over CDP as before.
+    console.log(chalk.green('  ✓ Figma already exposes the debug port — using it (left untouched).\n'));
+    stopDaemon();
+    config.mode = 'yolo'; saveConfig(config);
+    const spin = ora('Starting speed daemon...').start();
+    startDaemon(true, 'auto');
+    await new Promise(r => setTimeout(r, 1500));
+    isDaemonRunning() ? spin.succeed('Speed daemon running') : spin.warn('Daemon failed to start');
+    return;
+  }
+
+  if (action === 'needs-quit') {
+    // Figma runs with neither the port nor a pipe daemon. The pipe can only be attached to a
+    // Figma the daemon launches itself, and only the user can quit the running one safely.
+    console.log(chalk.yellow('\n  Figma is running, but not reachable (no debug pipe, no port).'));
+    console.log(chalk.white('  Quit Figma (Cmd+Q), then run ') + chalk.cyan('connect') + chalk.white(' again — it will relaunch Figma over the pipe.\n'));
+    return;
+  }
+
+  // start-pipe: the daemon launches Figma with the debugging pipe and holds it.
+  stopDaemon();
+  config.mode = 'pipe'; config.patched = false; saveConfig(config);
+  const daemonSpinner = ora('Launching Figma over the debug pipe...').start();
+  try {
+    startDaemon(true, 'pipe', { FIGMA_PIPE_LAUNCH: '1' });
+  } catch (e) {
+    daemonSpinner.fail('Could not start the daemon: ' + e.message); process.exitCode = 1;
+    return;
+  }
+
+  // Figma loads its file for ~20 s; /health.cdp turns true when the design context is ready.
+  let connected = false;
+  const MAX_WAIT_S = 60;
+  for (let i = 0; i < MAX_WAIT_S; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const health = JSON.parse(curlDaemon('/health'));
+      if (health.cdp === true) { connected = true; break; }
+    } catch {}
+    if (i === 3) daemonSpinner.text = 'Figma is starting — open a design file if none is open…';
+  }
+
+  if (connected) {
+    daemonSpinner.succeed('Connected to Figma over the pipe');
+    console.log(chalk.green('\n  ✓ Ready! Pipe Mode active — Figma was not patched and no debug port is open.\n'));
+  } else {
+    daemonSpinner.warn('Figma launched, but no design file is connected yet.');
+    console.log(chalk.gray('\n  Open a design file in the Figma window; the next command connects automatically.\n'));
+  }
+}
+
 // ============ CONNECT ============
 
 program
@@ -626,6 +704,8 @@ program
   .description('Connect to Figma Desktop')
   .option('--safe', 'Use Safe Mode (plugin-based, no patching required)')
   .option('--browser', 'Use Browser Mode (drive Figma in a Chromium browser via CDP — never modifies the Figma app)')
+  .option('--patch', 'Use Yolo Mode: patch Figma\'s app.asar for the debug port (the old default; Pipe Mode needs no patch)')
+  .option('--pipe', 'Use Pipe Mode: launch Figma with --remote-debugging-pipe, no patch, no port (default on macOS/Linux)')
   .action(async (options) => {
     // Fun welcome message
     console.log(chalk.hex('#FF6B35')('\n  ✨ Hey designer! ') + chalk.white("Don't be afraid of the terminal!"));
@@ -636,6 +716,17 @@ program
     // Browser Mode: CDP to a normal browser — the Figma app is never modified.
     if (options.browser) {
       await connectBrowser(config);
+      return;
+    }
+
+    // Pipe Mode is the default where it works (macOS/Linux): the daemon launches Figma with
+    // --remote-debugging-pipe, so nothing is patched and no port is opened. `--patch` chooses
+    // the old Yolo path; Safe/Browser take their own branches above. Windows stays on the
+    // patch until fd inheritance is verified there.
+    const canPipe = process.platform === 'darwin' || process.platform === 'linux';
+    const usePipe = !options.safe && !options.patch && (options.pipe || canPipe);
+    if (usePipe) {
+      await connectPipe(config);
       return;
     }
 

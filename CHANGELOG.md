@@ -6,6 +6,29 @@
 
 ## Fork — unreleased
 
+### New
+
+- **Pipe Mode, the new default on macOS and Linux.** `figma-cli connect` launches Figma with
+  `--remote-debugging-pipe` and the daemon drives CDP over that pipe (fds 3/4). No `app.asar`
+  patch, no debug port, no macOS "App Management" permission, and Figma keeps its Developer ID
+  signature — the three compliance problems of Yolo Mode, all gone. Figma strips only
+  `--remote-debugging-port` from its argv, not the pipe switch (verified on 126.7). The old
+  patch path is still there as `connect --patch`; `--browser` and `--safe` are unchanged;
+  Windows stays on the patch until fd inheritance is verified there.
+  - Transport: `src/lib/figma-pipe.js` (NUL-framed CDP, one browser connection demultiplexed
+    into per-target sessions), unit-tested with a scripted browser. Client: `connectViaPipe` /
+    `listPagesViaPipe` share the execution-context search with the port path.
+  - Daemon (`DAEMON_MODE=pipe`): launches or inherits the pipe, has no idle shutdown (it lives
+    as long as Figma), exits when the pipe closes, and answers `GET /files` and
+    `POST /reconnect {file}`. `daemon restart` hands the pipe to a fresh process
+    (`POST /handoff`) so Figma is never dropped. Integration-tested without Figma against
+    `tests/helpers/fake-figma.mjs`, which speaks CDP on fds 3/4.
+  - `connect` records `config.mode`; the Swift panel gains a Pipe entry and makes it the default.
+  - Caveat: a freshly-launched Figma restores a design *tab* without loading the document, so
+    `connect` may ask the user to open the file, as Browser Mode does; `figma` appears about
+    20 s after a document actually loads. Neither attach nor `Target.activateTarget` over CDP
+    forces the load.
+
 ### Security
 
 - **Browser Mode no longer opens the debug socket to web pages.** The launcher passed
@@ -49,7 +72,7 @@
 - **Dead batch path removed.** `eval-batch` / `batch-result` in the plugin and
   `evalBatchViaPlugin` in the daemon had no caller; `render-batch` compiles to one eval.
 
-### New
+### New (Safe Mode)
 
 - **`npm run bench:transport`** times three evals (trivial, page walk, 512 px PNG export)
   through the daemon in whatever mode it is in and prints median and p95. REFERENCE.md used to

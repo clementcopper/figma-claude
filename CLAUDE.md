@@ -76,11 +76,12 @@ Logic that decides something goes into `src/lib/` as a pure function with a unit
 
 ### Connection modes
 
-- **Yolo (default)** — patches `app.asar` once to re-enable `--remote-debugging-port`, then CDP. Needs macOS "App Management" permission.
-- **Browser (`--browser`)** — runs Figma in a Chromium browser with its own profile. Same speed, the desktop app is never modified.
+- **Pipe (default on macOS/Linux, since 2026-09-11)** — the daemon launches Figma with `--remote-debugging-pipe` and holds the pipe (fds 3/4); CDP runs over it. No `app.asar` patch, no debug port, no "App Management" permission, Figma keeps its signature. `src/lib/figma-pipe.js` is the transport; `FigmaClient.connectViaPipe` attaches to the design page. The daemon runs with `DAEMON_MODE=pipe`, has no idle shutdown (it lives as long as Figma), and hands the pipe to a successor on `daemon restart` (`POST /handoff`) rather than dropping it. Caveat: a freshly-launched Figma restores a design *tab* without loading the document, so `connect` may need the user to open the file (like Browser Mode); `figma` appears ~20 s after a document actually loads.
+- **Yolo (`--patch`)** — patches `app.asar` once to re-enable `--remote-debugging-port`, then CDP. The old default; needs macOS "App Management" and re-signs Figma ad hoc (see SECURITY.md).
+- **Browser (`--browser`)** — runs Figma in a Chromium browser with its own profile. The desktop app is never modified.
 - **Safe (`--safe`)** — the plugin in `plugin/` talks WebSocket to the daemon. No patching. `render`/`render-batch` including text behave as in Yolo Mode (the old "no text in Safe Mode" limitation is gone).
 
-`src/daemon.js` picks `evalViaCdp` vs `evalViaPlugin` per request and retries once on plugin reconnect, so commands are mode-agnostic.
+`src/daemon.js` picks `evalViaCdp` (over the port or the pipe) vs `evalViaPlugin` per request and retries once on plugin reconnect, so commands are mode-agnostic. `connect` records the chosen mode in `config.mode`; `daemon start`/`restart` read it.
 
 ### The two render paths
 

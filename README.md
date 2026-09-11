@@ -237,9 +237,10 @@ Three ways, all doing the same things, all local:
 
 | | |
 |---|---|
-| **Yolo** (default) | patches one string in Figma Desktop's `app.asar` so the CLI can talk to it directly. Reversible, and the fastest hands-off route. Needs the macOS *App Management* permission |
-| **Browser** | runs Figma in a Chromium browser under its own profile. Same speed, the desktop app is never modified |
-| **Safe** | a small Figma plugin you keep open. Nothing is patched at all |
+| **Pipe** (default on macOS/Linux) | launches Figma with a debugging pipe and drives it over that. No patch, no debug port, no *App Management* permission, and Figma keeps its signature. Open your design file if the window starts empty |
+| **Yolo** (`--patch`) | patches one string in Figma Desktop's `app.asar` so the CLI can talk to it over a debug port. The old default; needs the macOS *App Management* permission and re-signs Figma ad hoc |
+| **Browser** (`--browser`) | runs Figma in a Chromium browser under its own profile. The desktop app is never modified |
+| **Safe** (`--safe`) | a small Figma plugin you keep open. Nothing is patched at all |
 
 What each one touches, what the local daemon does and where credentials live:
 **[SECURITY.md](SECURITY.md)** — that is also the page for whoever approves tools at your company.

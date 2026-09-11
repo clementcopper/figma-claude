@@ -19,23 +19,26 @@ const freePort = () => new Promise((res) => {
 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function startDaemon({ idleMs = 60000 } = {}) {
+async function startDaemon({ idleMs = 60000, mode = 'plugin', env: extraEnv = {} } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'figma-cli-daemon-test-'));
   mkdirSync(join(home, '.figma-ds-cli'), { recursive: true });
   writeFileSync(join(home, '.figma-ds-cli', '.daemon-token'), TOKEN);
   const port = await freePort();
   const child = spawn(process.execPath, [join(ROOT, 'src', 'daemon.js')], {
-    env: { ...process.env, HOME: home, DAEMON_PORT: String(port), DAEMON_MODE: 'plugin', DAEMON_IDLE_TIMEOUT: String(idleMs) },
+    env: { ...process.env, HOME: home, DAEMON_PORT: String(port), DAEMON_MODE: mode, DAEMON_IDLE_TIMEOUT: String(idleMs), ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });
   child.stderr.on('data', (d) => { log += d; });
+  // Listen for the exit before waiting on health: a daemon that quits at once (pipe mode
+  // without a Figma to hold) exited during the wait and the promise never settled.
+  const exited = new Promise((r) => child.on('exit', r));
   for (let i = 0; i < 50; i++) {
+    if (child.exitCode !== null) break;
     try { await fetch(`http://127.0.0.1:${port}/health`, { headers: { 'X-Daemon-Token': TOKEN } }); break; } catch { await sleep(100); }
   }
   const stop = () => { try { child.kill('SIGTERM'); } catch {} rmSync(home, { recursive: true, force: true }); };
-  const exited = new Promise((r) => child.on('exit', r));
   return { port, home, child, stop, exited, log: () => log };
 }
 
@@ -128,5 +131,71 @@ describe('daemon idle timer', () => {
     } finally {
       d.stop();
     }
+  });
+});
+
+// Pipe Mode: the daemon launches "Figma" (tests/helpers/fake-figma.mjs, which speaks CDP on
+// fds 3/4) and holds its debugging pipe. No port, no patch, nothing of the user's touched.
+describe('daemon in pipe mode', () => {
+  const FAKE = join(ROOT, 'tests', 'helpers', 'fake-figma.mjs');
+  const health = (port) => fetch(`http://127.0.0.1:${port}/health`, { headers: { 'X-Daemon-Token': TOKEN } }).then((r) => r.json());
+  const exec = (port, code) => fetch(`http://127.0.0.1:${port}/exec`, {
+    method: 'POST', headers: { 'X-Daemon-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'eval', code }),
+  }).then((r) => r.json());
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  // Polls until `probe` is true; a probe that throws (port not up yet) counts as false.
+  const until = async (probe, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await probe()) return true; } catch {} await sleep(100); } return false; };
+
+  it('launches Figma over the pipe, reports pipe mode, evaluates in the figma context and lists files', async () => {
+    const d = await startDaemon({ mode: 'pipe', env: { FIGMA_PIPE_LAUNCH: '1', FIGMA_BINARY: FAKE, FAKE_FIGMA_FILE: 'Pipe Dream' } });
+    try {
+      assert.ok(await until(async () => (await health(d.port)).cdp === true), `never connected: ${d.log()}`);
+      const h = await health(d.port);
+      assert.equal(h.mode, 'pipe');
+      assert.equal(h.pipe, true);
+      assert.equal(h.file, 'Pipe Dream – Figma');
+      assert.equal((await exec(d.port, '1 + 1')).result, 2);
+      assert.equal((await exec(d.port, 'figma.root.name')).result, 'Pipe Dream', 'evaluated in the context that holds figma');
+      const files = await (await fetch(`http://127.0.0.1:${d.port}/files`, { headers: { 'X-Daemon-Token': TOKEN } })).json();
+      assert.deepStrictEqual(files.map((f) => f.title), ['Pipe Dream – Figma']);
+    } finally { d.stop(); }
+  });
+
+  it('hands the pipe to a successor daemon on /handoff and Figma never notices', async () => {
+    const d = await startDaemon({ mode: 'pipe', env: { FIGMA_PIPE_LAUNCH: '1', FIGMA_BINARY: FAKE } });
+    let successorPid = null;
+    try {
+      assert.ok(await until(async () => (await health(d.port)).cdp === true), d.log());
+      const answer = await (await fetch(`http://127.0.0.1:${d.port}/handoff`, { method: 'POST', headers: { 'X-Daemon-Token': TOKEN } })).json();
+      assert.equal(answer.status, 'handing-off');
+      successorPid = answer.pid;
+      await d.exited;
+      assert.ok(await until(async () => { try { return (await health(d.port)).cdp === true; } catch { return false; } }, 10000), 'successor never answered on the same port');
+      assert.equal((await exec(d.port, 'figma.currentPage.name')).result, 'Page 1', 'the successor evaluates through the inherited pipe');
+      assert.ok(alive(successorPid));
+    } finally {
+      if (successorPid) { try { process.kill(successorPid, 'SIGTERM'); } catch {} }
+      d.stop();
+    }
+  });
+
+  it('exits when Figma goes away, and refuses to launch Figma unasked', async () => {
+    const d = await startDaemon({ mode: 'pipe', env: { FIGMA_PIPE_LAUNCH: '1', FIGMA_BINARY: FAKE } });
+    try {
+      assert.ok(await until(async () => (await health(d.port)).cdp === true), d.log());
+      const figmaPid = Number((d.log().match(/Launched Figma .*pid (\d+)/) || [])[1]);
+      assert.ok(figmaPid > 0, 'daemon named the Figma pid');
+      process.kill(figmaPid, 'SIGTERM');
+      await Promise.race([d.exited, sleep(5000).then(() => { throw new Error('daemon outlived the pipe'); })]);
+    } finally { d.stop(); }
+
+    // A CLI respawn after Figma quit must not open Figma from a random command.
+    const orphan = await startDaemon({ mode: 'pipe' });
+    try {
+      const code = await Promise.race([orphan.exited, sleep(5000).then(() => 'timeout')]);
+      assert.equal(code, 2, `expected exit 2, got ${code}: ${orphan.log()}`);
+      assert.match(orphan.log(), /run figma-cli connect/);
+    } finally { orphan.stop(); }
   });
 });

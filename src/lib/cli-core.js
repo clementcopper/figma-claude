@@ -416,12 +416,34 @@ function daemonPinMismatch() {
   return !bound.toLowerCase().includes(want.toLowerCase());
 }
 
+// Write a JSON body to a private temp file for curlDaemon POSTs; the caller need not clean up
+// (the OS temp dir is transient and the file is tiny).
+function writeTempJson(obj) {
+  const dir = mkdtempSync(join(tmpdir(), 'figma-cli-'));
+  const file = join(dir, 'body.json');
+  writeFileSync(file, JSON.stringify(obj));
+  return file;
+}
+
 async function ensureDaemonRunning(maxWaitMs = 5000) {
+  const pipeMode = (() => { try { return loadConfig().mode === 'pipe'; } catch { return false; } })();
   const mismatched = isDaemonRunning() && daemonPinMismatch();
   if (isDaemonRunning() && !mismatched) return true;
   if (mismatched) {
-    // Rebind: the daemon holds ONE CDP connection, fixed at startup.
+    // Pipe Mode holds Figma's debugging pipe; stopping the daemon would drop it and Figma may
+    // quit. Rebind in place instead — /reconnect re-attaches to the pinned file, no restart.
+    if (pipeMode) {
+      try {
+        curlDaemon('/reconnect', { method: 'POST', dataFile: writeTempJson({ file: process.env.FIGMA_FILE || '' }), timeout: 10000 });
+        return true;
+      } catch { return false; }
+    }
+    // Yolo/Browser: the daemon holds ONE CDP connection, fixed at startup — restart to rebind.
     stopDaemon();
+  } else if (pipeMode) {
+    // Pipe Mode with no daemon means Figma is gone (the pipe closing shut the daemon down).
+    // Only `connect` can relaunch Figma over a fresh pipe; a bare respawn cannot.
+    return false;
   } else if (!existsSync(DAEMON_PID_FILE) && !isFigmaPatched()) {
     // Guard: only resurrect a daemon the user actually set up — either a PID file
     // is present (idle-shutdown leaves it) or Figma is patched for Yolo Mode (so
@@ -478,7 +500,7 @@ async function fastRender(jsx) {
 
 
 // Start daemon in background
-function startDaemon(forceRestart = false, mode = 'auto') {
+function startDaemon(forceRestart = false, mode = 'auto', extraEnv = {}) {
   // If force restart, always kill existing daemon first
   if (forceRestart) {
     stopDaemon();
@@ -497,7 +519,7 @@ function startDaemon(forceRestart = false, mode = 'auto') {
   const child = spawn('node', [daemonScript], {
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env, DAEMON_PORT: String(DAEMON_PORT), DAEMON_MODE: mode }
+    env: { ...process.env, DAEMON_PORT: String(DAEMON_PORT), DAEMON_MODE: mode, ...extraEnv }
   });
   child.unref();
 

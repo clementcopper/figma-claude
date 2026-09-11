@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 import { getPortPid } from '../platform.js';
 import {
   program,
+  curlDaemon,
   DAEMON_PID_FILE,
   DAEMON_PORT,
   daemonExec,
@@ -140,6 +141,22 @@ daemon
   .description('Restart the daemon (keeps the token; delete ~/.figma-ds-cli/.daemon-token to rotate it)')
   .action(async () => {
     console.log(chalk.blue('Restarting daemon...'));
+    // Pipe Mode holds Figma's debugging pipe; a stop-and-start would drop it and Figma may
+    // quit. Ask the running daemon to hand the pipe to a fresh process instead.
+    if (configuredDaemonMode() === 'plugin' ? false : loadConfig().mode === 'pipe') {
+      try {
+        const res = JSON.parse(curlDaemon('/handoff', { method: 'POST', timeout: 5000 }));
+        if (res && res.status === 'handing-off') {
+          await new Promise(r => setTimeout(r, 1500));
+          const ok = isDaemonRunning(true);
+          if (ok.running) { console.log(chalk.green('✓ Daemon restarted (pipe handed to a fresh process, Figma untouched)')); return; }
+        }
+        console.log(chalk.gray('  Handoff did not complete — starting fresh (Figma will relaunch on connect).'));
+      } catch (e) {
+        // No pipe to hand over (Figma already gone): fall through to a normal start.
+        console.log(chalk.gray('  No live pipe to hand over — starting fresh (Figma will relaunch on connect).'));
+      }
+    }
     startDaemon(true, configuredDaemonMode());
     await new Promise(r => setTimeout(r, 1500));
 

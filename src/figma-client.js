@@ -7,6 +7,7 @@
 
 import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
+import { designTargets } from './lib/figma-pipe.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle, suggestStyleNames } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
@@ -392,17 +393,70 @@ export class FigmaClient {
     const typeMatch = page.url.match(/figma\.com\/(design|file)\//);
     this.fileType = typeMatch ? typeMatch[1] : 'unknown';
 
+    return this._attachSocket(new WebSocket(page.webSocketDebuggerUrl), { timeoutMs });
+  }
+
+  /**
+   * Connect through Figma's --remote-debugging-pipe (see src/lib/figma-pipe.js): list the
+   * targets, attach to the design page, then the same execution-context search as over the
+   * port. `transport` is a PipeTransport the daemon holds; nothing here opens or closes it.
+   */
+  async connectViaPipe(transport, pageTitle = null, { timeoutMs = 15000 } = {}) {
+    const answer = await transport.send('Target.getTargets', {}, undefined, { timeoutMs });
+    if (answer.error) throw new Error(answer.error.message || 'Target.getTargets failed');
+    const pages = designTargets(answer.result?.targetInfos).filter(p => /figma\.com\/(design|file)\//.test(p.url));
+    const page = pageTitle ? pages.find(p => p.title.includes(pageTitle)) : pages[0];
+    if (!page) {
+      throw new Error('No Figma design file open. Please open a design file in Figma Desktop.');
+    }
+    this.pageTitle = page.title;
+    this.pageUrl = page.url;
+    const typeMatch = page.url.match(/figma\.com\/(design|file)\//);
+    this.fileType = typeMatch ? typeMatch[1] : 'unknown';
+
+    const attached = await transport.send('Target.attachToTarget', { targetId: page.id, flatten: true }, undefined, { timeoutMs });
+    if (attached.error || !attached.result?.sessionId) {
+      throw new Error(attached.error?.message || 'Target.attachToTarget gave no session');
+    }
+    return this._attachSocket(transport.session(attached.result.sessionId), { timeoutMs });
+  }
+
+  /** The open design files as `/json` lists them, read over the pipe. */
+  static async listPagesViaPipe(transport) {
+    const answer = await transport.send('Target.getTargets');
+    if (answer.error) throw new Error(answer.error.message || 'Target.getTargets failed');
+    return designTargets(answer.result?.targetInfos);
+  }
+
+  /**
+   * Find the execution context that holds `figma` on an open socket and keep it. `socket` is
+   * either the `ws` WebSocket to a page's debugger URL (port mode) or a PipeTransport session
+   * view (pipe mode); both expose readyState / send / on / close.
+   */
+  _attachSocket(socket, { timeoutMs = 15000 } = {}) {
     return new Promise((resolveConn, rejectConn) => {
-      this.ws = new WebSocket(page.webSocketDebuggerUrl);
+      this.ws = socket;
       const executionContexts = [];
       // The connect timer used to run on after a successful connect and held the process
       // open for up to 15 s; settle clears it.
       let settled = false;
       const timer = setTimeout(() => reject(new Error('Connection timeout')), timeoutMs);
       const resolve = (v) => { if (settled) return; settled = true; clearTimeout(timer); resolveConn(v); };
-      const reject = (e) => { if (settled) return; settled = true; clearTimeout(timer); rejectConn(e); };
+      const reject = (e) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        // A connect that failed (no figma context yet, timeout) used to leave the socket open
+        // and assigned, so the next getCdpClient() found an "open" client with no execution
+        // context and evaluated in the wrong one. Release it; the next attempt starts clean.
+        if (this.ws === socket) {
+          this.ws = null;
+          try { socket.close(); } catch {}
+        }
+        rejectConn(e);
+      };
 
-      this.ws.on('open', async () => {
+      const onOpen = async () => {
         try {
           // Enable Runtime to discover execution contexts (needed for Figma v39+)
           await this.send('Runtime.enable');
@@ -446,7 +500,8 @@ export class FigmaClient {
         } catch (err) {
           reject(err);
         }
-      });
+      };
+      if (socket.readyState === 1) setImmediate(onOpen); else socket.on('open', onOpen);
 
       this.ws.on('message', (data) => {
         const msg = JSON.parse(data);

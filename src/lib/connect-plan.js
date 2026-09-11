@@ -14,17 +14,26 @@
  * including the common case where Figma is already reachable and nothing needs
  * to happen to it at all.
  *
+ * Pipe Mode (the default since 2026-09-11 on macOS and Linux) adds one state: a daemon that
+ * already holds Figma's debugging pipe. That Figma has no port, so `cdpReachable` is false
+ * for it, and it must not be quit — the daemon is the connection.
+ *
  * @param {object} state
  * @param {boolean} state.cdpReachable  the CDP port answered
  * @param {boolean} state.figmaRunning  a Figma process exists
- * @returns {'reuse'|'needs-quit'|'start-fresh'}
- *   `reuse`       — Figma is already debuggable; leave it alone, just wire up the daemon.
- *   `needs-quit`  — Figma runs without the debug port. Only the user can quit it
- *                   safely (unsaved work), so ask instead of killing it.
- *   `start-fresh` — no Figma at all; patch if needed and launch it ourselves.
+ * @param {boolean} [state.pipeHeld]    a daemon reports mode `pipe` with a live pipe
+ * @param {boolean} [state.pipe]        the caller wants Pipe Mode (else the port/patch path)
+ * @returns {'reuse'|'reuse-pipe'|'needs-quit'|'start-fresh'|'start-pipe'}
+ *   `reuse`       — Figma is already debuggable over the port; leave it alone, wire up the daemon.
+ *   `reuse-pipe`  — a daemon already holds the pipe; nothing to start.
+ *   `needs-quit`  — Figma runs without either. Only the user can quit it safely (unsaved
+ *                   work), so ask instead of killing it.
+ *   `start-fresh` — no Figma at all; patch if needed and launch it over the port.
+ *   `start-pipe`  — no Figma at all; a pipe-mode daemon launches it.
  */
-export function resolveConnectAction({ cdpReachable, figmaRunning }) {
+export function resolveConnectAction({ cdpReachable, figmaRunning, pipeHeld = false, pipe = false }) {
+  if (pipeHeld) return 'reuse-pipe';
   if (cdpReachable) return 'reuse';
   if (figmaRunning) return 'needs-quit';
-  return 'start-fresh';
+  return pipe ? 'start-pipe' : 'start-fresh';
 }
