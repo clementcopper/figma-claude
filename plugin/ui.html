@@ -112,7 +112,7 @@
       const attempts = [];
 
       PORTS.forEach(port => {
-        const url = `ws://127.0.0.1:${port}/plugin?token=${encodeURIComponent(token)}`;
+        const url = `ws://localhost:${port}/plugin?token=${encodeURIComponent(token)}`;
         try {
           const socket = new WebSocket(url);
           attempts.push(socket);
