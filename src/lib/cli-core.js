@@ -16,7 +16,7 @@ import * as apiDocs from '../api-docs.js';
 import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, parseCdpPort, getFigmaBinaryPath } from '../figma-patch.js';
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
-import { connectAdvice, inPanel } from './connection-help.js';
+import { connectAdvice, inPanel, timeoutMessage } from './connection-help.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
 import { isOurDaemon } from './daemon-owner.js';
 import { ensureDaemonToken as ensureTokenFile } from './daemon-token.js';
@@ -370,8 +370,11 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
     return result.result;
   } catch (e) {
     if (e.name === 'TimeoutError') {
-      // The daemon may still be executing: a caller must not run the code again.
-      throw Object.assign(new Error(`Execution timeout (${timeoutMs/1000}s). Try: node src/index.js daemon restart`), { fromDaemon: true });
+      // The daemon may still be executing: a caller must not run the code again. One forced
+      // /health call tells whether the daemon is fine (the code was slow) or gone.
+      let healthy = false;
+      try { healthy = isDaemonRunning(false, true) === true; } catch {}
+      throw Object.assign(new Error(timeoutMessage(timeoutMs, healthy)), { fromDaemon: true });
     }
     throw e;
   }

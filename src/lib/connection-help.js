@@ -76,6 +76,23 @@ export function explainEvalError(message, opts = {}) {
   return { connection: false, lines: [msg] };
 }
 
+/**
+ * What an `Execution timeout` should say. The daemon's answer did not arrive within the budget;
+ * whether that is the code's fault or the daemon's is one /health call away, and the two need
+ * different advice. "Try: daemon restart" after a 2 s budget on a healthy daemon (reported from
+ * the panel) sent the reader to restart a daemon that had done nothing wrong.
+ *
+ * @param {number} timeoutMs the budget that ran out
+ * @param {boolean} daemonHealthy whether /health answered after the timeout
+ */
+export function timeoutMessage(timeoutMs, daemonHealthy) {
+  const s = timeoutMs / 1000;
+  if (daemonHealthy) {
+    return `Execution timeout (${s}s): the code ran longer than the budget allows — raise it with --timeout <seconds> (eval, run)`;
+  }
+  return `Execution timeout (${s}s): the daemon did not answer. Try: node src/index.js daemon restart`;
+}
+
 /** Whether this process runs inside FigmaClaude.app. */
 export function inPanel(env = process.env) {
   return env.FIGMACLAUDE === '1';
