@@ -10,6 +10,7 @@ import {
   figmaEvalSync,
   figmaUse,
   isDaemonRunning,
+  shouldFallBackToDirect,
   unescapeShell
 } from '../lib/cli-core.js';
 import { evalArg } from '../lib/eval-arg.js';
@@ -356,20 +357,15 @@ program
         printEvalResult(jsCode, result);
         return;
       } catch (e) {
-        // Check if this is a connection/daemon error vs user code error
-        const isConnectionError = e.message.includes('ECONNREFUSED') ||
-                                  e.message.includes('fetch failed') ||
-                                  e.message.includes('network') ||
-                                  e.message.includes('timeout') ||
-                                  e.message.includes('disconnected');
-        if (isConnectionError) {
-          // Connection/daemon error - fall back to sync path
-          console.error(chalk.yellow('⚠ Daemon error, trying sync path...'));
-        } else {
-          // User code error - display directly, don't fall back
+        // An error the daemon reported, or a timeout while it was executing, means the code
+        // may already have run: print it, never run it again. A message-based classifier
+        // used to send "Execution timeout (2s)" down the sync path, which re-ran the code.
+        if (!shouldFallBackToDirect(e)) {
           printEvalError(e);
           return;
         }
+        // The daemon never answered (down, refused): the sync path may retry.
+        console.error(chalk.yellow('⚠ Daemon unreachable, trying sync path...'));
       }
     }
 

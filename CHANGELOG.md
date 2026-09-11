@@ -59,6 +59,12 @@
   string no longer comes back as a silent success, and a finished eval clears its timer.
   The window, the notifications and the daemon's "not connected" message all say `FigCli`,
   the name Figma shows in the menu.
+- **`eval` no longer runs timed-out code a second time.** Its own classifier treated any error
+  message containing "timeout" as a dead connection and took the sync path, which sent the same
+  code again; a daemon-reported `Execution timeout (2s)` therefore ran twice and, in Safe Mode,
+  came back as "no value returned" with exit 0 after 8 s. `eval` now asks
+  `shouldFallBackToDirect` like `fastEval` does: a daemon that answered is final, only an
+  unreachable daemon lets the sync path retry. Exit 1 after 2.3 s, live.
 - **Safe Mode survives a daemon restart.** Every daemon start minted a new session token; the
   plugin keeps its copy in `clientStorage` and asks for a new one only when it has none, so
   after the idle respawn it knocked with the old token forever and the CLI saw "Plugin not
