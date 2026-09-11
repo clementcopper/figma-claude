@@ -111,6 +111,41 @@ describe('daemon', () => {
   });
 });
 
+describe('the sync CLI path carries a large answer', () => {
+  it('figmaEvalSync returns a 3 MB result instead of falling through to "fetch failed"', async () => {
+    // `curlDaemon` ran curl through execSync with Node's default 1 MB maxBuffer. An export
+    // above that (any full-page PNG) died with ENOBUFS, and figmaEvalSync took that for a
+    // dead daemon and tried a direct CDP connection — "✗ fetch failed" in Pipe Mode, where no
+    // port exists. Live: `export node 2:2 -s 1` on an 8.6 MB frame, 2026-09-11.
+    const d = await startDaemon();
+    const ws = await plugin(d.port);
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.action === 'eval') ws.send(JSON.stringify({ type: 'result', id: msg.id, result: 'x'.repeat(3 * 1024 * 1024) }));
+    });
+    try {
+      const probe = `import { figmaEvalSync } from ${JSON.stringify(join(ROOT, 'src', 'lib', 'cli-core.js'))};
+        try { console.log('LENGTH ' + figmaEvalSync('1').length); } catch (e) { console.log('ERROR ' + e.message); }`;
+      // Spawned, not execFileSync: the fake plugin above lives in this process, and a blocked
+      // event loop cannot answer the daemon's eval while it waits for the probe.
+      const out = await new Promise((resolve, reject) => {
+        const p = spawn(process.execPath, ['--input-type=module', '-e', probe], {
+          env: { ...process.env, HOME: d.home, DAEMON_PORT: String(d.port) },
+          stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000,
+        });
+        let stdout = '';
+        p.stdout.on('data', (c) => { stdout += c; });
+        p.on('error', reject);
+        p.on('exit', () => resolve(stdout.trim()));
+      });
+      assert.strictEqual(out, `LENGTH ${3 * 1024 * 1024}`);
+    } finally {
+      ws.close();
+      d.stop();
+    }
+  });
+});
+
 describe('daemon start sweeps hot-reload copies of dead daemons', () => {
   it('removes a copy whose pid is gone and keeps one whose pid lives', async () => {
     // shutdown() removes a daemon's own copy; a killed or crashed daemon left its copy in

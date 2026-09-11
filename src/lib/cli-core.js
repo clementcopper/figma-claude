@@ -251,9 +251,13 @@ function getTokenStatus() {
  * One synchronous call to the daemon. The options — token included — go to curl as a config
  * on stdin (see lib/daemon-curl.js), never on the command line.
  */
+// execSync's default maxBuffer is 1 MB; an export answer (base64 of a full-page PNG) is
+// tens of MB. Sized for Figma's 7500 px export ceiling with room to spare.
+const CURL_MAX_BUFFER = 256 * 1024 * 1024;
+
 function curlDaemon(path, { method, dataFile, output, writeOut, timeout = 2000, host = '127.0.0.1' } = {}) {
   const cfg = curlConfig({ url: `http://${host}:${DAEMON_PORT}${path}`, token: getDaemonToken(), method, dataFile, output, writeOut });
-  return execSync('curl ' + CURL_ARGS.join(' '), { input: cfg, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout });
+  return execSync('curl ' + CURL_ARGS.join(' '), { input: cfg, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout, maxBuffer: CURL_MAX_BUFFER });
 }
 
 let _daemonHealthCache = { time: 0, value: null };
@@ -713,6 +717,11 @@ function figmaEvalSync(code) {
       return data.result;
     } catch (e) {
       if (e && e.fromDaemon) throw e;
+      // The daemon answered, curl's output just did not fit: not a connection failure, and
+      // the direct path would only spend 60 s to say "fetch failed".
+      if (e && e.code === 'ENOBUFS') {
+        throw new Error(`The daemon's answer exceeds ${CURL_MAX_BUFFER / 1024 / 1024} MB; export at a smaller scale`);
+      }
       // Safe Mode has no CDP to fall through to.
       if (isInSafeMode()) throw e;
       // Fall through to direct CDP connection

@@ -59,6 +59,17 @@
   string no longer comes back as a silent success, and a finished eval clears its timer.
   The window, the notifications and the daemon's "not connected" message all say `FigCli`,
   the name Figma shows in the menu.
+- **`export screenshot` / `export node` work above 1 MB.** The sync path ran curl through
+  `execSync` with Node's default 1 MB `maxBuffer`; any export past that died with ENOBUFS,
+  which `figmaEvalSync` took for a dead daemon — a 60 s direct-CDP attempt and then
+  "✗ fetch failed" (in Pipe Mode there is no port to fall back to). The buffer is 256 MB now,
+  sized for Figma's 7500 px export ceiling, and an overflow says so instead of falling
+  through. Live: an 8.6 MB full-page PNG in 7.6 s, whole command.
+- **Exports travel as base64.** `export screenshot`, `export node` and `remove-bg` sent the
+  bytes as a JSON number array, 2.6x the size of base64 and serialised once per hop; `verify`
+  and `render --verify` already used `figma.base64Encode`. Same frame over the pipe:
+  13.6 s as an array, 7.1 s as base64, 6.3 s leaving the bytes in Figma.
+  `tests/export-transfer.test.js` fails on the next `Array.from(bytes)`.
 - **Pipe Mode keeps umlauts and stops crawling on big results.** The pipe codec decoded every
   64 KB chunk as UTF-8 on its own, so an `ä` that straddled a chunk cut came back as two
   replacement characters — any node name, at any 64 KB boundary of a large answer. It also
