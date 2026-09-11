@@ -111,8 +111,8 @@ final class StatusOverlay: NSView {
     }
 
     /// Work finished: spinner off, a green ✓ or red ✗, the full text, a Close button, and an
-    /// optional action (the App-Management case keeps its "Open System Settings"). A plain
-    /// success clears itself; a failure or anything actionable stays.
+    /// optional action (the App-Management case keeps its "Open System Settings"). It stays until
+    /// the person dismisses it — success included, so there is time to read the whole message.
     func finish(ok: Bool, text: String, action: (title: String, handler: () -> Void)? = nil) {
         cancelDismiss()
         spinner.stopAnimation(nil)
@@ -130,9 +130,6 @@ final class StatusOverlay: NSView {
         }
         closeButton.isHidden = false
         present()
-        if overlayAutoDismisses(ok: ok, hasAction: action != nil) {
-            scheduleDismiss(after: 4)
-        }
     }
 
     /// A brief nudge that is not tied to an action (the context / clear-threshold hints). No

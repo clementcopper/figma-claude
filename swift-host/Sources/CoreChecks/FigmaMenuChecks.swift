@@ -14,20 +14,13 @@ enum FigmaMenuTests {
         overlayModel()
     }
 
-    /// The status overlay's pure decisions: the progress line per action, and which finished
-    /// messages clear themselves.
+    /// The status overlay's progress line per action. A finished result now always stays until
+    /// dismissed (success included), so there is nothing conditional left to test there.
     static func overlayModel() {
         Checks.expect(actionProgressText("Connect"), "Connecting…")
         Checks.expect(actionProgressText("Restart daemon"), "Restarting daemon…")
         Checks.expect(actionProgressText("Stop daemon"), "Stopping daemon…")
         Checks.expect(actionProgressText("Prepare folder"), "Prepare folder…")
-
-        // A plain success is a nudge and disappears; a failure, or anything with an action button
-        // (the App-Management "Open System Settings"), stays until it is dismissed.
-        Checks.expect(overlayAutoDismisses(ok: true, hasAction: false), true)
-        Checks.expect(overlayAutoDismisses(ok: true, hasAction: true), false)
-        Checks.expect(overlayAutoDismisses(ok: false, hasAction: false), false)
-        Checks.expect(overlayAutoDismisses(ok: false, hasAction: true), false)
     }
 
     private static func titles(_ sections: [MenuSection], _ heading: String) -> [String] {

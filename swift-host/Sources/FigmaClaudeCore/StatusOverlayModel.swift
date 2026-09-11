@@ -12,10 +12,3 @@ public func actionProgressText(_ title: String) -> String {
     default: return "\(title)…"
     }
 }
-
-/// Whether a finished message clears itself. A success with nothing to act on is a nudge and
-/// disappears; a failure, or anything carrying an action button (e.g. "Open System Settings"),
-/// stays until the person dismisses or acts on it.
-public func overlayAutoDismisses(ok: Bool, hasAction: Bool) -> Bool {
-    ok && !hasAction
-}
