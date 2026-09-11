@@ -251,6 +251,12 @@ Question was whether the ad-hoc re-sign after the asar patch could be dropped, s
   0.6 s and the page comes only from the eval; the file survives via the `panel.json` fallback,
   so the first tab was `fc-designdone` without `-cli-lab`. Tolerated: the rename replaces it.
 
+### Panel status card + mode picker (2026-09-11)
+
+- **An empty but still-visible `NSStackView` claims its parent stack's spacing.** The status card's buttons row was hidden per-button but the row view stayed, so the vertical column kept its 8 pt gap below the text — the "Connecting…" card had more padding below than above. Hide the sub-stack itself (`isHidden`) when it has no content, not just its children.
+- **A progress card cannot update while the CLI call it reports blocks.** `connect --safe` waits up to 90 s for the plugin (Pipe 60 s for the document), so the card sat on "Connecting…" and the next step ("run the FigCli plugin") never showed. The panel passes `--no-wait`; the card enters a watcher-driven *awaiting* state (spinner + reason, refreshed each 2.5 s poll) that resolves to "connected" once `/health` reports a real link.
+- **A status dot must reflect the daemon's own link, not a port probe.** The Daemon dot counted `cdpOk` (the bare `/json` probe), so Yolo showed all-green with no file attached. It lights only on `health.cdp || health.plugin`; the CDP dot keeps the port probe. And the *reason* for no connection belongs on the always-visible toolbar label, not only in the menu.
+
 ## Dead Ends
 
 - **`figma-use` as the transport.** Broken on Node 20+, hardcoded port, failed on FigJam, and `render` delegating to it was one of three disagreeing layout implementations. Upstream dropped the dependency in 2.1.1; `figmaUse()` in `src/lib/cli-core.js` is now just a native shim that kept the name. Do not reintroduce the package.

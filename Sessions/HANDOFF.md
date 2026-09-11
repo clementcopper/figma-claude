@@ -1,40 +1,26 @@
-# Handoff — 2026-09-06 11:04
+# Handoff — 2026-09-11 14:02
 Arbeitsverzeichnis: /Users/danielmartin/figma-cli
 
 ## Stand
-Zwei Pakete am 05.09., alles auf master gepusht, Suite 956 grün, CoreChecks 533:
-1. `/feedback-triage`: 22 Panel-Befunde geschlossen (Commits 84253a0 … ee2e4ac). Kern: der
-   Exit-Code-Wächter kannte nur eine Schreibweise von ✗; erweitert, neun stille Stellen gefixt.
-   Neu: `--strict-vars`, `node tree --json` mit `tree`, `var list -c/-t/--json`, a11y Exit 1 bei
-   Verstoß, `tokens components` beendet sich (0,9 s), Programmname überall `figma-cli`.
-2. Swift-Host 1.1.0 (f0a8308): Sessionnamen `fc-<datei>-<seite>` beim Start, nach dem ersten
-   Prompt `/rename fc-<w1>-<w2>` per Haiku (`SessionRenamer.swift`, README § Session names).
-   Ledger `~/.figma-ds-cli/session-names.json`. Live bestätigt: Tab 19:07:59 → `fc-initial-greeting`
-   19:08:16. Daniel beobachtet es im Betrieb; FEEDBACK.md ist leer.
-
-## Mitten drin
-- Nichts halb offen. Beobachtungen aus dem Betrieb kommen als `app`-Einträge in FEEDBACK.md.
+Pipe-Modus komplett gebaut, live gegen echtes Figma validiert und Default auf macOS/Linux. Daemon startet Figma über `--remote-debugging-pipe` (kein Patch, kein Port, Signatur intakt), Handoff bei `daemon restart`. Das Figma-Claude-Panel (swift-host, primär) bekam eine schwebende Status-Karte (`StatusOverlay`) statt des abgeschnittenen Button-Toasts, modusabhängige Statuspunkte, und das Mode-Menü in Reihenfolge Pipe/Safe/Yolo/Browser. README und SECURITY.md nachgezogen. Alles committet, Arbeitsbaum sauber (nur `swift-host/Scrennshots/` untracked, absichtlich).
 
 ## Nächster Schritt
-Nächste Session beginnt mit dem Hook-Zähler; wenn > 0: `/feedback-triage`. Sonst frei.
-Für Panel-Befunde zum Rename zuerst: `cat ~/.figma-ds-cli/session-names.json` und
-`for f in ~/.claude/sessions/*.json; do node -e 'const j=require(process.argv[1]);console.log(j.name,j.nameSource,j.status)' $f; done`
+Neu gebaute App am echten Figma-Fenster abnehmen: `open "swift-host/build/Figma Claude.app"`, dann Mode Pipe→Safe→Yolo→Pipe durchklicken, Overlay + Punkte prüfen. Falls Weiterentwicklung: Safe-Mode-Payload optimieren (Exporte als `Uint8Array` statt Number-Array, gemessen ~4x langsamer) — Stellen im Plan § "Safe Mode messen".
 
 ## Schon probiert, geht nicht
-- Figma antwortet auf eine fehlende Node-ID nach dem ersten Lookup mit „Unable to establish
-  connection to Figma after 10 seconds" — Figmas Text, Exit 1 trotzdem. `figma.getNodeById`
-  (sync) liefert null in 0,3 s; nicht umgebaut, in LEARNINGS notiert.
-- `tokens components`-Befunde „stiller Ersatz ohne --replace" und „fremder SLICE" reproduzieren
-  nicht (drei Läufe); wenn sie wiederkommen, den Befehl davor notieren.
-- Daemon-Integrationstest flackert unter Suite-Last (1 von ~5); allein nie. Erst wiederholen.
+- ✓-Symbol mit einer Palette-Farbe rendert als voller grüner Kreis (Häkchen unsichtbar) → `hierarchicalColor` nutzen.
+- Frisch gestartetes Figma (Pipe) stellt den Design-Tab wieder her, lädt das Dokument aber nicht; `Target.activateTarget` über CDP erzwingt es nicht → Nutzer muss die Datei öffnen, dann greift der Watcher.
+- Von Daniel eingefügte Screenshots kamen als generische PNG-Platzhalter an; echte Bilder lagen unter `swift-host/Scrennshots/` und mussten von dort gelesen werden.
+- `daemon-live.test.js` (413-Body) flaked zweimal unter Last; allein grün 8/8. Kein echter Fehler.
 
 ## Was Daniel entschieden hat
-- Sessionnamen: FC vorn, zwei Aufgabenwörter, immer eindeutig; Startname Datei + Seite; Haiku
-  benennt nach dem ersten Prompt. Vorschlag „erst ein Prompt mit ≥ 3 Inhaltswörtern" offen
-  gelassen — erst beobachten.
-- a11y: Exit 1 bei Verstoß (audit nur bei error); `--strict-vars` als Flag, Default bleibt.
-- Push macht Daniel selbst.
+- Alle vier Modi bleiben; Menü-Reihenfolge Pipe, Safe, Yolo, Browser. Yolo = `--patch` (Legacy).
+- Erfolgs-Dialog bleibt stehen bis Schließen; keine Emojis in Panel-Texten (Slop).
+- `package.json` author → designdone/designdone.de; README-Attribution an Sil + LICENSE bleiben (MIT).
+- Kein asar-Backup (Byte-Rückbau reicht, Signatur rettet kein Backup).
 
 ## Erledigt und vom Tisch
-- Alle 22 Feedback-Einträge inklusive #5 (zsh-Loop des Reporters, kein CLI-Bug).
-- Panel-Session hat Rule-Split in `Design/.claude/rules` selbst gemacht; nichts hier zu tun.
+- Pipe-Spike, Umsetzung, Live-Test aller drei Modi, Transport-Benchmark (Round-trip gleich, Safe ~4x bei Payload).
+- Overlay-Status-Karte inkl. Wartezustand "run the FigCli plugin" bis Plugin verbindet.
+- Sil/intodesignsystems-Werbezeilen aus der CLI-Ausgabe.
+- 4 offene Punkte aus den Screenshots (Padding, waiting-for-plugin im Toast, Yolo-Punkte, Menü-Reihenfolge).

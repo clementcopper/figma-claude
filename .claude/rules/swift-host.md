@@ -46,3 +46,6 @@ Distilled from `LEARNINGS.md` § Swift host. Stories and measurements there.
 - **Text into the user's terminal only when Claude is idle, shows no question, and the keyboard has been quiet for 3 s** (`shouldInject`, `SessionRenamer.swift`); the registry row `~/.claude/sessions/<pid>.json` says busy or idle, the host finds it by `sessionId`.
 - **A session name is handed out once, ever:** registry ∪ ledger (`~/.figma-ds-cli/session-names.json`), written before `claude` starts; a collision gets `-2`.
 - **`claude -p` costs a full session start; `--strict-mcp-config` without a config halves it** (22 s → 12.6 s); give it a minute, not 20 s.
+- **An empty but visible `NSStackView` still claims its parent stack's spacing;** hide the sub-stack itself when it has no content (the status card's buttons row gave the spinner state extra bottom padding).
+- **A progress card can't update while the CLI call it reports blocks.** The panel passes `connect --no-wait` and drives an *awaiting* state from the 2.5 s watcher poll, so "run the FigCli plugin" / "Figma is loading…" shows at once and resolves to "connected" from `/health`.
+- **A connection dot lights on the daemon's real link (`health.cdp || plugin`), never the bare port probe (`cdpOk`);** the reason for no-connection goes on the toolbar label, not only the menu.
