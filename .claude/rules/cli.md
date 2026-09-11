@@ -45,3 +45,4 @@ Distilled from `LEARNINGS.md` § Figma Plugin API, § `render` bugs, § Text Sty
 - **The daemon has an integration test without Figma** (`tests/daemon-live.test.js`, Plugin Mode, temp HOME); extend it before touching `daemon.js`. Editing daemon.js needs `daemon restart`; figma-client.js hot-reloads.
 - **A module that adds subcommands to another module's group must be in `command-map.js`** for that group; the map test checks subcommand contributors too.
 - **`fetch failed` from the daemon does not mean Figma is gone.** A daemon holds one CDP link fixed at startup and outlives it; say the request did not get through, name `status` / `daemon restart`.
+- **Figma strips only `remote-debugging-port`; `--remote-debugging-pipe` works unpatched** (fds 3/4, `figma` after ~23 s, 46 ms/eval). A pipe holder must live as long as Figma; the pipe-mode plan is in `~/.claude/plans/der-yolo-mode-ist-golden-goose.md`.

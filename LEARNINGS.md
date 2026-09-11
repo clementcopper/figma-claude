@@ -180,6 +180,18 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
   result; read it before trying to reproduce a paraphrase. The CLI's own fault was the
   two-faced name, fixed in `cli-core.js`.
 
+### A flag's "required" comment is a claim (2026-09-10)
+
+`browserDebugArgs` passed `--remote-allow-origins=*` with the comment "required for CDP WebSocket connects on Chrome 111+". Chrome 111 only refuses handshakes that carry an `Origin` header it was not told to allow; the CLI connects from Node with `ws`, which sends none. Three connections against a throwaway Brave without the flag settled it in one run: Node client without Origin → open, Node client with `Origin: http://evil.example` → 403, a page's `new WebSocket(webSocketDebuggerUrl)` → refused. With `*`, that page would have been in. Rule: before keeping a security-relevant flag, run the three connections — the real client, a forged one, and the thing the flag is supposed to keep out.
+
+### Modified bundle + original signature = "damaged" (2026-09-10)
+
+Question was whether the ad-hoc re-sign after the asar patch could be dropped, so that `unpatch` gives back a validly signed Figma. Test on a fresh download in the scratchpad, never on `/Applications`: patched `app.asar`, original Developer ID signature, quarantine value copied from the installed app, launched through `open` like `connect` does. Result: syspolicyd `GK evaluateScanResult: 3 … Prompt shown`, dialog "Figma.app ist beschädigt". The re-sign is load-bearing, `unpatch` can never restore the signature, and SECURITY.md now says so. Two things the test needed: `open`, because spawning the Mach-O directly bypasses LaunchServices and no Gatekeeper check runs at all; and the quarantine xattr, because without it nothing is assessed. And the version difference (126.8 vs installed 126.7) plus the shared `~/Library/Application Support/Figma` meant the copy must not run at the same time as the real one — `--user-data-dir` is ignored by Electron's `userData`.
+
+### Figma strips one switch, not the family (2026-09-10)
+
+`strings app.asar | grep removeSwitch` shows exactly `removeSwitch("remote-debugging-port")`. `--remote-debugging-pipe` goes through: spawn the binary with fds 3/4 as pipes and CDP answers on them, unpatched, portless, signature intact. `figma` global after ~23 s (file load; retry), 46 ms per eval over the pipe. Figma outlived the closed pipe by 8 s in one run and not in the other, so a pipe holder must live as long as Figma. That is the candidate replacement for the Yolo patch; details in the plan and the `pipe-mode-spike` memory.
+
 ## Fork Decisions (clementcopper)
 
 - **Migrated from v1.1.1 to upstream v2.1.2 on 2026-08-16** by branching from `upstream/main` (branch `v2`) instead of merging. The merge was not viable: upstream had split `src/index.js` from 8342 to 31 lines, so a merge would have meant hand-resolving the old monolith against 67 changed lines. Old state kept in `archive/draft-v1`.

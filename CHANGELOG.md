@@ -6,7 +6,54 @@
 
 ## Fork — unreleased
 
+### Security
+
+- **Browser Mode no longer opens the debug socket to web pages.** The launcher passed
+  `--remote-allow-origins=*`, with a comment calling it a Chrome 111+ requirement. It is one
+  only for clients that send an `Origin` header; the CLI connects from Node with `ws`, which
+  sends none. Measured on Brave 152 without the flag: the Node client connects, a forged
+  `Origin` gets 403, a page's `new WebSocket` to the debugger is refused. With `*`, any tab in
+  that browser could have driven Figma. `src/platform.js`, `tests/browser-mode.test.js`.
+- **SECURITY.md says what the Yolo patch does to Figma's signature.** `connect` re-signs the
+  bundle ad hoc, so the Developer ID signature and the notarization are gone until Figma
+  updates or is reinstalled; `unpatch` restores the bytes, not the signature. The re-sign is
+  not optional: a quarantined Figma with a patched `app.asar` and its original signature does
+  not launch (Gatekeeper: "Figma.app is damaged", measured on macOS 13 with a fresh download).
+
+- **SECURITY.md names the organization route for Safe Mode:** publish the bridge as a private
+  organization plugin (Organization/Enterprise plans, no Figma review, exempt from the
+  admin-approval setting) instead of asking every member to import a development plugin.
+
+### Fixed
+
+- **Safe Mode survives a daemon restart.** Every daemon start minted a new session token; the
+  plugin keeps its copy in `clientStorage` and asks for a new one only when it has none, so
+  after the idle respawn it knocked with the old token forever and the CLI saw "Plugin not
+  connected". The token is now kept while it is valid (`src/lib/daemon-token.js`); delete the
+  file to rotate. `daemon start` / `daemon restart` also bring the daemon back in the mode
+  `connect` set up (`config.mode`) instead of `auto`, which never waited for the plugin to
+  reconnect.
+- **Safe Mode fails fast.** After a daemon error the CLI tried a direct CDP connection that, with
+  Figma unpatched, could only add 4 s (`fastEval`) or 60 s (`figmaEvalSync`) to the answer.
+  Both paths now stop at the daemon's error when `/health` says plugin-only.
+- **`status` and `diagnose` know Safe Mode.** `status` asked the CDP port and printed "Not
+  connected" whenever the plugin was the way in; it asks the daemon first now and names the
+  file. `diagnose` marked the closed port as a failure and opened its own CDP socket for the
+  connection test; the port row is informational in Safe Mode and the test goes through the
+  daemon when one runs.
+- **`/health` names the file in Safe Mode.** The plugin sends `figma.root.name` in its hello, so
+  `FIGMA_FILE` pinning has something to compare and the panel shows the file.
+- **`diagnose` no longer drops a file named `nul` into the working directory.** The figma-use
+  lookup ran `which … || where … 2>nul` on every platform; `nul` is Windows' null device, and on
+  macOS the shell created it. One lookup per platform now.
+- **Dead batch path removed.** `eval-batch` / `batch-result` in the plugin and
+  `evalBatchViaPlugin` in the daemon had no caller; `render-batch` compiles to one eval.
+
 ### New
+
+- **`npm run bench:transport`** times three evals (trivial, page walk, 512 px PNG export)
+  through the daemon in whatever mode it is in and prints median and p95. REFERENCE.md used to
+  claim Yolo is "~10x faster" than Safe Mode with no measurement behind it.
 
 - **FigmaClaude is 1.0.0, and says so.** The app carried `0.1.0` from its first day, through the
   Figma menu, the status line, the feedback loop, the panel re-sync and the window zoom — and it
