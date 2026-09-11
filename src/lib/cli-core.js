@@ -4,7 +4,6 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { execSync, spawn } from 'child_process';
-import { randomBytes } from 'crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, mkdtempSync, rmSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -20,6 +19,7 @@ import { listBlocks, getBlock } from '../blocks/index.js';
 import { connectAdvice, inPanel } from './connection-help.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
 import { isOurDaemon } from './daemon-owner.js';
+import { ensureDaemonToken as ensureTokenFile } from './daemon-token.js';
 import { parseHexColor, invalidColorMessage } from './color.js';
 import { parseIdList } from './id-list.js';
 import { extractGradient, extractMesh, buildMeshFromColors, buildFigmaPaint, buildCssString } from '../gradient-extractor.js';
@@ -198,13 +198,12 @@ const DAEMON_PORT = parseInt(process.env.DAEMON_PORT, 10) || 3456;
 const DAEMON_PID_FILE = join(homedir(), '.figma-cli-daemon.pid');
 const DAEMON_TOKEN_FILE = join(homedir(), '.figma-ds-cli', '.daemon-token');
 
-// Generate and save a new session token for daemon authentication
-function generateDaemonToken() {
-  const configDir = join(homedir(), '.figma-ds-cli');
-  if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-  const token = randomBytes(32).toString('hex');
-  writeFileSync(DAEMON_TOKEN_FILE, token, { mode: 0o600 });
-  return token;
+// The daemon's session token: kept across restarts, minted only when the file is missing or
+// malformed. Rotation used to happen on every start and broke the Safe Mode plugin in silence
+// (it keeps the token in clientStorage and re-prompts only when it has none). Delete the file
+// to rotate. Details and tests: src/lib/daemon-token.js.
+function ensureDaemonToken() {
+  return ensureTokenFile(DAEMON_TOKEN_FILE).token;
 }
 
 // Read the current daemon session token
@@ -450,6 +449,8 @@ async function fastEval(code) {
       return await daemonExec('eval', { code });
     } catch (e) {
       if (!shouldFallBackToDirect(e)) throw e;
+      // Safe Mode: no CDP to fall back to, and the 4 s attempt would only delay the answer.
+      if (isInSafeMode()) throw e;
       // The daemon was unreachable: the code has not run, a direct connection may try.
     }
   }
@@ -489,8 +490,8 @@ function startDaemon(forceRestart = false, mode = 'auto') {
     return true; // Already running
   }
 
-  // Generate session token before spawning daemon
-  const newToken = generateDaemonToken();
+  // The session token must exist before the daemon reads it at startup.
+  const newToken = ensureDaemonToken();
 
   const daemonScript = join(__dirname, 'daemon.js');
   const child = spawn('node', [daemonScript], {
@@ -685,14 +686,8 @@ function figmaEvalSync(code) {
       return data.result;
     } catch (e) {
       if (e && e.fromDaemon) throw e;
-      // Check if we're in Safe Mode (plugin only) - don't fall through to CDP
-      try {
-        const health = JSON.parse(curlDaemon('/health'));
-        if (health.plugin && !health.cdp) {
-          // Safe Mode - re-throw the error, don't try CDP fallback
-          throw e;
-        }
-      } catch {}
+      // Safe Mode has no CDP to fall through to.
+      if (isInSafeMode()) throw e;
       // Fall through to direct CDP connection
     }
   }
@@ -984,11 +979,14 @@ function handleEvalError(e) {
   process.exit(1);
 }
 
-// Helper: Check if Safe Mode (plugin only)
-async function isInSafeMode() {
+// Safe Mode = the daemon serves a plugin and holds no CDP link. Then a "direct connection"
+// fallback has nothing to connect to: Figma is unpatched, the port is closed, and the attempt
+// only adds its 4 s (fastEval) or 60 s (figmaEvalSync) to the error the daemon already gave.
+// Sync on purpose — curlDaemon is sync and figmaEvalSync cannot await.
+function isInSafeMode() {
   try {
     const health = JSON.parse(curlDaemon('/health'));
-    return health.plugin && !health.cdp;
+    return Boolean(health.plugin && !health.cdp);
   } catch {
     return false;
   }
@@ -1016,7 +1014,7 @@ export {
   figmaEval,
   figmaEvalSync,
   figmaUse,
-  generateDaemonToken,
+  ensureDaemonToken,
   generateFillCode,
   generateStrokeCode,
   getDaemonToken,

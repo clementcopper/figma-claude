@@ -57,7 +57,8 @@ figma.ui.onmessage = async (msg) => {
   // storage of its own. Asked for on start, saved when the user pastes it.
   if (msg.type === 'get-token') {
     const token = await figma.clientStorage.getAsync(TOKEN_KEY);
-    figma.ui.postMessage({ type: 'token', token: token || null });
+    // The file name rides along: the UI puts it into its hello so the daemon can report it.
+    figma.ui.postMessage({ type: 'token', token: token || null, file: figma.root.name });
   }
   if (msg.type === 'save-token') {
     await figma.clientStorage.setAsync(TOKEN_KEY, msg.token);
@@ -71,20 +72,6 @@ figma.ui.onmessage = async (msg) => {
     } catch (error) {
       figma.ui.postMessage({ type: 'result', id: msg.id, error: error.message });
     }
-  }
-
-  // Batch eval (execute multiple codes in sequence, return all results)
-  if (msg.type === 'eval-batch') {
-    const results = [];
-    for (const code of msg.codes) {
-      try {
-        const result = await executeCode(code, msg.timeoutMs);
-        results.push({ success: true, result });
-      } catch (error) {
-        results.push({ success: false, error: error.message });
-      }
-    }
-    figma.ui.postMessage({ type: 'batch-result', id: msg.id, results: results });
   }
 
   if (msg.type === 'connected') {

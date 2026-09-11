@@ -10,9 +10,17 @@ import {
   getDaemonToken,
   getTokenStatus,
   isDaemonRunning,
+  loadConfig,
   startDaemon,
   stopDaemon
 } from '../lib/cli-core.js';
+
+// The daemon mode `connect` last set up. `auto` serves a connected plugin too, but only a
+// `plugin` daemon waits for the plugin to come back between retries and never dials CDP —
+// so a Safe Mode setup restarted through these commands used to lose both.
+function configuredDaemonMode() {
+  return loadConfig().mode === 'safe' ? 'plugin' : 'auto';
+}
 
 // ============ DAEMON ============
 
@@ -103,7 +111,7 @@ daemon
     }
 
     console.log(chalk.blue('Starting daemon...'));
-    startDaemon(options.force, 'auto');
+    startDaemon(options.force, configuredDaemonMode());
     await new Promise(r => setTimeout(r, 1500));
 
     const newDetails = isDaemonRunning(true);
@@ -129,11 +137,10 @@ daemon
 
 daemon
   .command('restart')
-  .description('Restart the daemon (regenerates token)')
+  .description('Restart the daemon (keeps the token; delete ~/.figma-ds-cli/.daemon-token to rotate it)')
   .action(async () => {
     console.log(chalk.blue('Restarting daemon...'));
-    // Use forceRestart=true to ensure clean restart with new token
-    startDaemon(true, 'auto');
+    startDaemon(true, configuredDaemonMode());
     await new Promise(r => setTimeout(r, 1500));
 
     const details = isDaemonRunning(true);

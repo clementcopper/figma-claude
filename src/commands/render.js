@@ -19,7 +19,8 @@ import {
   figmaEvalSync,
   getFigmaClient,
   isDaemonRunning,
-  unescapeShell
+  unescapeShell,
+  isInSafeMode
 } from '../lib/cli-core.js';
 
 // ============ RENDER ============
@@ -487,8 +488,10 @@ program
       console.log(chalk.gray('  Could not check if Figma is running'));
     }
 
-    // 5. Remote debugging port
+    // 5. Remote debugging port — not a fault in Safe Mode, where the plugin is the way in
+    // and the port is closed by design. The check used to fail the whole report there.
     const cdpPort = getCdpPort();
+    const safeMode = isInSafeMode();
     try {
       const response = await fetch(`http://127.0.0.1:${cdpPort}/json/version`, { signal: AbortSignal.timeout(2000) });
       if (response.ok) {
@@ -497,8 +500,12 @@ program
         console.log(chalk.red('✗ Remote debugging port not responding')); process.exitCode = 1;
       }
     } catch {
-      console.log(chalk.red(`✗ Remote debugging not available (port ${cdpPort} closed)`)); process.exitCode = 1;
-      console.log(chalk.gray('  → Run: node src/index.js connect'));
+      if (safeMode) {
+        console.log(chalk.gray(`○ Remote debugging port ${cdpPort} closed (Safe Mode: the plugin is connected, no port needed)`));
+      } else {
+        console.log(chalk.red(`✗ Remote debugging not available (port ${cdpPort} closed)`)); process.exitCode = 1;
+        console.log(chalk.gray('  → Run: node src/index.js connect'));
+      }
     }
 
     // 6. Daemon status
@@ -515,18 +522,27 @@ program
     // then show up in every user's `npm audit`. `npx --yes` fetches it the
     // first time a FigJam export actually needs it.
     try {
-      execSync('which figma-use 2>/dev/null || where figma-use 2>nul', { encoding: 'utf8' });
+      // One lookup per platform: `2>nul` is Windows' null device, and on macOS/Linux the
+      // fallback half of the old `which … || where … 2>nul` created a file named `nul` in cwd.
+      execSync(process.platform === 'win32' ? 'where figma-use' : 'which figma-use', { encoding: 'utf8', stdio: 'pipe' });
       console.log(chalk.green('✓ figma-use installed (used by FigJam export)'));
     } catch {
       console.log(chalk.yellow('○ figma-use not in PATH (FigJam export fetches it via npx)'));
     }
 
-    // 8. Connection test
+    // 8. Connection test — through the daemon when it runs (the only route in Safe Mode, and
+    // the route every command takes), directly over CDP only when it does not.
     console.log(chalk.gray('\n  Testing connection...'));
     let client = null;
     try {
-      client = await getFigmaClient();
-      const result = await client.eval('({ file: figma.root.name, page: figma.currentPage.name })');
+      const probe = '({ file: figma.root.name, page: figma.currentPage.name })';
+      let result;
+      if (isDaemonRunning()) {
+        result = await daemonExec('eval', { code: probe });
+      } else {
+        client = await getFigmaClient();
+        result = await client.eval(probe);
+      }
       console.log(chalk.green(`✓ Connected to "${result.file}" / "${result.page}"`));
     } catch (e) {
       console.log(chalk.red('✗ Connection failed: ' + e.message)); process.exitCode = 1;

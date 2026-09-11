@@ -502,7 +502,7 @@ the content of `~/.figma-ds-cli/.daemon-token`). Paste it once; the plugin remem
 |---------|-----------|-----------|
 | Connection | Direct CDP | Plugin bridge |
 | Setup | Patches Figma once | Start plugin each session |
-| Speed | ~10x faster | Standard |
+| Speed | one hop: daemon → CDP | three more: daemon → plugin UI iframe → plugin main thread (QuickJS) and back, each result serialised twice. Not measured here — `npm run bench:transport` prints median and p95 for the mode the daemon is in, run it once per mode |
 | Timeout | 90 s per request (`eval --timeout` raises it; the daemon and the plugin use the same number) | same |
 
 ### Command Support
@@ -515,8 +515,12 @@ that stood here listed `figma-use` as the Yolo path for eleven commands — that
 ### Tips for Safe Mode
 
 1. **Keep payloads smaller**: Break complex screens into multiple `render` calls
-2. **All commands work**: the same code runs in both modes
-3. **Timeout**: Both modes now have 60s timeout
+2. **All commands work** except the FigJam canvas commands (`figjam *` except `export-jsx` and
+   `storybook`), which open their own CDP socket and need Yolo or Browser Mode
+3. **Timeout**: 90 s per request in both modes (`--timeout` raises it)
+4. **Restarts are invisible to the plugin**: the daemon keeps its token across `daemon restart`
+   and the idle respawn; delete `~/.figma-ds-cli/.daemon-token` to rotate it, then paste the
+   new one into the plugin window
 
 ### When render-batch fails
 

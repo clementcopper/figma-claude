@@ -443,6 +443,11 @@ program
 
 // ============ STATUS ============
 
+// /health as an object, or null when the daemon does not answer.
+function daemonHealth() {
+  try { return JSON.parse(curlDaemon('/health')); } catch { return null; }
+}
+
 program
   .command('status')
   .description('Check connection to Figma (CDP) AND the local daemon')
@@ -454,8 +459,17 @@ program
       console.log(chalk.cyan('  figma-cli init\n'));
       return;
     }
-    figmaUse('status');
-    // The CDP-side "Connected to Figma" line above only tells half the story.
+    // The daemon knows the connection in every mode; the CDP port alone says "Not connected"
+    // in Safe Mode, where there is no port and the plugin is the way in.
+    const health = daemonHealth();
+    if (health && health.status === 'ok') {
+      const via = health.plugin && !health.cdp ? 'plugin' : 'CDP';
+      console.log(`Connected to Figma (${via})\n  File: ${health.file || 'unknown'}`);
+    } else if (figmaUse('status', { silent: true }) === 'Not connected') {
+      // figmaUse prints the connected case itself and used to return this one in silence.
+      console.log(chalk.yellow('  ⚠ Not connected to Figma'));
+    }
+    // The "Connected to Figma" line above only tells half the story.
     // Most CLI commands (render, set-batch, eval …) need the LOCAL daemon
     // running too. Surface its state right here so the user doesn't get a
     // misleading green check while every subsequent command fails with
@@ -587,6 +601,7 @@ async function connectBrowser(config) {
   // figma-client.js target discovery, so it connects to the browser tab.
   config.browser = true;
   config.patched = false;
+  config.mode = 'browser';
   saveConfig(config);
 
   const daemonSpinner = ora('Starting speed daemon...').start();
@@ -630,6 +645,12 @@ program
 
       // Stop any existing daemon
       stopDaemon();
+
+      // Remembered so `daemon start` / `daemon restart` bring the daemon back in Plugin Mode —
+      // an `auto` daemon works while the plugin is connected but skips the Safe Mode reconnect
+      // wait, and the panel's Restart button goes through those commands.
+      config.mode = 'safe';
+      saveConfig(config);
 
       // Start daemon in plugin mode
       const daemonSpinner = ora('Starting daemon in Safe Mode...').start();
@@ -717,6 +738,7 @@ program
           patchSpinner.succeed('Figma ready');
         }
         config.patched = true;
+        config.mode = 'yolo';
         saveConfig(config);
       } catch (err) {
         patchSpinner.fail('Setup failed'); process.exitCode = 1;

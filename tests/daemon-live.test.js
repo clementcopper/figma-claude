@@ -83,6 +83,19 @@ describe('daemon', () => {
     second.close();
   });
 
+  it('names the plugin\'s file in /health and forgets it when the plugin goes', async () => {
+    // /health knew a file only from the CDP page title, so in Safe Mode it said null and the
+    // CLI's FIGMA_FILE pin had nothing to compare. The plugin now says which file it runs in.
+    const health = async () => (await fetch(`http://127.0.0.1:${d.port}/health`, { headers: { 'X-Daemon-Token': TOKEN } })).json();
+    const ws = await plugin(d.port);
+    ws.send(JSON.stringify({ type: 'hello', mode: 'plugin', version: 'test', file: 'Design System' }));
+    await sleep(100);
+    assert.strictEqual((await health()).file, 'Design System');
+    ws.close();
+    await sleep(200);
+    assert.strictEqual((await health()).file, null, 'no plugin, no file');
+  });
+
   it('leaves no hot-reload copy of figma-client.js behind in src/', async () => {
     // One request makes the daemon copy figma-client.js next to itself; shutdown must
     // take that copy with it — it stayed forever and shipped in the npm tarball (220 KB).

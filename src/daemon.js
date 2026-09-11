@@ -141,6 +141,7 @@ const HEALTH_CACHE_MS = 30000; // Cache health for 30 seconds (reduces overhead)
 
 // Plugin Client (Safe Mode)
 let pluginWs = null;
+let pluginFile = null; // name of the file the connected plugin runs in (from its hello)
 let pluginPendingRequests = new Map();
 let pluginMsgId = 0;
 
@@ -261,39 +262,6 @@ async function evalViaPlugin(code, retryCount = 0, timeoutMs = DEFAULT_TIMEOUT_M
   });
 }
 
-// Batch eval via plugin (execute multiple codes, return all results)
-async function evalBatchViaPlugin(codes, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  if (!isPluginConnected()) {
-    throw new Error('Plugin not connected. Start the Figma CLI Bridge plugin in Figma.');
-  }
-
-  return new Promise((resolve, reject) => {
-    const id = ++pluginMsgId;
-    // The plugin runs the items one after another, each within `timeoutMs`; the daemon
-    // waits for the whole batch.
-    const budget = timeoutMs * codes.length;
-    const timeout = setTimeout(() => {
-      pluginPendingRequests.delete(id);
-      reject(new Error(`Plugin batch execution timeout (${budget / 1000}s for ${codes.length} items)`));
-    }, budget);
-
-    pluginPendingRequests.set(id, { resolve, reject, timeout, isBatch: true });
-
-    try {
-      pluginWs.send(JSON.stringify({
-        action: 'eval-batch',
-        id: id,
-        codes: codes,
-        timeoutMs: timeoutMs
-      }));
-    } catch (sendError) {
-      clearTimeout(timeout);
-      pluginPendingRequests.delete(id);
-      reject(new Error(`Plugin batch send error: ${sendError.message}`));
-    }
-  });
-}
-
 // ============ UNIFIED EVAL ============
 
 
@@ -366,7 +334,7 @@ async function handleRequest(req, res) {
       // Which open file this daemon is bound to. The CLI compares it against
       // FIGMA_FILE and rebinds when they diverge — otherwise commands silently
       // hit whichever file happened to be first when the daemon started.
-      file: (cdpClient && cdpClient.pageTitle) || null,
+      file: (cdpClient && cdpClient.pageTitle) || pluginFile || null,
       idleTimeoutMs: IDLE_TIMEOUT_MS
     }));
     return;
@@ -584,6 +552,9 @@ wss.on('connection', (ws) => {
 
       if (msg.type === 'hello') {
         console.log(`[daemon] Plugin version: ${msg.version}`);
+        // The file the plugin runs in. /health used to know a file only from the CDP page
+        // title, so in Safe Mode it said null and FIGMA_FILE pinning never compared anything.
+        pluginFile = typeof msg.file === 'string' && msg.file ? msg.file : null;
       }
 
       if (msg.type === 'result') {
@@ -597,16 +568,6 @@ wss.on('connection', (ws) => {
           } else {
             pending.resolve(msg.result);
           }
-        }
-      }
-
-      // Batch result from plugin
-      if (msg.type === 'batch-result') {
-        const pending = pluginPendingRequests.get(msg.id);
-        if (pending) {
-          clearTimeout(pending.timeout);
-          pluginPendingRequests.delete(msg.id);
-          pending.resolve(msg.results);
         }
       }
 
@@ -629,6 +590,7 @@ wss.on('connection', (ws) => {
     if (pluginWs !== ws) return;
     console.log('[daemon] Plugin disconnected');
     pluginWs = null;
+    pluginFile = null;
 
     // Reject all pending requests
     for (const [id, pending] of pluginPendingRequests) {

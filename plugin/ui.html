@@ -64,6 +64,10 @@
     // (~/.figma-ds-cli/.daemon-token, printed by `connect --safe`). The plugin
     // main thread keeps it in clientStorage and hands it over on start.
     let token = null;
+    // Name of the file this plugin instance runs in (from the main thread, with the token).
+    // Sent in `hello`, so the daemon's /health can name the file in Safe Mode too — the CLI
+    // and the panel read it there, and without it FIGMA_FILE pinning had nothing to compare.
+    let fileName = null;
     let ws = null;
     let reconnectTimer = null;
     // Reconnect delay: 300 ms after a drop, doubling to 5 s while the daemon stays away —
@@ -140,7 +144,7 @@
             parent.postMessage({ pluginMessage: { type: 'connected' } }, '*');
 
             // Send hello
-            ws.send(JSON.stringify({ type: 'hello', mode: 'plugin', version: '1.3.0' }));
+            ws.send(JSON.stringify({ type: 'hello', mode: 'plugin', file: fileName, version: '1.3.0' }));
 
             // Start keepalive (ping every 10s)
             startKeepalive();
@@ -172,13 +176,6 @@
         if (msg.action === 'eval') {
           parent.postMessage({
             pluginMessage: { type: 'eval', id: msg.id, code: msg.code }
-          }, '*');
-        }
-
-        // Batch eval support
-        if (msg.action === 'eval-batch') {
-          parent.postMessage({
-            pluginMessage: { type: 'eval-batch', id: msg.id, codes: msg.codes }
           }, '*');
         }
 
@@ -245,6 +242,7 @@
       // Token from clientStorage (or null on first run) — connect, or ask
       if (msg.type === 'token') {
         token = msg.token || null;
+        fileName = msg.file || null;
         if (token) connectParallel(); else askForToken('Paste the daemon token');
       }
 
@@ -260,16 +258,6 @@
         }
       }
 
-      // Batch result forwarding (CRITICAL for render-batch stability)
-      if (msg.type === 'batch-result') {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'batch-result',
-            id: msg.id,
-            results: msg.results
-          }));
-        }
-      }
     };
 
     // Start: ask the main thread for the stored token; it answers with
