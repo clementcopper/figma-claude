@@ -42,7 +42,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
 <!-- new entries go here -->
 
 
-
 ## Done
 
 <!-- triaged entries, each with a → line naming where it went -->
@@ -516,3 +515,39 @@ Append new entries at the end of **Open**; never rewrite one that is already the
     beside `lines` · `extract` into a new directory creates it. The silent replacement and the
     stray slice did not show up again either; the runs that showed them were killed by me while
     hanging, which is the one difference to the review's runs.
+
+- [x] `cli` · **`render` with `textStyle=` on 400 texts takes 72 s; the same JSX without it 14.5 s**
+  **Repro:** `figma-cli render "$(cat umlaut.jsx)" --collection Semantic --strict-vars --keep-wrapper` — one wrapper, 400 pill frames, each one `<Text textStyle="Label/S">` (94 KB JSX). Control: `sed` the 400 `textStyle="Label/S"` to `size={12} weight="medium"`, add `--no-auto-style`, render again.
+  **Observed:** with textStyle 71 873 ms, exit 0, `text styles: Label/S ×400`; without 14 467 ms, exit 0. Same 801 nodes. A 6-frame batch with 377 emitted nodes and 137 styled texts took 24 s including six `--verify` screenshots.
+  **Expected:** a style that is looked up once and applied 400 times; ~145 ms per styled text reads like one round trip per node.
+  **Context:** fork 2b6164a (unreleased), Pipe Mode, file Designdone, page CLI Lab, smoke test 11 Sep 2026
+  → fixed in f00d8c6: two causes — Chromium throttled the hidden window (every launch now carries the three anti-throttling switches, `src/lib/figma-launch-args.js`) and the prelude awaited twice per text (sync `textStyleId`, font once per style). Same render: >90 s hidden before, 17.6 s after; old prelude with the flags alone 67.6 s. `.claude/bugs-and-fixes.md`
+
+- [x] `cli` · **`export screenshot` of a page prints `(nullxnull)` as the size**
+  **Repro:** `figma-cli export screenshot -o smoke-page.png -s 2` with an empty selection
+  **Observed:** `✓ Screenshot: CLI Lab (nullxnull) → …/smoke-page.png`; the PNG is fine (5000 × 5980 px, 1.8 MB, 4.2 s; at `-s 3` 7500 × 8970 px, 3 MB, 8.1 s)
+  **Expected:** the page's bounding size, or no size for a page
+  **Context:** fork 2b6164a (unreleased), Pipe Mode, file Designdone, page CLI Lab, smoke test 11 Sep 2026
+  → fixed in 93c3f4d: `exportSizeLabel` (`src/lib/export-line.js`) — a page has no size, the line shows none
+
+- [x] `cli` · **A code timeout in `eval` says `Try: daemon restart`**
+  **Repro:** `figma-cli eval --timeout 2 'await new Promise(r=>setTimeout(r,5000)); return 1'`
+  **Observed:** `✗ Execution timeout (2s). Try: node src/index.js daemon restart`, exit 1 after 2.3 s. The daemon was healthy, the code ran exactly once (checked with a counter in a node name), and the next `eval` answered normally.
+  **Expected:** the timeout named as the code's, with `--timeout <s>` as the hint; the restart hint belongs to an unreachable daemon
+  **Context:** fork 2b6164a (unreleased), Pipe Mode, file Designdone, page CLI Lab, smoke test 11 Sep 2026
+  → fixed in 85dfb8a: after the timeout one `/health`; healthy → "raise it with --timeout <seconds>", unreachable → the restart hint (`timeoutMessage`, `src/lib/connection-help.js`)
+
+- [x] `cli` · **Unknown prop `pb` on `<Text>` is answered with `did you mean "w"?`**
+  **Repro:** `<Text textStyle="Body/M" pb={8}>/ Monat</Text>` inside a `render-batch`
+  **Observed:** `⚠ Unknown prop "pb" on <Text> — did you mean "w"?`, rendered, exit 0
+  **Expected:** either padding props accepted on `<Text>`, or a hint that says padding lives on the parent Frame; "w" is not a near miss of "pb"
+  **Context:** fork 2b6164a (unreleased), Pipe Mode, file Designdone, page CLI Lab, smoke test 11 Sep 2026
+  → fixed in 4c7b3e6: `suggestProp` (`src/lib/jsx-props.js`) — a suggestion must fit the word; `pb` on <Text> says "padding and layout live on the parent <Frame>"
+
+- [x] `docs` · **Pipe Mode payload numbers from a live smoke test — README/REFERENCE carry only the 100 KB bench**
+  **Repro:** 11 Sep 2026, page CLI Lab, all through the pipe daemon (`fig-status`: `Link ✓ pipe (no port)`), whole-command wall times:
+  `eval '1+1'` ×10: 300–313 ms · `render-batch` 6 frames, 29.6 KB JSX, 425 nodes, `--strict-vars --verify`: 24.0 s, exit 0 · `render` 400 umlaut tags, 94 KB: 71.9 s (see entry above) · `eval --file` 4.27 MB script rewriting 60 table cells: 820 ms, exit 0 · `node tree --json` 96 KB: 750 ms · `extract --pages "CLI Lab"`, 1 227 nodes, 149 KB: 2.95 s · `export screenshot -s 3` 3 MB PNG: 8.1 s · 8 `eval` in parallel, each with a 300 ms sleep: wall 1.29 s, 8/8 answers carried their own tag · `daemon restart`: 1.8 s, Figma PID 89280 unchanged, next `eval` fine.
+  **Observed:** 0 U+FFFD in both directions — 400 texts with ä/ö/ü/ß/€/„“/日本語/🙂 read back byte-equal via `characters`, `node tree --json` and `extract` carry 388 × "Größe" intact; the 4.27 MB body passed the `/exec` reader (its last row arrived, checksum equal). Every fill/stroke in the batch bound to Semantic, 0 unbound, 0 Primitives (`--collection Semantic`).
+  **Expected:** nothing failed; these are the numbers a "how big can a call be" line in the docs could use. `figma-cli --version` still prints the upstream number, so the entry names the commit.
+  **Context:** fork 2b6164a (unreleased), Pipe Mode, file Designdone, page CLI Lab, smoke test 11 Sep 2026
+  → docs in 1f96d94: REFERENCE.md carries the numbers at real sizes plus the 64 MB / 256 MB ceilings; README drops "~4x" for the measured 21.6 s vs 13.6 s. `figma-cli --version` still prints upstream 2.1.2 — noted, not changed
