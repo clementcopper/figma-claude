@@ -417,7 +417,9 @@ async function handleRequest(req, res) {
     try {
       successor = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
         detached: true,
-        stdio: ['ignore', 'ignore', 'ignore', pipe.toBrowser, pipe.fromBrowser],
+        // stdout/stderr inherited: the CLI points them at ~/.figma-ds-cli/daemon.log, and the
+        // successor keeps writing there after this process is gone.
+        stdio: ['ignore', 'inherit', 'inherit', pipe.toBrowser, pipe.fromBrowser],
         env: { ...process.env, DAEMON_MODE: 'pipe', FIGMA_PIPE_INHERIT: '1', FIGMA_PIPE_LAUNCH: '' },
       });
       successor.unref();

@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { execSync, spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, mkdtempSync, rmSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, mkdtempSync, rmSync, openSync, closeSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import { createInterface } from 'readline';
@@ -197,6 +197,8 @@ function buildNodeSelector(options, { filterExpr = '' } = {}) {
 const DAEMON_PORT = parseInt(process.env.DAEMON_PORT, 10) || 3456;
 const DAEMON_PID_FILE = join(homedir(), '.figma-cli-daemon.pid');
 const DAEMON_TOKEN_FILE = join(homedir(), '.figma-ds-cli', '.daemon-token');
+// Where the daemon's own output goes (truncated on each start; a handed-over successor appends).
+const DAEMON_LOG_FILE = join(homedir(), '.figma-ds-cli', 'daemon.log');
 
 // The daemon's session token: kept across restarts, minted only when the file is missing or
 // malformed. Rotation used to happen on every start and broke the Safe Mode plugin in silence
@@ -523,12 +525,17 @@ function startDaemon(forceRestart = false, mode = 'auto', extraEnv = {}) {
   const newToken = ensureDaemonToken();
 
   const daemonScript = join(__dirname, 'daemon.js');
+  // The daemon's own lines used to go nowhere (stdio: 'ignore'), so a transient "Not connected"
+  // seen from the panel could not be traced afterwards. One file, truncated at each start.
+  let logFd = 'ignore';
+  try { logFd = openSync(DAEMON_LOG_FILE, 'w'); } catch {}
   const child = spawn('node', [daemonScript], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', logFd, logFd],
     env: { ...process.env, DAEMON_PORT: String(DAEMON_PORT), DAEMON_MODE: mode, ...extraEnv }
   });
   child.unref();
+  if (logFd !== 'ignore') { try { closeSync(logFd); } catch {} }
 
   // Do NOT write the PID file here. Under a concurrent check-then-act race two
   // CLIs can each spawn a daemon; only one wins the port bind. The WINNING daemon
