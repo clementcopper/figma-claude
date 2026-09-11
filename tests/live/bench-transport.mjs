@@ -28,10 +28,19 @@ async function evalOnce(code) {
   return { ms: performance.now() - t0, bytes: JSON.stringify(body).length, result: body.result };
 }
 
+// The first two cases are document-independent, so they compare cleanly across modes even
+// when each mode has a different file loaded:
+//   - `1 + 1` is the pure round-trip: HTTP -> daemon -> (CDP over port | CDP over pipe |
+//     plugin iframe + main thread) -> back. This is THE per-call transport-overhead number.
+//   - the 100 KB byte array is the shape every image export takes (Array.from(bytes)), so it
+//     exercises Safe Mode's known cost — the payload is JSON-serialised on the plugin's main
+//     thread, again in the iframe, then once more by the daemon; Yolo/Pipe serialise once.
+// The last two depend on the open document, so read them per row against the reported file.
 const cases = {
-  'trivial (1+1)': '1 + 1',
-  'page walk (findAll count)': 'figma.currentPage.findAll(() => true).length',
-  'PNG export 512px (first top-level node)': `(async () => {
+  'trivial (1+1) — pure round-trip': '1 + 1',
+  '100 KB byte array — export-shaped payload': 'Array.from(new Uint8Array(100 * 1024))',
+  'page walk (findAll count) [doc-dependent]': 'figma.currentPage.findAll(() => true).length',
+  'PNG export 512px, first node [doc-dependent]': `(async () => {
     const n = figma.currentPage.children[0];
     if (!n) return null;
     const bytes = await n.exportAsync({ format: 'PNG', constraint: { type: 'WIDTH', value: 512 } });

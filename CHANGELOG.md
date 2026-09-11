@@ -74,9 +74,13 @@
 
 ### New (Safe Mode)
 
-- **`npm run bench:transport`** times three evals (trivial, page walk, 512 px PNG export)
-  through the daemon in whatever mode it is in and prints median and p95. REFERENCE.md used to
-  claim Yolo is "~10x faster" than Safe Mode with no measurement behind it.
+- **`npm run bench:transport`** times evals through the daemon in whatever mode it is in and
+  prints median and p95. Measured across all three modes (40 runs, Figma 126.7): the per-call
+  round-trip is the same everywhere (~2-3 ms, the daemon's HTTP hop dominates); Safe Mode's cost
+  is payload-bound (~4x on a 100 KB byte array, the shape of an image export), not the blanket
+  "~10x faster" REFERENCE.md used to claim; Pipe and Yolo are the same speed. Two
+  document-independent cases (round-trip, a fixed byte array) make the modes comparable even
+  when each has a different file open. Numbers in REFERENCE.md.
 
 - **FigmaClaude is 1.0.0, and says so.** The app carried `0.1.0` from its first day, through the
   Figma menu, the status line, the feedback loop, the panel re-sync and the window zoom — and it

@@ -502,8 +502,28 @@ the content of `~/.figma-ds-cli/.daemon-token`). Paste it once; the plugin remem
 |---------|-----------|-----------|
 | Connection | Direct CDP | Plugin bridge |
 | Setup | Patches Figma once | Start plugin each session |
-| Speed | one hop: daemon → CDP | three more: daemon → plugin UI iframe → plugin main thread (QuickJS) and back, each result serialised twice. Not measured here — `npm run bench:transport` prints median and p95 for the mode the daemon is in, run it once per mode |
+| Speed | one hop: daemon → CDP | three more: daemon → plugin UI iframe → plugin main thread (QuickJS) and back, each result serialised twice |
 | Timeout | 90 s per request (`eval --timeout` raises it; the daemon and the plugin use the same number) | same |
+
+**Measured** (`npm run bench:transport`, 40 runs, macOS, Figma 126.7, median):
+
+| | Yolo (CDP/port) | Pipe (CDP/pipe) | Safe (plugin) |
+|---|---|---|---|
+| round-trip (`1 + 1`) | 2.8 ms | 2.1 ms | 2.6 ms |
+| 100 KB byte array (export-shaped) | 32 ms | 35 ms | 134 ms |
+
+Read it as: **the per-call round-trip is the same in all three** — the daemon's HTTP hop
+dominates and the plugin's extra postMessage hops cost nothing measurable for a small eval.
+Safe Mode's cost is **payload-bound**: a byte array (the shape every image export takes) is
+JSON-serialised on the plugin's main thread, again in the UI iframe, then once more by the
+daemon, so it runs ~4x slower — and that grows with the payload (exports, big node trees), not
+with the number of calls. Pipe and Yolo are the same speed, so Pipe wins outright: no patch, no
+port, no permission, signature intact. The old "~10x faster" claim was wrong both ways — there
+is no small-eval difference, and the payload gap is ~4x, not 10x.
+
+> Benchmarking a mode needs the daemon actually in that mode. An `auto` daemon prefers a
+> connected plugin, so with the Safe Mode plugin still open a `connect --patch` measured the
+> plugin path, not CDP. Force it with `DAEMON_MODE=cdp` (or close the plugin) to measure Yolo.
 
 ### Command Support
 
