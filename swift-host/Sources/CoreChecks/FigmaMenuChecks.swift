@@ -78,8 +78,8 @@ enum FigmaMenuTests {
         Checks.expect(titles(connected, "Appearance"),
                       ["System — follow macOS", "Light", "Dark"])
         Checks.expect(titles(connected, "Mode"),
-                      ["Pipe — no patch, no port", "Yolo — patched app, CDP",
-                       "Safe — plugin, no patching", "Browser — Chromium profile"])
+                      ["Pipe — no patch, no port", "Safe — plugin, no patching",
+                       "Yolo — patched app, CDP", "Browser — Chromium profile"])
     }
 
     static func enabling() {

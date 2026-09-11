@@ -27,7 +27,9 @@ public let appearanceChoices: [(setting: ThemeSetting, label: String)] = [
 
 // MARK: - Which connection mode the CLI is driven in
 
-public enum FigmaMode: String, CaseIterable { case pipe, yolo, safe, browser }
+// The order here is the order the mode menu shows (CaseIterable): Pipe first (the default),
+// then Safe (the locked-down fallback), then Yolo (legacy/--patch) and Browser.
+public enum FigmaMode: String, CaseIterable { case pipe, safe, yolo, browser }
 
 /// What each mode is, in the words the menu shows.
 public func modeLabel(_ mode: FigmaMode) -> String {

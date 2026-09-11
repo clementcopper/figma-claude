@@ -216,15 +216,34 @@ anywhere Node does, including CI and Linux, and the app is macOS 13 or newer.
 
 ## The CLI underneath
 
-`figma-cli` is a command you can use on its own, and Claude uses it constantly:
+`figma-cli` is the engine. The app is a window around it; everything that reaches Figma goes
+through this command, and you can run it yourself.
 
-```bash
-figma-cli connect                 # find Figma, open the channel
-figma-cli render '<Frame …>'      # JSX in, Figma nodes out
-figma-cli tokens import …         # variables and collections
-figma-cli extract > DESIGN.md     # a whole file as Markdown
-figma-cli a11y                    # contrast audit
-```
+It needs **no API key and makes no cloud round-trip.** It drives Figma by executing JavaScript
+inside Figma's own renderer against the Plugin API — the same `figma.*` a Figma plugin uses — so
+it reads and writes the live document, not a REST snapshot. A small local **daemon** holds the
+connection open so each command doesn't pay the reconnect cost; the first command starts it, and
+it shuts down when idle.
+
+What it can do, by family:
+
+- **Connect & daemon** — `connect`, `daemon` (start/stop/restart), `diagnose`, `files`.
+- **Render from JSX** — `render` / `render-batch` (JSX in, real Figma nodes out), `undo` the last
+  render, `export-jsx` / `export-storybook` back out to code.
+- **Variables & tokens** — `var` / `collections`, `tokens` (presets), `bind` / `bind-batch`,
+  `use` / `theme` to re-point bindings at another collection (theme switch).
+- **A whole file out and back** — `extract` writes a `DESIGN.md` (tokens, structure, variant
+  matrices) that round-trips with `import`; `spec` / `rules` / `check` enforce a component's
+  contract; `inspect` / `get` / `find` / `node` read the tree.
+- **Layout & edit** — `set` / `set-batch`, `sizing` / `padding` / `gap` / `align` / `pin`,
+  `unwrap` / `unstack` / `arrange`, `duplicate` / `delete`.
+- **Components & variants** — `sizes`, `variants`, `combos`, `shadcn`, `instantiate`,
+  `node to-component`.
+- **Check the work** — `lint`, `analyze`, `a11y` (contrast, vision, touch targets), `verify`
+  (screenshot for an AI to look at).
+- **From the web** — `recreate-url`, `screenshot-url`, `analyze-url`, `gradient`, `remove-bg`.
+- **FigJam** — `figjam` (stickies, shapes, connectors). **Escape hatch** — `eval` / `run` for raw
+  Plugin API. **Docs** — `figma-cli docs <topic>`.
 
 - **[REFERENCE.md](REFERENCE.md)** — every command, every flag.
 - **[docs/FIGMA-USAGE.md](docs/FIGMA-USAGE.md)** — the usage guide: JSX rules, tokens, slots,
@@ -233,14 +252,35 @@ figma-cli a11y                    # contrast audit
 
 ## How it reaches Figma
 
-Three ways, all doing the same things, all local:
+Four modes, all doing the same things, all local. **Pipe** is the default on macOS and Linux;
+each has its own trade-off.
 
-| | |
-|---|---|
-| **Pipe** (default on macOS/Linux) | launches Figma with a debugging pipe and drives it over that. No patch, no debug port, no *App Management* permission, and Figma keeps its signature. Open your design file if the window starts empty |
-| **Yolo** (`--patch`) | patches one string in Figma Desktop's `app.asar` so the CLI can talk to it over a debug port. The old default; needs the macOS *App Management* permission and re-signs Figma ad hoc |
-| **Browser** (`--browser`) | runs Figma in a Chromium browser under its own profile. The desktop app is never modified |
-| **Safe** (`--safe`) | a small Figma plugin you keep open. Nothing is patched at all |
+**Pipe** — the daemon launches Figma with `--remote-debugging-pipe` and drives it over that pipe.
+- \+ No `app.asar` patch, no debug port, no macOS *App Management* permission, and Figma keeps its
+  Developer ID signature. As fast as Yolo (measured: same per-call round-trip).
+- − The daemon has to launch Figma itself — it can't adopt an already-running Figma, so switching
+  to Pipe restarts it. The `figjam` canvas commands need a port and don't work here. Windows is
+  untested (falls back to Yolo).
+
+**Safe** (`--safe`) — a small Figma plugin you run from *Plugins → Development*; it talks to the
+daemon over a local WebSocket.
+- \+ No debug flag of any kind, pure Plugin API — the only mode strict, MDM-managed environments
+  allow. Nothing is patched, no port or pipe is opened.
+- − You start the plugin by hand each session, and it's ~4× slower on large payloads (image
+  exports), since results cross the plugin's iframe and are JSON-serialised twice.
+
+**Yolo** (`--patch`) — patches one string in Figma's `app.asar` so it exposes a debug port, then
+CDP over `127.0.0.1:9222`. The old default, now legacy.
+- \+ Can adopt an already-running Figma, serves the `figjam` canvas commands (they need the port),
+  and is the Windows path.
+- − Modifies Figma's signed binary and re-signs it ad hoc (Developer ID and notarization are lost
+  until a Figma update or reinstall), opens an unauthenticated local debug port, and needs the
+  macOS *App Management* permission.
+
+**Browser** (`--browser`) — runs Figma in a Chromium browser under a dedicated profile.
+- \+ The desktop app is never touched — the fit when you can't modify it at all, or you work in
+  Figma-in-the-browser.
+- − A separate browser profile with its own Figma login, and desktop-only behaviour doesn't apply.
 
 What each one touches, what the local daemon does and where credentials live:
 **[SECURITY.md](SECURITY.md)** — that is also the page for whoever approves tools at your company.
