@@ -597,7 +597,7 @@ const node = ${nodeId ? `await figma.getNodeByIdAsync(${JSON.stringify(nodeId)})
 if (!node) return { error: ${nodeId ? "'Node not found: ' + " + JSON.stringify(nodeId) : "'Nothing selected — select an image or frame first'"} };
 if (!('exportAsync' in node)) return { error: 'Node cannot be exported: ' + node.type };
 const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
-return { name: node.name, bytes: Array.from(bytes) };
+return { name: node.name, base64: figma.base64Encode(bytes) };
 })()`;
 }
 
@@ -637,8 +637,8 @@ program
 
       spinner.text = 'Removing background via remove.bg...';
 
-      const imageBuffer = Buffer.from(exported.bytes);
-      const base64Image = imageBuffer.toString('base64');
+      // remove.bg wants base64 anyway; the bytes arrive in that form and stay in it.
+      const base64Image = exported.base64;
 
       const response = await fetch('https://api.remove.bg/v1.0/removebg', {
         method: 'POST',

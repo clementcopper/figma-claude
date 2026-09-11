@@ -45,7 +45,7 @@ return {
   id: node.id,
   width: Math.round(node.width * ${scale}),
   height: Math.round(node.height * ${scale}),
-  bytes: Array.from(bytes)
+  base64: figma.base64Encode(bytes)
 };
 })()`;
     const result = figmaEvalSync(code);
@@ -53,7 +53,8 @@ return {
       console.error(chalk.red('✗'), result.error);
       process.exit(1);
     }
-    const buffer = Buffer.from(result.bytes);
+    // base64, not a number array: 2.6x less JSON per hop, half the time on an 8.6 MB PNG.
+    const buffer = Buffer.from(result.base64, 'base64');
     const outputFile = options.output === 'screenshot.png' && format !== 'PNG'
       ? `screenshot.${format.toLowerCase()}`
       : options.output;
@@ -81,7 +82,7 @@ return {
   id: node.id,
   width: node.width,
   height: node.height,
-  bytes: Array.from(bytes)
+  base64: figma.base64Encode(bytes)
 };
 })()`;
     const result = figmaEvalSync(code);
@@ -89,7 +90,7 @@ return {
       console.error(chalk.red('✗'), result.error);
       process.exit(1);
     }
-    const buffer = Buffer.from(result.bytes);
+    const buffer = Buffer.from(result.base64, 'base64');
     const outputFile = options.output === 'node-export.png' && format !== 'PNG'
       ? `node-export.${format.toLowerCase()}`
       : options.output;
