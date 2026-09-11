@@ -314,7 +314,6 @@ function showQuickStart() {
   console.log(chalk.white('    "Show me what\'s on the canvas"'));
   console.log(chalk.white('    "Export this frame as PNG"'));
   console.log();
-  console.log(chalk.gray('  Learn more: ') + chalk.cyan('https://intodesignsystems.com\n'));
 }
 
 // ============ WELCOME BANNER ============
@@ -329,7 +328,6 @@ function showBanner() {
   ╚═╝     ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝      ╚═════╝ ╚══════╝       ╚═════╝╚══════╝╚═╝
 `));
   console.log(chalk.white(`  Design System CLI for Figma ${chalk.gray('v' + pkg.version)}`));
-  console.log(chalk.gray(`  by Sil Bormüller • intodesignsystems.com\n`));
 }
 
 // ============ INIT (Interactive Onboarding) ============
@@ -428,7 +426,6 @@ program
     console.log(chalk.white('    "Show me what\'s on the canvas"'));
     console.log(chalk.white('    "Export this frame as PNG"'));
     console.log();
-    console.log(chalk.gray('  Learn more: ') + chalk.cyan('https://intodesignsystems.com\n'));
   });
 
 // ============ SETUP (alias for init) ============
@@ -714,7 +711,6 @@ program
   .action(async (options) => {
     // Fun welcome message
     console.log(chalk.hex('#FF6B35')('\n  ✨ Hey designer! ') + chalk.white("Don't be afraid of the terminal!"));
-    console.log(chalk.hex('#4ECDC4')('  🎨 Happy vibe coding! ') + chalk.gray('— Sil · ') + chalk.hex('#FF6B35')('intodesignsystems.com\n'));
 
     const config = loadConfig();
 

@@ -3,8 +3,8 @@
   "version": "2.1.2",
   "description": "CLI for managing Figma design systems. Create variables, components, and more. No API key required.",
   "author": {
-    "name": "Sil Bormüller",
-    "url": "https://www.silbormueller.com/"
+    "name": "designdone",
+    "url": "https://designdone.de"
   },
   "license": "MIT",
   "type": "module",
@@ -32,7 +32,7 @@
     "type": "git",
     "url": "git+https://github.com/silships/figma-cli.git"
   },
-  "homepage": "https://intodesignsystems.com",
+  "homepage": "https://designdone.de",
   "bugs": {
     "url": "https://github.com/silships/figma-cli/issues"
   },
