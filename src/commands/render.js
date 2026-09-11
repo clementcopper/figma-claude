@@ -20,8 +20,9 @@ import {
   getFigmaClient,
   isDaemonRunning,
   unescapeShell,
-  isInSafeMode
+  curlDaemon
 } from '../lib/cli-core.js';
+import { debugPortRow, figmaVersionRow } from '../lib/diagnose-rows.js';
 
 // ============ RENDER ============
 
@@ -464,15 +465,15 @@ program
     // 2. Platform
     console.log(chalk.gray(`  Platform: ${platformName}`));
 
+    // The daemon's transport decides what a closed port and a 126+ version mean below
+    // (src/lib/diagnose-rows.js): pipe and safe have no port by design.
+    let daemonMode = null;
+    try { daemonMode = JSON.parse(curlDaemon('/health')).mode || null; } catch {}
+
     // 3. Figma version
     try {
-      const figmaVersion = getFigmaVersion();
-      const major = parseInt(figmaVersion.split('.')[0]);
-      if (major >= 126) {
-        console.log(chalk.yellow(`⚠ Figma ${figmaVersion} (126+ blocks remote debugging by default)`));
-      } else {
-        console.log(chalk.green(`✓ Figma ${figmaVersion}`));
-      }
+      const v = figmaVersionRow(getFigmaVersion(), daemonMode);
+      console.log(v.level === 'warn' ? chalk.yellow(`⚠ ${v.text}`) : chalk.green(`✓ ${v.text}`));
     } catch {
       console.log(chalk.red('✗ Figma not found')); process.exitCode = 1;
     }
@@ -488,24 +489,21 @@ program
       console.log(chalk.gray('  Could not check if Figma is running'));
     }
 
-    // 5. Remote debugging port — not a fault in Safe Mode, where the plugin is the way in
-    // and the port is closed by design. The check used to fail the whole report there.
+    // 5. Remote debugging port — a fault only where the port is the way in (Yolo). Pipe and
+    // Safe Mode close it by design; the check used to fail the whole report there and told a
+    // panel session to run `connect`.
     const cdpPort = getCdpPort();
-    const safeMode = isInSafeMode();
+    let portOpen = false;
     try {
       const response = await fetch(`http://127.0.0.1:${cdpPort}/json/version`, { signal: AbortSignal.timeout(2000) });
-      if (response.ok) {
-        console.log(chalk.green(`✓ Remote debugging enabled (port ${cdpPort})`));
-      } else {
-        console.log(chalk.red('✗ Remote debugging port not responding')); process.exitCode = 1;
-      }
-    } catch {
-      if (safeMode) {
-        console.log(chalk.gray(`○ Remote debugging port ${cdpPort} closed (Safe Mode: the plugin is connected, no port needed)`));
-      } else {
-        console.log(chalk.red(`✗ Remote debugging not available (port ${cdpPort} closed)`)); process.exitCode = 1;
-        console.log(chalk.gray('  → Run: node src/index.js connect'));
-      }
+      portOpen = response.ok;
+    } catch {}
+    const portRow = debugPortRow(daemonMode, portOpen, cdpPort);
+    if (portRow.level === 'ok') console.log(chalk.green(`✓ ${portRow.text}`));
+    else if (portRow.level === 'info') console.log(chalk.gray(`○ ${portRow.text}`));
+    else {
+      console.log(chalk.red(`✗ ${portRow.text}`)); process.exitCode = 1;
+      if (portRow.hint) console.log(chalk.gray(`  → ${portRow.hint}`));
     }
 
     // 6. Daemon status
