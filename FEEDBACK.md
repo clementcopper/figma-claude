@@ -41,6 +41,13 @@ Append new entries at the end of **Open**; never rewrite one that is already the
 ## Open
 <!-- new entries go here -->
 
+- [ ] `cli` · **One `render` right after a 21 s render answered `✗ Not connected to Figma`; 5 s later everything worked without any action**
+  **Repro:** the two renders above back to back in one shell loop; the second started ~1 s after the first returned.
+  **Observed:** second call exit 1 after 606 ms: `✗ Not connected to Figma` / `Connect from the panel …`. `status` in the same minute: `⚠ Not connected to Figma`, `✓ Daemon running (port 3456)`; Figma PID unchanged (4424), daemon PID 4422 unchanged. After `sleep 5`: `eval '1+1'` → 2, `diagnose` → `✓ Connected to "Designdone" / "CLI Lab"`, the rerun of the second render went through. Another session (triage-smoke-test-feedback) was working against the same daemon at the time, so a concurrent reconnect is possible.
+  **Expected:** either the daemon holds the pipe session across calls, or the CLI retries once before printing the panel hint.
+  **Context:** fork 1f96d94, Pipe Mode, file Designdone, page CLI Lab, panel session fc-smoke-test, 11 Sep 2026
+  → not reproduced (2026-09-11, triage): the daemon logged to nowhere at the time, so that minute cannot be traced. Since 4d092d7 the daemon writes `~/.figma-ds-cli/daemon.log`; on the next sighting, attach the lines around it. Candidate, unproven: a hot-reload of figma-client.js drops the cached CDP client for one request.
+
 
 ## Done
 
@@ -551,3 +558,17 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Expected:** nothing failed; these are the numbers a "how big can a call be" line in the docs could use. `figma-cli --version` still prints the upstream number, so the entry names the commit.
   **Context:** fork 2b6164a (unreleased), Pipe Mode, file Designdone, page CLI Lab, smoke test 11 Sep 2026
   → docs in 1f96d94: REFERENCE.md carries the numbers at real sizes plus the 64 MB / 256 MB ceilings; README drops "~4x" for the measured 21.6 s vs 13.6 s. `figma-cli --version` still prints upstream 2.1.2 — noted, not changed
+
+- [x] `docs` · **Rerun of umlaut.jsx after f00d8c6 with Figma visible: 21.4 s styled, 15.2 s control**
+  **Repro:** `figma-cli render "$(cat umlaut.jsx)" --collection Semantic --strict-vars --keep-wrapper` (400 pills, `textStyle="Label/S"`, 94 KB) and the same file with `size={12} weight="medium"` plus `--no-auto-style`. `eval 'return document.visibilityState'` said `visible` before and after each run; Figma PID 4424 with the three `--disable-…` flags.
+  **Observed:** styled 21 383 ms, exit 0, `1078:2407`; control 15 234 ms, exit 0, `1078:3208`; readback 400/400 byte-equal, 0 U+FFFD. Before the fix, Figma hidden: 71 873 ms / 14 467 ms.
+  **Expected:** the data point the triage asked for. The style path now costs ~6 s over 400 texts (~15 ms each) instead of ~57 s.
+  **Context:** fork 1f96d94, Pipe Mode, file Designdone, page CLI Lab, panel session fc-smoke-test, 11 Sep 2026
+  → docs in 5402c44: the visible-window data point is in the REFERENCE.md payload table (17.6 s hidden, 21.4 s visible, control 15.2 s)
+
+- [x] `cli` · **`diagnose` in Pipe Mode says `✗ Remote debugging not available (port 9222 closed)` and `→ Run: connect`**
+  **Repro:** `figma-cli diagnose` with the daemon in Pipe Mode
+  **Observed:** the port row is red and tells the panel session to run `connect`, which the rule file forbids; the same output then says `✓ Daemon running on port 3456` and `✓ Connected to "Designdone" / "CLI Lab"`. Also `⚠ Figma 126.7.10 (126+ blocks remote debugging by default)`, which is the Yolo-mode caveat.
+  **Expected:** the CHANGELOG says the port row is informational in Safe Mode; Pipe Mode has no port by design either, so the row should read like `fig-status`'s `pipe (no port)`.
+  **Context:** fork 1f96d94, Pipe Mode, file Designdone, page CLI Lab, panel session fc-smoke-test, 11 Sep 2026
+  → fixed in 7c0237a: `debugPortRow`/`figmaVersionRow` (`src/lib/diagnose-rows.js`) read the daemon mode; Pipe Mode prints `○ … no port needed`, the 126+ warning only where the port is the way in
