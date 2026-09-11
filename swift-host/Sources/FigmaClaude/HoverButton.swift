@@ -240,7 +240,12 @@ final class IconLabelButton: HoverButton {
 
     /// New lights, same views — a fresh image view per poll would relayout the whole row.
     func setIcons(_ images: [NSImage?]) {
-        for (view, image) in zip(iconViews, images) { view.image = image }
+        // Clear the trailing views, not just `zip` the ones that arrived: a mode with fewer dots
+        // (Pipe/Safe give two) must not leave a stale third light standing. An empty NSImageView
+        // has no width constraint here, so it collapses to nothing.
+        for (i, view) in iconViews.enumerated() {
+            view.image = i < images.count ? images[i] : nil
+        }
     }
 
     var text: String {

@@ -19,6 +19,9 @@ public struct FigmaSnapshot: Equatable {
     /// menu opened, which is why the toolbar could not show what the menu's three rows showed.
     public var figmaRunning: Bool = false
     public var cdpOk: Bool = false
+    /// The mode the user has chosen (panel.json), not what the daemon reports. Drives how many
+    /// status dots to show even while disconnected — Pipe shows no CDP dot regardless of health.
+    public var figmaMode: String = ""
 
     public static let empty = FigmaSnapshot(
         status: toStatusView(nil), health: nil, file: "", page: "", selection: [])
@@ -130,7 +133,8 @@ public func pollFigma(healthTimeout: TimeInterval = 1.5,
 
     return FigmaSnapshot(status: status, health: health, file: file, page: page,
                          selection: selection,
-                         figmaRunning: probes.figmaRunning(), cdpOk: probes.cdpReachable(cdpPort))
+                         figmaRunning: probes.figmaRunning(), cdpOk: probes.cdpReachable(cdpPort),
+                         figmaMode: PanelConfig.load().figmaMode)
 }
 
 /// Polls on a timer and reports what changed, like `FigmaContextWatcher` does.

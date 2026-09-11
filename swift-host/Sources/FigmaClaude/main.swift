@@ -566,12 +566,36 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         // From the poll, like the menu: the two answers are at most 2.5 s old, and asking again
         // here would spawn `pgrep` and wait on a socket on the main thread.
         let snapshot = watcher.snapshot
-        if mode == .yolo, !snapshot.cdpOk, snapshot.figmaRunning {
+
+        // Which modes need a running Figma quit and relaunched, and why:
+        //   yolo    — Figma is up without --remote-debugging-port; only a relaunch opens it.
+        //   pipe    — the daemon can only drive a Figma it launched itself with the debugging
+        //             pipe; a normally-started Figma cannot be adopted. Skip when the daemon
+        //             already holds the pipe (health.pipe), that is nothing to restart.
+        //   browser — drives Figma in a separate browser; the desktop app is irrelevant.
+        //   safe    — the plugin attaches to the running Figma; no relaunch.
+        let needsRelaunch: Bool
+        let alertText: (String, String)
+        switch mode {
+        case .yolo:
+            needsRelaunch = snapshot.figmaRunning && !snapshot.cdpOk
+            alertText = ("Restart Figma to open the debug port?",
+                         "Figma is running without --remote-debugging-port, which is what the CLI talks to. "
+                         + "Save your work first: Figma will be quit and started again.")
+        case .pipe:
+            needsRelaunch = snapshot.figmaRunning && snapshot.health?.pipe != true
+            alertText = ("Restart Figma for Pipe Mode?",
+                         "Pipe Mode drives a Figma the daemon launches itself over a debug pipe — no patch, no port. "
+                         + "Save your work first: Figma will be quit and started again.")
+        case .browser, .safe:
+            needsRelaunch = false
+            alertText = ("", "")
+        }
+
+        if needsRelaunch {
             let ask = NSAlert()
-            ask.messageText = "Restart Figma to open the debug port?"
-            ask.informativeText =
-                "Figma is running without --remote-debugging-port, which is what the CLI talks to. "
-                + "Save your work first: Figma will be quit and started again."
+            ask.messageText = alertText.0
+            ask.informativeText = alertText.1
             ask.addButton(withTitle: "Restart Figma")
             ask.addButton(withTitle: "Cancel")
             guard ask.runModal() == .alertFirstButtonReturn else { return }
@@ -842,8 +866,9 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         // From the poll, not asked again here: the toolbar already draws these three, and two
         // probes at the moment the menu opens are two chances for it to differ from the button.
         let cdpOk = snapshot.cdpOk
+        let figmaMode = FigmaMode(rawValue: config.figmaMode) ?? .pipe
         for row in statusRows(figmaRunning: snapshot.figmaRunning, cdpOk: cdpOk,
-                              cdpPort: cdpPort, health: snapshot.health) {
+                              cdpPort: cdpPort, health: snapshot.health, mode: figmaMode) {
             // A view of its own rather than a title: these three report, they do not act, so they
             // must neither grey out nor light up under the pointer. See `MenuStatusRowView`.
             let item = menu.addItem(withTitle: "", action: nil, keyEquivalent: "")
@@ -868,7 +893,8 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             cwd: cwd,
             agentsReady: hasAgentRules(cwd: cwd),
             cliFound: cli.isUsable,
-            busy: figmaBusy)
+            busy: figmaBusy,
+            pipeHeld: snapshot.health?.pipe == true)
 
         for section in figmaMenuSections(input) {
             menu.addItem(.separator())
@@ -1210,7 +1236,7 @@ if CommandLine.arguments.contains("--print-menu") {
     let snapshot = pollFigma()
     let cdpOk = snapshot.cdpOk
     for row in statusRows(figmaRunning: snapshot.figmaRunning, cdpOk: cdpOk, cdpPort: cdpPort,
-                          health: snapshot.health) {
+                          health: snapshot.health, mode: FigmaMode(rawValue: config.figmaMode) ?? .pipe) {
         print("\(row.state.rawValue.uppercased())  \(row.label): \(row.value)")
     }
     let cwd = config.resolvedCwd() ?? ""
@@ -1226,7 +1252,8 @@ if CommandLine.arguments.contains("--print-menu") {
         undoNodes: parseLastRender(try? String(contentsOfFile: lastRenderFile, encoding: .utf8)),
         cwd: cwd,
         agentsReady: hasAgentRules(cwd: cwd),
-        cliFound: cli.isUsable))
+        cliFound: cli.isUsable,
+        pipeHeld: snapshot.health?.pipe == true))
     for section in sections {
         print("\n\(section.heading.uppercased())")
         for item in section.items {

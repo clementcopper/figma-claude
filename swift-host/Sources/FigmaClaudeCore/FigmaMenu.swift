@@ -90,12 +90,16 @@ public struct FigmaMenuInput {
     public var cliFound: Bool
     /// One action at a time: each of them restarts the daemon or Figma underneath.
     public var busy: Bool
+    /// Pipe Mode: the daemon holds Figma over the pipe (from `/health.pipe`). Counts as
+    /// connected for whether to offer "Connect", even while the document is still loading and
+    /// there is no usable eval connection yet.
+    public var pipeHeld: Bool
 
     public init(figma: FigmaStatusView.State, figmaRunning: Bool = false, cdpOk: Bool = false,
                 files: [OpenFile] = [], configuredFile: String = "",
-                snapshotFile: String = "", mode: FigmaMode = .yolo, theme: ThemeSetting = .system,
+                snapshotFile: String = "", mode: FigmaMode = .pipe, theme: ThemeSetting = .system,
                 undoNodes: [CreatedNode] = [], cwd: String = "", agentsReady: Bool = false,
-                cliFound: Bool = true, busy: Bool = false) {
+                cliFound: Bool = true, busy: Bool = false, pipeHeld: Bool = false) {
         self.figma = figma
         self.figmaRunning = figmaRunning
         self.cdpOk = cdpOk
@@ -109,6 +113,18 @@ public struct FigmaMenuInput {
         self.agentsReady = agentsReady
         self.cliFound = cliFound
         self.busy = busy
+        self.pipeHeld = pipeHeld
+    }
+}
+
+/// What the "Connect" item does, in the words of the chosen mode — the old single hint said
+/// "Patch", which is wrong for every mode but Yolo.
+public func connectHint(_ mode: FigmaMode) -> String {
+    switch mode {
+    case .pipe: return "Start Figma over a debug pipe and bring the daemon up — no patch, no port"
+    case .yolo: return "Patch Figma, start it with the debug port, and bring the daemon up"
+    case .browser: return "Launch a Chromium browser with the debug port and bring the daemon up"
+    case .safe: return "Start the daemon, then run the FigCli plugin in Figma"
     }
 }
 
@@ -133,8 +149,8 @@ public func figmaMenuSections(_ input: FigmaMenuInput) -> [MenuSection] {
                  enabled: usable && connectNeeded(mode: input.mode,
                                                   figmaRunning: input.figmaRunning,
                                                   cdpOk: input.cdpOk,
-                                                  daemonSaysConnected: input.figma == .ok),
-                 hint: "Patch, start Figma if needed, and bring the daemon up"),
+                                                  daemonSaysConnected: input.figma == .ok || input.pipeHeld),
+                 hint: connectHint(input.mode)),
         MenuItem(title: "Restart daemon", action: .daemonRestart, enabled: usable),
         MenuItem(title: "Stop daemon", action: .daemonStop, enabled: usable)
     ]))

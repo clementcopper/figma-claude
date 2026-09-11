@@ -157,7 +157,8 @@ final class ToolbarView: NSView {
     func render(_ snapshot: FigmaSnapshot) {
         // Built from the menu's own rows, in the menu's order: Figma, CDP, Daemon.
         let rows = statusRows(figmaRunning: snapshot.figmaRunning, cdpOk: snapshot.cdpOk,
-                              cdpPort: cdpPort, health: snapshot.health)
+                              cdpPort: cdpPort, health: snapshot.health,
+                              mode: FigmaMode(rawValue: snapshot.figmaMode) ?? .pipe)
         figmaButton.setIcons(rows.map { statusIcon($0.state) })
 
         lastLabel = figmaButtonLabel(daemon: snapshot.status.daemon,

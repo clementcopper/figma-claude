@@ -11,14 +11,19 @@ public struct Health: Decodable, Equatable {
     public var mode: String?
     public var plugin: Bool?
     public var cdp: Bool?
+    /// Pipe Mode: the daemon holds Figma's debugging pipe. True even while the document is still
+    /// loading and `cdp` is not yet true — the only signal that Figma is already ours. Without
+    /// decoding it the host could not tell "pipe held, connecting" from a broken connection.
+    public var pipe: Bool?
     public var file: String?
 
     public init(status: String? = nil, mode: String? = nil,
-                plugin: Bool? = nil, cdp: Bool? = nil, file: String? = nil) {
+                plugin: Bool? = nil, cdp: Bool? = nil, pipe: Bool? = nil, file: String? = nil) {
         self.status = status
         self.mode = mode
         self.plugin = plugin
         self.cdp = cdp
+        self.pipe = pipe
         self.file = file
     }
 }
@@ -118,29 +123,54 @@ public struct StatusRow: Equatable {
     }
 }
 
-/// The three rows of the status block — the same readout `bin/fig-status` prints, so the panel
-/// and the shell script cannot drift apart in what they call a working connection.
-public func statusRows(figmaRunning: Bool, cdpOk: Bool, cdpPort: Int, health: Health?) -> [StatusRow] {
+/// The status block — one dot per thing the mode can actually fail at, so a mode shows only the
+/// dots it needs. Port modes (Yolo, Browser) keep a dedicated CDP dot because the debug port is
+/// separately observable and Figma can run with it closed; Pipe and Safe have no port, so they
+/// drop that dot and let the Daemon row carry the connection. The same readout `bin/fig-status`
+/// prints, so the panel and the shell script cannot disagree on what a working connection is.
+public func statusRows(figmaRunning: Bool, cdpOk: Bool, cdpPort: Int,
+                       health: Health?, mode: FigmaMode) -> [StatusRow] {
     let daemonUp = health != nil
-    let connected = health.map { $0.cdp == true || $0.plugin == true } ?? false
-    let viaPlugin = health?.plugin == true
-    // Pipe Mode reaches Figma over the debugging pipe, so a closed port is not a fault there.
-    let viaPipe = health?.mode == "pipe"
+    let pluginConnected = health?.plugin == true
+    let pipeHeld = health?.pipe == true
+    let cdpUp = cdpOk || health?.cdp == true
+    // A connection you can actually run an eval on (pipe-held-but-loading is not one yet).
+    let connected = cdpUp || pluginConnected
 
-    return [
+    var rows = [
         StatusRow(label: "Figma",
                   state: figmaRunning ? .ok : .warn,
                   value: figmaRunning ? "running" : "not running"),
-        // Safe Mode reaches Figma through the plugin, so a dead port is not a fault there.
-        StatusRow(label: "CDP",
-                  state: cdpOk ? .ok : ((viaPlugin || viaPipe) ? .warn : .off),
-                  value: cdpOk ? "port \(cdpPort)" : (viaPlugin ? "unused (plugin)" : (viaPipe ? "unused (pipe)" : "not reachable"))),
-        StatusRow(label: "Daemon",
-                  state: connected ? .ok : (daemonUp ? .warn : .off),
-                  value: !daemonUp ? "not running"
-                       : (connected ? (health?.mode.flatMap { $0.isEmpty ? nil : $0 } ?? "connected")
-                                    : "no connection to Figma"))
     ]
+
+    // The CDP dot only where a port exists.
+    switch mode {
+    case .yolo, .browser:
+        rows.append(StatusRow(label: "CDP",
+                              state: cdpUp ? .ok : .off,
+                              value: cdpUp ? "port \(cdpPort)" : "not reachable"))
+    case .pipe, .safe:
+        break
+    }
+
+    // The Daemon row carries the connection health, and in Pipe/Safe names the transport too
+    // (there is no separate dot for it).
+    let daemonState: StatusRow.State
+    let daemonValue: String
+    if !daemonUp {
+        daemonState = .off; daemonValue = "not running"
+    } else if connected {
+        daemonState = .ok; daemonValue = mode.rawValue
+    } else if pipeHeld {
+        // Figma is held over the pipe, its document still loading — not a fault, a wait.
+        daemonState = .warn; daemonValue = "pipe, connecting…"
+    } else if mode == .safe {
+        daemonState = .warn; daemonValue = "safe, waiting for plugin"
+    } else {
+        daemonState = .warn; daemonValue = "no connection to Figma"
+    }
+    rows.append(StatusRow(label: "Daemon", state: daemonState, value: daemonValue))
+    return rows
 }
 
 /// Is Figma itself running, and does the debug port answer? Both are `pgrep`/socket probes the

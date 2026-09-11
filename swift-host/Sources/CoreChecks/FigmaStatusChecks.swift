@@ -75,37 +75,53 @@ enum FigmaStatusTests {
         // The three lights the toolbar draws are the menu's three rows — one function for both,
         // so a light and the row above it cannot say different things.
         do {
+            // Yolo/Browser keep three dots: Figma, CDP (the port), Daemon.
             let connected = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222,
-                                       health: Health(mode: "yolo", cdp: true))
+                                       health: Health(mode: "yolo", cdp: true), mode: .yolo)
+            Checks.expect(connected.map(\.label), ["Figma", "CDP", "Daemon"])
             Checks.expect(connected.map(\.state), [.ok, .ok, .ok])
+            Checks.expect(connected[2].value, "yolo")
 
             // Daemon stopped: Figma is still open and the port still answers — only the third
             // light goes out. Two red circles for this state was the fault worth fixing.
-            let daemonGone = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222, health: nil)
+            let daemonGone = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222, health: nil, mode: .yolo)
             Checks.expect(daemonGone.map(\.state), [.ok, .ok, .off])
             Checks.expect(daemonGone[2].value, "not running")
 
             // Figma closed: it is not running, the port is gone with it, the daemon reaches nothing.
             let figmaGone = statusRows(figmaRunning: false, cdpOk: false, cdpPort: 9222,
-                                       health: Health(mode: "yolo", cdp: false))
+                                       health: Health(mode: "yolo", cdp: false), mode: .yolo)
             Checks.expect(figmaGone.map(\.state), [.warn, .off, .warn])
 
-            // Safe Mode: the port is unused rather than broken.
+            // Safe Mode: no port, so only two dots — Figma and Daemon. The Daemon row carries the
+            // transport and the connection: plugin connected is a working link.
             let safeMode = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,
-                                      health: Health(mode: "safe", plugin: true))
-            Checks.expect(safeMode.map(\.state), [.ok, .warn, .ok])
-            Checks.expect(safeMode[1].value, "unused (plugin)")
+                                      health: Health(mode: "safe", plugin: true), mode: .safe)
+            Checks.expect(safeMode.map(\.label), ["Figma", "Daemon"])
+            Checks.expect(safeMode.map(\.state), [.ok, .ok])
+            Checks.expect(safeMode[1].value, "safe")
 
-            // Pipe Mode: no port either — the daemon drives Figma over the debugging pipe.
-            let pipeMode = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,
-                                      health: Health(mode: "pipe", cdp: false))
-            Checks.expect(pipeMode[1].state, .warn)
-            Checks.expect(pipeMode[1].value, "unused (pipe)")
+            // Safe Mode, plugin not started yet: the daemon is up but waiting.
+            let safeWaiting = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,
+                                         health: Health(mode: "safe", plugin: false), mode: .safe)
+            Checks.expect(safeWaiting.map(\.label), ["Figma", "Daemon"])
+            Checks.expect(safeWaiting[1].state, .warn)
+            Checks.expect(safeWaiting[1].value, "safe, waiting for plugin")
 
-            // Pipe connected: cdp true once the design context attached.
+            // Pipe Mode, document still loading: the daemon holds the pipe (pipe:true) but cdp is
+            // not yet true. Two dots; the Daemon row says connecting, not a fault.
+            let pipeLoading = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,
+                                         health: Health(mode: "pipe", cdp: false, pipe: true), mode: .pipe)
+            Checks.expect(pipeLoading.map(\.label), ["Figma", "Daemon"])
+            Checks.expect(pipeLoading[1].state, .warn)
+            Checks.expect(pipeLoading[1].value, "pipe, connecting…")
+
+            // Pipe connected: cdp true once the design context attached. Two dots, both green.
             let pipeUp = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222,
-                                    health: Health(mode: "pipe", cdp: true))
-            Checks.expect(pipeUp.map(\.state), [.ok, .ok, .ok])
+                                    health: Health(mode: "pipe", cdp: true, pipe: true), mode: .pipe)
+            Checks.expect(pipeUp.map(\.label), ["Figma", "Daemon"])
+            Checks.expect(pipeUp.map(\.state), [.ok, .ok])
+            Checks.expect(pipeUp[1].value, "pipe")
         }
 
         // A change in either of the two probes has to reach the window, so it has to count as a

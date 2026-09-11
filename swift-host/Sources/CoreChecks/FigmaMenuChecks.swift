@@ -51,11 +51,11 @@ enum FigmaMenuTests {
         // The case that was wrong: `Stop daemon` left Figma running with its port open, and the
         // menu offered `Connect` — the one command that can quit a running Figma — where
         // `Restart daemon` was the answer.
-        let daemonStopped = FigmaMenuInput(figma: .off, figmaRunning: true, cdpOk: true)
+        let daemonStopped = FigmaMenuInput(figma: .off, figmaRunning: true, cdpOk: true, mode: .yolo)
         Checks.expect(item(figmaMenuSections(daemonStopped), "Connection", 0)?.enabled, false)
         Checks.expect(item(figmaMenuSections(daemonStopped), "Connection", 1)?.enabled, true)
 
-        let connected = FigmaMenuInput(figma: .ok, figmaRunning: true, cdpOk: true)
+        let connected = FigmaMenuInput(figma: .ok, figmaRunning: true, cdpOk: true, mode: .yolo)
         Checks.expect(item(figmaMenuSections(connected), "Connection", 0)?.enabled, false)
 
         // The port is what `connect` restores, so a dead one frees it — as does a closed Figma.
@@ -75,6 +75,17 @@ enum FigmaMenuTests {
                                     daemonSaysConnected: true), false)
         Checks.expect(item(figmaMenuSections(FigmaMenuInput(figma: .off, mode: .safe)),
                            "Connection", 0)?.enabled, true)
+
+        // Pipe Mode is like Safe — no port. The caller folds `pipeHeld` into daemonSaysConnected,
+        // so a daemon that holds the pipe (even while the document loads) means Connect is not
+        // offered; nothing held means it is.
+        Checks.expect(connectNeeded(mode: .pipe, figmaRunning: true, cdpOk: false,
+                                    daemonSaysConnected: true), false)
+        Checks.expect(connectNeeded(mode: .pipe, figmaRunning: false, cdpOk: false,
+                                    daemonSaysConnected: false), true)
+        // pipeHeld reaches the menu through the input and disables Connect while loading.
+        let pipeHeldInput = FigmaMenuInput(figma: .off, figmaRunning: true, mode: .pipe, pipeHeld: true)
+        Checks.expect(item(figmaMenuSections(pipeHeldInput), "Connection", 0)?.enabled, false)
 
         // No CLI: every action that shells out is dead, and the note says why.
         let noCli = figmaMenuSections(FigmaMenuInput(figma: .off, cliFound: false))
