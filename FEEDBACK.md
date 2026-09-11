@@ -572,3 +572,10 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Expected:** the CHANGELOG says the port row is informational in Safe Mode; Pipe Mode has no port by design either, so the row should read like `fig-status`'s `pipe (no port)`.
   **Context:** fork 1f96d94, Pipe Mode, file Designdone, page CLI Lab, panel session fc-smoke-test, 11 Sep 2026
   → fixed in 7c0237a: `debugPortRow`/`figmaVersionRow` (`src/lib/diagnose-rows.js`) read the daemon mode; Pipe Mode prints `○ … no port needed`, the 126+ warning only where the port is the way in
+
+- [x] `cli` · **A daemon restarted from the panel inherits the old daemon's stdout, so `daemon.log` never appears until Figma itself is relaunched**
+  **Repro:** Daniel pressed the panel's daemon restart at 16:35. Before: daemon PID 4422 (handed over earlier today), no `~/.figma-ds-cli/daemon.log`. After: daemon PID 11905, Figma PID 4424 unchanged, `status` connected, `eval` fine.
+  **Observed:** still no `~/.figma-ds-cli/daemon.log`. `ps -E` on 11905: `DAEMON_MODE=pipe`, `FIGMA_PIPE_INHERIT=1`, `FIGMA_PIPE_LAUNCH=` — the handoff path; `src/daemon.js:420` says stdout/stderr are inherited from the parent, and that parent had none pointed at the log. Chain: every handoff inherits from a daemon that predates 4d092d7, so the only way to get a logging daemon is `connect`, which restarts Figma.
+  **Expected:** the handoff child opens `daemon.log` itself (append) instead of inheriting fds, so a panel restart is enough to start logging — the open "transient Not connected" entry needs exactly that log without a Figma relaunch.
+  **Context:** fork 7c0237a or later, Pipe Mode, panel session fc-smoke-test, 11 Sep 2026 16:35
+  → fixed in a436ac3: the successor opens `daemon.log` itself (append); one panel restart is enough to start logging. `.claude/bugs-and-fixes.md`

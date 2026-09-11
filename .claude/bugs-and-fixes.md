@@ -300,3 +300,14 @@ exactly two edits from any two-letter word.
 **Fix:** `suggestProp` (`src/lib/jsx-props.js`): the distance must fit the word (at most half
 its length), and a layout prop on `<Text>` gets the real answer — "padding and layout live on
 the parent <Frame>".
+
+## A Restarted Daemon Never Logged (2026-09-11, panel feedback)
+
+**Symptom:** the panel's daemon restart produced a daemon (handoff env) and no
+`~/.figma-ds-cli/daemon.log`; only `connect`, which relaunches Figma, gave a logging daemon.
+
+**Cause:** the handoff successor inherited its parent's stdout/stderr; a parent from before the
+log file had `'ignore'` there, and every later handoff inherited that.
+
+**Fix:** the successor opens `daemon.log` itself in append mode (`src/daemon.js`, /handoff);
+the handoff test checks the file in a temp HOME.
