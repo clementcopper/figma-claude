@@ -79,7 +79,10 @@
   remote debugging" warning appears only where the port is the way in
   (`src/lib/diagnose-rows.js`). The daemon's own output went to `stdio: 'ignore'`, so a
   transient "Not connected" seen from the panel could not be traced; it goes to
-  `~/.figma-ds-cli/daemon.log` now (truncated on start, a handed-over successor appends).
+  `~/.figma-ds-cli/daemon.log` now (truncated on start). A handed-over successor opens the
+  file itself and appends — inheriting the parent's stdout meant a chain of restarts from a
+  daemon without a log never produced one, so the panel's restart button could not start
+  logging.
 - **`fig-status` knows Pipe and Safe Mode.** Its "CDP" row probed port 9222 and said
   "✗ not reachable" beside a green daemon in Pipe Mode, which has no port by design. The row is
   "Link" now and comes from the daemon's `/health` like everything else: `pipe (no port)`,

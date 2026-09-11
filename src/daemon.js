@@ -20,7 +20,7 @@
 
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { readFileSync, statSync, writeFileSync, unlinkSync, readdirSync } from 'fs';
+import { readFileSync, statSync, writeFileSync, unlinkSync, readdirSync, openSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -34,6 +34,8 @@ import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const figmaClientPath = join(__dirname, 'figma-client.js');
+// Same file the CLI's startDaemon points a fresh daemon at (src/lib/cli-core.js).
+const DAEMON_LOG_FILE = join(homedir(), '.figma-ds-cli', 'daemon.log');
 let FigmaClient = null;
 let lastModTime = 0;
 let lastTempFile = null;
@@ -414,12 +416,15 @@ async function handleRequest(req, res) {
       return;
     }
     let successor;
+    // The successor opens the log itself (append) rather than inheriting this process's
+    // stdout: a daemon that predates the log file has none to hand down, and every later
+    // handoff would inherit that nothing — the panel's restart never produced a log.
+    let logFd = 'ignore';
+    try { logFd = openSync(DAEMON_LOG_FILE, 'a'); } catch {}
     try {
       successor = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
         detached: true,
-        // stdout/stderr inherited: the CLI points them at ~/.figma-ds-cli/daemon.log, and the
-        // successor keeps writing there after this process is gone.
-        stdio: ['ignore', 'inherit', 'inherit', pipe.toBrowser, pipe.fromBrowser],
+        stdio: ['ignore', logFd, logFd, pipe.toBrowser, pipe.fromBrowser],
         env: { ...process.env, DAEMON_MODE: 'pipe', FIGMA_PIPE_INHERIT: '1', FIGMA_PIPE_LAUNCH: '' },
       });
       successor.unref();

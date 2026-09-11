@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -276,6 +276,12 @@ describe('daemon in pipe mode', () => {
       assert.ok(await until(async () => { try { return (await health(d.port)).cdp === true; } catch { return false; } }, 10000), 'successor never answered on the same port');
       assert.equal((await exec(d.port, 'figma.currentPage.name')).result, 'Page 1', 'the successor evaluates through the inherited pipe');
       assert.ok(alive(successorPid));
+      // The successor opens ~/.figma-ds-cli/daemon.log itself. Inheriting the parent's stdout
+      // meant a chain of handoffs from a daemon without a log never produced one, so the
+      // panel's restart could not start logging (panel feedback, 11 Sep 2026).
+      const log = join(d.home, '.figma-ds-cli', 'daemon.log');
+      assert.ok(await until(() => existsSync(log) && /Took over Figma's debugging pipe/.test(readFileSync(log, 'utf8')), 5000),
+        `successor did not write its own daemon.log: ${existsSync(log) ? readFileSync(log, 'utf8') : '(no file)'}`);
     } finally {
       if (successorPid) { try { process.kill(successorPid, 'SIGTERM'); } catch {} }
       d.stop();
