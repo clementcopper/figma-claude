@@ -20,7 +20,7 @@
 
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { readFileSync, statSync, writeFileSync, unlinkSync } from 'fs';
+import { readFileSync, statSync, writeFileSync, unlinkSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -29,6 +29,7 @@ import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
 import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
 import { spawnFigmaWithPipe, inheritedPipe } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
+import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -727,9 +728,21 @@ httpServer.on('error', (err) => {
   process.exit(1);
 });
 
+// Hot-reload copies whose daemon died without `shutdown()` (killed, crashed, taken down with
+// Figma's pipe) stay in src/ forever; only the owning pid can import a copy, so a copy of a
+// dead pid is garbage. Swept once per start, after the bind, so a losing singleton never runs it.
+function sweepStaleHotReloadCopies() {
+  let names;
+  try { names = readdirSync(__dirname); } catch { return; }
+  for (const name of staleClientCopies(names, processExists)) {
+    try { unlinkSync(join(__dirname, name)); } catch {}
+  }
+}
+
 httpServer.listen(PORT, '127.0.0.1', () => {
   // We won the bind: claim the singleton PID file.
   try { writeFileSync(PID_FILE, String(process.pid)); } catch {}
+  sweepStaleHotReloadCopies();
   console.log(`[daemon] Figma CLI daemon running on port ${PORT} (pid ${process.pid})`);
   console.log(`[daemon] Mode: ${MODE === 'auto' ? 'auto (plugin preferred, CDP fallback)' : MODE}`);
   console.log(`[daemon] Idle timeout: ${IDLE_TIMEOUT_MS / 1000}s`);

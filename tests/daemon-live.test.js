@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -108,6 +108,28 @@ describe('daemon', () => {
     // Only this daemon's copy (named with its pid): another daemon may be running.
     const copies = readdirSync(join(ROOT, 'src')).filter((f) => f.startsWith('.figma-client-') && f.includes(`.${d.child.pid}.`));
     assert.deepStrictEqual(copies, []);
+  });
+});
+
+describe('daemon start sweeps hot-reload copies of dead daemons', () => {
+  it('removes a copy whose pid is gone and keeps one whose pid lives', async () => {
+    // shutdown() removes a daemon's own copy; a killed or crashed daemon left its copy in
+    // src/ for good (nine of them after a day). The next start removes those of dead pids.
+    const deadPid = 2 ** 22 - 1;                       // above any pid macOS or Linux hands out
+    const dead = join(ROOT, 'src', `.figma-client-1.${deadPid}.mjs`);
+    const live = join(ROOT, 'src', `.figma-client-1.${process.pid}.mjs`);
+    writeFileSync(dead, '// stale copy');
+    writeFileSync(live, '// copy of a running process');
+    const d = await startDaemon();
+    try {
+      await sleep(200);
+      assert.strictEqual(existsSync(dead), false, 'copy of a dead pid is swept');
+      assert.strictEqual(existsSync(live), true, 'copy of a live pid is left alone');
+    } finally {
+      d.stop();
+      rmSync(live, { force: true });
+      rmSync(dead, { force: true });
+    }
   });
 });
 
