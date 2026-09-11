@@ -463,7 +463,11 @@ program
     // in Safe Mode, where there is no port and the plugin is the way in.
     const health = daemonHealth();
     if (health && health.status === 'ok') {
-      const via = health.plugin && !health.cdp ? 'plugin' : 'CDP';
+      // Name the actual transport: the daemon's mode when it has one (pipe/safe/yolo/browser),
+      // else plugin vs CDP from the flags.
+      const via = health.mode && health.mode !== 'disconnected'
+        ? health.mode
+        : (health.plugin && !health.cdp ? 'plugin' : 'CDP');
       console.log(`Connected to Figma (${via})\n  File: ${health.file || 'unknown'}`);
     } else if (figmaUse('status', { silent: true }) === 'Not connected') {
       // figmaUse prints the connected case itself and used to return this one in silence.
@@ -815,6 +819,13 @@ program
     // Yolo Mode: CDP-based connection (default)
     console.log(chalk.hex('#FF6B35')('  🚀 Yolo Mode ') + chalk.gray('(direct CDP connection)\n'));
 
+    // Record the mode up front, not only when a patch is actually applied: on an
+    // already-patched Figma the patch block below is skipped, and config.mode used to keep its
+    // previous value (e.g. `pipe`), which then sent `daemon restart` down the pipe-handoff path
+    // with no pipe to hand over.
+    config.mode = 'yolo';
+    saveConfig(config);
+
     // Patch Figma if needed. Verify against the actual app.asar, NOT the cached
     // config.patched flag: a Figma update replaces app.asar with a fresh (unpatched)
     // copy, so a stale cache would skip re-patching and the CDP port stays blocked.
@@ -829,7 +840,6 @@ program
           patchSpinner.succeed('Figma ready');
         }
         config.patched = true;
-        config.mode = 'yolo';
         saveConfig(config);
       } catch (err) {
         patchSpinner.fail('Setup failed'); process.exitCode = 1;
