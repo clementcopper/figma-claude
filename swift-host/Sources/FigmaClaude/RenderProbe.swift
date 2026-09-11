@@ -11,8 +11,10 @@ enum RenderProbe {
     /// off. Drawn on the window ground so the card's border and shadow read as they do live.
     static func overlay(to path: String) {
         let card = StatusOverlay(frame: .zero)
-        card.finish(ok: true,
-                    text: "Ready! Pipe Mode active — Figma was not patched and no debug port is open.")
+        // The real composed result line — concise, emoji-free, and it names the next step that
+        // used to hide in the Figma menu.
+        card.finish(ok: true, text: actionResultLine(title: "Connect",
+                                                     health: Health(mode: "safe", plugin: false)))
         card.layoutSubtreeIfNeeded()
         let size = card.fittingSize
 

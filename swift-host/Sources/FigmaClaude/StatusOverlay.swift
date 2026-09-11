@@ -70,11 +70,13 @@ final class StatusOverlay: NSView {
         row.spacing = 10
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
+        // One inset all around, so the card's four margins read the same.
+        let pad: CGFloat = 14
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            row.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: pad),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -pad),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: pad),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -pad),
             label.widthAnchor.constraint(lessThanOrEqualToConstant: maxTextWidth),
         ])
     }
@@ -157,9 +159,9 @@ final class StatusOverlay: NSView {
     // MARK: - Internals
 
     private func present() {
+        // No reparenting here — re-adding the view on every message flickered. The card is added
+        // last at setup and the terminal band it floats over never draws on top of it.
         isHidden = false
-        // Bring to the front of the content view so the terminal and the hairline never cover it.
-        if let superview { superview.addSubview(self, positioned: .above, relativeTo: nil) }
         invalidateIntrinsicContentSize()
         relayout()
     }

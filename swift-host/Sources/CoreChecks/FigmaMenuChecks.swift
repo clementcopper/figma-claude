@@ -14,13 +14,40 @@ enum FigmaMenuTests {
         overlayModel()
     }
 
-    /// The status overlay's progress line per action. A finished result now always stays until
-    /// dismissed (success included), so there is nothing conditional left to test there.
+    /// The status overlay's pure text: the progress line per action, and the result line composed
+    /// from /health (emoji-free, and it surfaces the next step that otherwise hid in the menu).
     static func overlayModel() {
         Checks.expect(actionProgressText("Connect"), "Connecting…")
         Checks.expect(actionProgressText("Restart daemon"), "Restarting daemon…")
         Checks.expect(actionProgressText("Stop daemon"), "Stopping daemon…")
         Checks.expect(actionProgressText("Prepare folder"), "Prepare folder…")
+
+        Checks.expect(modeName(.pipe), "Pipe Mode")
+        Checks.expect(modeName(.safe), "Safe Mode")
+
+        // Connected → the mode plus the file.
+        Checks.expect(actionResultLine(title: "Connect",
+                                       health: Health(mode: "pipe", cdp: true, pipe: true, file: "Designdone – Figma")),
+                      "Pipe Mode connected — Designdone")
+        // Pipe holding but the document still loading — a wait, not a failure.
+        Checks.expect(actionResultLine(title: "Connect",
+                                       health: Health(mode: "pipe", cdp: false, pipe: true)),
+                      "Pipe Mode — Figma is loading…")
+        // The important one: switching to Safe names the next step, which used to hide in the menu.
+        Checks.expect(actionResultLine(title: "Connect",
+                                       health: Health(mode: "safe", plugin: false)),
+                      "Safe Mode — run the FigCli plugin in Figma")
+        // Safe with the plugin connected.
+        Checks.expect(actionResultLine(title: "Connect",
+                                       health: Health(mode: "safe", plugin: true, file: "Designdone – Figma")),
+                      "Safe Mode connected — Designdone")
+        Checks.expect(actionResultLine(title: "Stop daemon", health: nil), "Daemon stopped")
+        Checks.expect(actionResultLine(title: "Connect", health: nil), "Daemon not running")
+
+        // Emojis and the whitespace they leave are stripped from failure text.
+        Checks.expect(withoutEmoji("🔌 Pipe Mode active"), "Pipe Mode active")
+        Checks.expect(withoutEmoji("✓ Ready! 🚀 Go"), "Ready! Go")
+        Checks.expect(withoutEmoji("No emoji here"), "No emoji here")
     }
 
     private static func titles(_ sections: [MenuSection], _ heading: String) -> [String] {

@@ -784,12 +784,15 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         statusOverlay.begin(actionProgressText(title))
         DispatchQueue.global(qos: .userInitiated).async {
             let result = work()
+            // The result line is composed from the daemon's own /health, read here off the main
+            // thread — not from the CLI's multi-line, emoji-laden stdout. It also names the next
+            // step (Safe: run the plugin; Pipe: still loading) that otherwise hid in the menu.
+            let health = result.ok ? daemonHealth() : nil
             DispatchQueue.main.async {
                 self.figmaBusy = false
                 self.watcher.refresh()
                 if result.ok {
-                    self.statusOverlay.finish(ok: true,
-                                              text: result.output.isEmpty ? "\(title) — done" : result.output)
+                    self.statusOverlay.finish(ok: true, text: actionResultLine(title: title, health: health))
                 } else {
                     self.reportFailure(title: title, result.output)
                 }
@@ -799,11 +802,12 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
     /// A failed action, in the status card. Patching Figma needs macOS's "App Management" right,
     /// and the CLI can only report that as a line of text — so that one case carries an action
-    /// that opens the settings pane itself.
+    /// that opens the settings pane itself. Emojis are stripped so it reads as a plain sentence.
     private func reportFailure(title: String, _ output: String) {
         let permission = output.range(of: "App Management|permission", options: [.regularExpression,
                                                                                  .caseInsensitive]) != nil
-        let text = output.isEmpty ? "\(title) failed." : output
+        let cleaned = withoutEmoji(output)
+        let text = cleaned.isEmpty ? "\(title) failed." : cleaned
         if permission {
             statusOverlay.finish(ok: false, text: text, action: ("Open System Settings", {
                 guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security"
