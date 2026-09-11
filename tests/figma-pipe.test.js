@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { PipeCodec, PipeTransport, designTargets, spawnFigmaWithPipe } from '../src/lib/figma-pipe.js';
+import { FIGMA_LAUNCH_ARGS } from '../src/lib/figma-launch-args.js';
 
 // Figma's --remote-debugging-pipe speaks NUL-framed JSON on fds 3/4 to the *browser*
 // endpoint; pages are reached through attached sessions. Everything below runs on a
@@ -121,7 +122,9 @@ test('spawnFigmaWithPipe passes --remote-debugging-pipe and takes fds 3 and 4', 
   const spawn = (bin, args, opts) => { call = { bin, args, opts }; return fake; };
   const { child, transport } = spawnFigmaWithPipe('/Applications/Figma.app/Contents/MacOS/Figma', { spawn });
   assert.equal(child, fake);
-  assert.deepEqual(call.args, ['--remote-debugging-pipe']);
+  // The throttling switches ride along on every launch (src/lib/figma-launch-args.js): an
+  // occluded Figma otherwise runs evaluated code at one timer tick per second, later per minute.
+  assert.deepEqual(call.args, ['--remote-debugging-pipe', ...FIGMA_LAUNCH_ARGS]);
   assert.deepEqual(call.opts.stdio, ['ignore', 'ignore', 'ignore', 'pipe', 'pipe']);
   assert.equal(transport.toBrowser, fake.stdio[3]);
   assert.equal(transport.fromBrowser, fake.stdio[4]);

@@ -211,9 +211,22 @@ export const TEXT_STYLE_PRELUDE = `
             return globalThis.__textStyleCache;
           };
 
+          // No await per node when it can be helped: every await yields to Figma's timers,
+          // and an occluded Figma window throttles those to one per second, later one per
+          // minute (400 styled texts: 14 s visible, >90 s hidden). The style's font is loaded
+          // once per cache lifetime, and the id is set synchronously — the async setter is
+          // the fallback for a sandbox that refuses the sync one (dynamic-page) or a remote
+          // style the sync setter does not know yet.
           const __setStyle = async (node, style) => {
-            await figma.loadFontAsync(style.fontName);
-            await node.setTextStyleIdAsync(style.id);
+            if (!style.fontLoaded) {
+              await figma.loadFontAsync(style.fontName);
+              style.fontLoaded = true;
+            }
+            try {
+              node.textStyleId = style.id;
+            } catch (e) {
+              await node.setTextStyleIdAsync(style.id);
+            }
             globalThis.__textStyleApplied.push(style.name);
           };
 

@@ -17,6 +17,7 @@
 import { EventEmitter } from 'node:events';
 import { spawn as nodeSpawn } from 'node:child_process';
 import net from 'node:net';
+import { FIGMA_LAUNCH_ARGS } from './figma-launch-args.js';
 
 /**
  * NUL-framed JSON: bytes in, complete messages out. Pure, so the framing is unit-tested.
@@ -185,7 +186,7 @@ export class PipeTransport extends EventEmitter {
  */
 export function spawnFigmaWithPipe(binary, opts = {}) {
   const spawn = opts.spawn || nodeSpawn;
-  const child = spawn(binary, ['--remote-debugging-pipe', ...(opts.args || [])], {
+  const child = spawn(binary, ['--remote-debugging-pipe', ...FIGMA_LAUNCH_ARGS, ...(opts.args || [])], {
     stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'],
   });
   const toBrowser = child.stdio[3];

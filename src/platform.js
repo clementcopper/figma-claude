@@ -6,6 +6,7 @@
 import { execSync, spawn } from 'child_process';
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { FIGMA_LAUNCH_ARGS } from './lib/figma-launch-args.js';
 
 const PLATFORM = process.platform;
 
@@ -80,23 +81,26 @@ export function sleepAfterStop() {
 }
 
 // --- Start Figma ---
+// Every launch carries FIGMA_LAUNCH_ARGS (src/lib/figma-launch-args.js): without them an
+// occluded Figma throttles its timers and evaluated code crawls.
 export function startFigmaApp(figmaPath, port) {
+  const args = [`--remote-debugging-port=${port}`, ...FIGMA_LAUNCH_ARGS];
   if (PLATFORM === 'darwin') {
-    execSync(`open -a Figma --args --remote-debugging-port=${port}`, { stdio: 'pipe' });
+    execSync(`open -a Figma --args ${args.join(' ')}`, { stdio: 'pipe' });
   } else {
-    spawn(figmaPath, [`--remote-debugging-port=${port}`], { detached: true, stdio: 'ignore' }).unref();
+    spawn(figmaPath, args, { detached: true, stdio: 'ignore' }).unref();
   }
 }
 
-// --- Start Figma with no flags ---
-// Safe Mode runs the plugin inside an ordinary Figma; it needs no debug port and no pipe. Used
-// when leaving a mode that owned Figma (Pipe closes the pipe and Figma quits with it) so the
-// user has a Figma to run the plugin in.
+// --- Start Figma without a debug port or pipe ---
+// Safe Mode runs the plugin inside an ordinary Figma. Used when leaving a mode that owned
+// Figma (Pipe closes the pipe and Figma quits with it) so the user has a Figma to run the
+// plugin in.
 export function startFigmaPlainApp(figmaPath) {
   if (PLATFORM === 'darwin') {
-    execSync('open -a Figma', { stdio: 'pipe' });
+    execSync(`open -a Figma --args ${FIGMA_LAUNCH_ARGS.join(' ')}`, { stdio: 'pipe' });
   } else {
-    spawn(figmaPath, [], { detached: true, stdio: 'ignore' }).unref();
+    spawn(figmaPath, [...FIGMA_LAUNCH_ARGS], { detached: true, stdio: 'ignore' }).unref();
   }
 }
 
