@@ -143,6 +143,9 @@ final class PanelContentView: NSView {
     var strip: NSView?
     var terminal: NSView?
     var statusLine: NSView?
+    /// A floating status card over the terminal, framed here (top-right of the terminal band) so
+    /// it tracks resizes. Positioned only while visible; it draws over the terminal, never a band.
+    var overlay: NSView?
 
     /// One point each, drawn rather than laid out — three views with a colour would be three
     /// more things to keep in step with the bands they divide.
@@ -188,6 +191,18 @@ final class PanelContentView: NSView {
 
         if topEdge.superview !== self { addSubview(topEdge) }
         topEdge.frame = NSRect(x: 0, y: statusHeight, width: width, height: lineWidth)
+
+        // The status card floats top-right of the terminal band, inset from the edges. Sized to
+        // its content, clamped to the band; only positioned while shown.
+        if let overlay, !overlay.isHidden {
+            overlay.layoutSubtreeIfNeeded()
+            let margin: CGFloat = 12
+            let size = overlay.fittingSize
+            let w = min(size.width, max(0, leftWidth - 2 * margin))
+            let x = max(margin, leftWidth - w - margin)
+            let y = max(statusHeight + lineWidth + margin, middleTop - size.height - margin)
+            overlay.frame = NSRect(x: x, y: y, width: w, height: size.height)
+        }
     }
 
     /// Two of the three separators. The third — the status bar's top edge — is `topEdge`, a
@@ -237,6 +252,8 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     let window: NSWindow
     private let tabStrip = TabStripView()
     private let toolbar = ToolbarView()
+    /// The floating status card over the terminal — progress and full result of an action.
+    private let statusOverlay = StatusOverlay(frame: .zero)
     /// What to start instead when a tab exits with code 1 — see `ExitRecovery`.
     private var exitRecovery = ExitRecovery()
 
@@ -251,7 +268,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let danger = contextFillLevel(snapshot.usedPercent, marker: marker) == .danger
         if danger && !self.markerDangerToasted {
             self.markerDangerToasted = true
-            self.toolbar.toast("Context \(Int(snapshot.usedPercent.rounded()))% — /clear")
+            self.statusOverlay.info("Context \(Int(snapshot.usedPercent.rounded()))% — /clear")
         } else if !danger && self.markerDangerToasted {
             self.markerDangerToasted = false
         }
@@ -333,6 +350,10 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             band.translatesAutoresizingMaskIntoConstraints = true
             content.addSubview(band)
         }
+        // The status card sits above the bands (added last), framed by PanelContentView.layout().
+        statusOverlay.translatesAutoresizingMaskIntoConstraints = true
+        content.overlay = statusOverlay
+        content.addSubview(statusOverlay)
         window.contentView = content
         window.setContentSize(NSSize(width: saved.width, height: saved.height))
 
@@ -387,7 +408,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         statusLine.contextThreshold = config.contextMarker
         statusLine.onThresholdChange = { [weak self] value in
             guard let self, updatePanelConfig(["contextMarker": value]) else { return }
-            self.toolbar.toast("Clear threshold \(Int(value.rounded()))%")
+            self.statusOverlay.info("Clear threshold \(Int(value.rounded()))%")
         }
         // ESC is what interrupts a turn in Claude Code. Sent to the active tab, because the
         // status line always describes that one.
@@ -753,45 +774,46 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     /// One action at a time, like `withBusy` (`app/src/main.ts:539`): each of them restarts the
     /// daemon or Figma underneath, and two at once fight each other.
     ///
-    /// Success lands as a toast in the toolbar, failure as a sheet. The menu closes on the click,
-    /// so there is nowhere else for either to go — and a dialog for every "Daemon restarted" is
-    /// one dismissal too many, while a message that only flashes for a failure is one too few.
+    /// Progress and result go to the floating status card: a spinner while the work runs (a
+    /// Pipe connect can take ~20 s), then the full text — no longer the button toast, which cut
+    /// long, multi-line results off. A plain success clears itself; a failure stays, with the
+    /// "Open System Settings" action when the CLI reports a missing App-Management right.
     private func runInBackground(title: String, _ work: @escaping () -> CliResult) {
         guard !figmaBusy else { return }
         figmaBusy = true
+        statusOverlay.begin(actionProgressText(title))
         DispatchQueue.global(qos: .userInitiated).async {
             let result = work()
             DispatchQueue.main.async {
                 self.figmaBusy = false
                 self.watcher.refresh()
-                guard result.ok else { return self.reportFailure(title: title, result.output) }
-                self.toolbar.toast(result.output.isEmpty ? "\(title) — done" : result.output)
+                if result.ok {
+                    self.statusOverlay.finish(ok: true,
+                                              text: result.output.isEmpty ? "\(title) — done" : result.output)
+                } else {
+                    self.reportFailure(title: title, result.output)
+                }
             }
         }
     }
 
-    /// Patching Figma needs macOS's "App Management" right, and the CLI can only report that as a
-    /// line of text. The sheet turns it into the one thing that helps: the settings pane itself.
+    /// A failed action, in the status card. Patching Figma needs macOS's "App Management" right,
+    /// and the CLI can only report that as a line of text — so that one case carries an action
+    /// that opens the settings pane itself.
     private func reportFailure(title: String, _ output: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = output.isEmpty ? "Failed." : output
-        alert.alertStyle = .warning
-
         let permission = output.range(of: "App Management|permission", options: [.regularExpression,
-                                                                                .caseInsensitive])
-        if permission != nil {
-            alert.addButton(withTitle: "Open System Settings")
-            alert.addButton(withTitle: "OK")
-        }
-        alert.beginSheetModal(for: window) { response in
-            guard permission != nil, response == .alertFirstButtonReturn,
-                  let url = URL(string: "x-apple.systempreferences:com.apple.preference.security"
-                                + "?Privacy_AppBundles") else { return }
-            NSWorkspace.shared.open(url)
+                                                                                 .caseInsensitive]) != nil
+        let text = output.isEmpty ? "\(title) failed." : output
+        if permission {
+            statusOverlay.finish(ok: false, text: text, action: ("Open System Settings", {
+                guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security"
+                                    + "?Privacy_AppBundles") else { return }
+                NSWorkspace.shared.open(url)
+            }))
+        } else {
+            statusOverlay.finish(ok: false, text: text)
         }
     }
-
 
     /// Kills the active tab's process and starts it again **in the tab's own directory**.
     ///
@@ -1278,6 +1300,14 @@ if let index = CommandLine.arguments.firstIndex(of: "--render-chrome") {
         .flatMap { CommandLine.arguments.count > $0 + 1 ? Double(CommandLine.arguments[$0 + 1]) : nil }
         ?? 546
     RenderProbe.chrome(width: width, tabs: tabs, to: "/tmp/chrome.png")
+    exit(0)
+}
+
+// The status card with a long result, drawn to a PNG — the case the button toast truncated.
+if CommandLine.arguments.contains("--render-overlay") {
+    _ = NSApplication.shared
+    applyProbeAppearance()
+    RenderProbe.overlay(to: "/tmp/overlay.png")
     exit(0)
 }
 

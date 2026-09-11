@@ -23,11 +23,10 @@ final class ToolbarView: NSView {
     /// can never say different things. Outside the button, the hover field ended where the state
     /// began.
     private let figmaButton = IconLabelButton(icons: [nil, nil, nil], spacing: 5, padding: 7)
-    /// The label the last poll produced, restored when a toast expires.
+    /// The label the last poll produced. The button always shows this now — action results and
+    /// nudges moved to the floating status card, so nothing here gets truncated.
     private var lastLabel = "offline"
     private var resumeButton = HoverButton()
-    /// While a toast is up, the poll must not paint the file name back over it.
-    private var toastUntil: Date?
     private var continueButton = HoverButton()
     private var restartButton = HoverButton()
 
@@ -166,9 +165,6 @@ final class ToolbarView: NSView {
                                      file: snapshot.file, page: snapshot.page)
         // The three rows in words, so the state is readable without opening the menu.
         figmaButton.toolTip = rows.map { "\($0.label): \($0.value)" }.joined(separator: " · ")
-        // A poll lands every 2.5 s; without this it would wipe a message after a fraction of the
-        // time it is meant to be readable.
-        guard toastUntil == nil else { return }
         figmaButton.text = lastLabel
         // The label arrives on a poll, after the toolbar has already laid itself out with it empty.
         // `setLabelBudget` runs inside `layout()`, so a text change alone leaves the label's width
@@ -187,22 +183,6 @@ final class ToolbarView: NSView {
     private func rebalanceLabelBudgets() {
         needsLayout = true
         layoutSubtreeIfNeeded()
-    }
-
-    /// What an action did, where the file name usually is.
-    ///
-    /// The menu closes on the click that started the action, so a finished `Restart daemon` has
-    /// nowhere else to report itself. Port of `panelToast` (`app/src/main.ts:697`), same 2.6 s.
-    func toast(_ text: String) {
-        let line = text.split(separator: "\n").last.map(String.init) ?? text
-        figmaButton.text = line
-        let until = Date().addingTimeInterval(2.6)
-        toastUntil = until
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { [weak self] in
-            guard let self, self.toastUntil == until else { return }
-            self.toastUntil = nil
-            self.figmaButton.text = self.lastLabel
-        }
     }
 
     /// Where the icon and the title sit inside the cwd button — the padding claim is otherwise

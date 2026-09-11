@@ -7,6 +7,33 @@ import FigmaClaudeCore
 /// returns the desktop picture with every window missing. `cacheDisplay` runs inside the process
 /// and needs nothing, so a layout can be looked at instead of guessed at.
 enum RenderProbe {
+    /// The status card with a long, multi-line result — the case the button toast used to cut
+    /// off. Drawn on the window ground so the card's border and shadow read as they do live.
+    static func overlay(to path: String) {
+        let card = StatusOverlay(frame: .zero)
+        card.finish(ok: true,
+                    text: "Ready! Pipe Mode active — Figma was not patched and no debug port is open.")
+        card.layoutSubtreeIfNeeded()
+        let size = card.fittingSize
+
+        let margin: CGFloat = 20
+        let canvas = NSView(frame: NSRect(x: 0, y: 0,
+                                          width: size.width + 2 * margin,
+                                          height: size.height + 2 * margin))
+        canvas.wantsLayer = true
+        canvas.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        card.frame = NSRect(x: margin, y: margin, width: size.width, height: size.height)
+        canvas.addSubview(card)
+        canvas.layoutSubtreeIfNeeded()
+
+        FileHandle.standardError.write("[probe] overlay \(size.width)x\(size.height)\n".data(using: .utf8)!)
+        guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return }
+        canvas.cacheDisplay(in: canvas.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        try? data.write(to: URL(fileURLWithPath: path))
+        FileHandle.standardError.write("[probe] wrote \(path)\n".data(using: .utf8)!)
+    }
+
     /// The top bar and the tab strip, drawn side by side the way the window arranges them.
     static func chrome(width: CGFloat, tabs: Int, to path: String) {
         let toolbar = ToolbarView(frame: NSRect(x: 0, y: 0, width: width - TabStripView.stripWidth,
