@@ -156,11 +156,16 @@ export function detectBrowser() {
 
 // The remote-debugging flags shared by the launcher and the printed command.
 // Kept as an ordered array so the exact invocation is deterministic + testable.
-// --remote-allow-origins=* is required for CDP WebSocket connects on Chrome 111+.
+//
+// No --remote-allow-origins. Chrome 111+ refuses a CDP WebSocket whose handshake carries an
+// Origin header it was not told to allow; figma-client.js connects from Node with `ws`, which
+// sends no Origin at all, and that is accepted as is (measured 2026-09-10 on Brave 152: no
+// Origin → open, forged Origin → 403, a page's `new WebSocket` → refused). The `*` that used
+// to sit here lifted that check for every web page in the browser, so any tab could have
+// driven Figma through the debug socket. Do not put it back.
 export function browserDebugArgs(port = 9222, profileDir, url = 'https://www.figma.com') {
   return [
     `--remote-debugging-port=${port}`,
-    '--remote-allow-origins=*',
     `--user-data-dir=${profileDir}`,
     '--no-first-run',
     '--no-default-browser-check',

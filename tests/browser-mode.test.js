@@ -10,9 +10,11 @@ test('browserDebugArgs enables remote debugging on the given port', () => {
   assert.ok(args.includes('--remote-debugging-port=9222'));
 });
 
-test('browserDebugArgs allows CDP WebSocket origins (Chrome 111+ requirement)', () => {
+// `--remote-allow-origins=*` let every web page in that browser open the debug socket; the
+// Node client sends no Origin and needs no allowance (see the comment on browserDebugArgs).
+test('browserDebugArgs does not open the debug socket to web pages', () => {
   const args = browserDebugArgs(9222, '/tmp/prof');
-  assert.ok(args.includes('--remote-allow-origins=*'));
+  assert.ok(!args.some(a => a.startsWith('--remote-allow-origins')), `found ${args.join(' ')}`);
 });
 
 test('browserDebugArgs isolates the debug session in its own profile dir', () => {
@@ -41,6 +43,6 @@ test('getBrowserCommand quotes a profile dir that contains spaces', () => {
 test('getBrowserCommand carries the debug flags for a copy-paste launch', () => {
   const cmd = getBrowserCommand(9222, '/tmp/prof');
   assert.ok(cmd.includes('--remote-debugging-port=9222'));
-  assert.ok(cmd.includes('--remote-allow-origins=*'));
+  assert.ok(!cmd.includes('--remote-allow-origins'));
   assert.ok(cmd.trim().endsWith('https://www.figma.com'));
 });
