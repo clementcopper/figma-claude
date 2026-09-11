@@ -512,14 +512,41 @@ the content of `~/.figma-ds-cli/.daemon-token`). Paste it once; the plugin remem
 | round-trip (`1 + 1`) | 2.8 ms | 2.1 ms | 2.6 ms |
 | 100 KB byte array (export-shaped) | 32 ms | 35 ms | 134 ms |
 
+**Measured at the sizes real work moves** (2026-09-11, file with 7 359 nodes on the page,
+whole-command wall times unless noted):
+
+| | Pipe | Safe |
+|---|---|---|
+| `eval '1+1'`, whole CLI process | 258 ms | 288 ms |
+| 8.6 MB PNG export (1920 × 12182), bytes as base64 — what `export` sends | 7.1 s | — |
+| the same as a JSON number array | 13.6 s | 21.6 s |
+| the same, bytes left in Figma (the floor: `exportAsync` itself) | 6.3 s | 10.5 s |
+| `export screenshot -s 3`, 3 MB PNG | 8.1 s | — |
+| `eval --file` with a 4.27 MB script | 820 ms | — |
+| `node tree --json`, 96 KB | 750 ms | — |
+| `extract --pages`, 1 227 nodes, 149 KB | 2.95 s | — |
+| `render-batch`, 6 frames, 425 nodes, `--strict-vars --verify` | 24 s | — |
+| `render`, 400 styled `<Text>` (94 KB JSX) | 17.6 s | — |
+| 8 `eval` in parallel, each sleeping 300 ms | 1.29 s wall | — |
+
+How big a call can be: `/exec` reads a request body up to 64 MB, and the CLI accepts an answer
+up to 256 MB (`CURL_MAX_BUFFER`); Figma's own export ceiling is 7 500 px on the longer side.
+
 Read it as: **the per-call round-trip is the same in all three** — the daemon's HTTP hop
 dominates and the plugin's extra postMessage hops cost nothing measurable for a small eval.
 Safe Mode's cost is **payload-bound**: a byte array (the shape every image export takes) is
 JSON-serialised on the plugin's main thread, again in the UI iframe, then once more by the
-daemon, so it runs ~4x slower — and that grows with the payload (exports, big node trees), not
-with the number of calls. Pipe and Yolo are the same speed, so Pipe wins outright: no patch, no
-port, no permission, signature intact. The old "~10x faster" claim was wrong both ways — there
-is no small-eval difference, and the payload gap is ~4x, not 10x.
+daemon — 1.6x Pipe on the 8.6 MB export, growing with the payload (exports, big node trees),
+not with the number of calls. Pipe and Yolo are the same speed, so Pipe wins outright: no patch,
+no port, no permission, signature intact. The old "~10x faster" claim was wrong both ways —
+there is no small-eval difference, and the payload gap is under 2x, not 10x.
+
+> A hidden Figma window used to be the real slowdown: Chromium throttles an occluded window's
+> timers to one a second, after five minutes one a minute, and every `await` in evaluated code
+> waits on them (the 400-text render above took over 90 s that way). Every launch now carries
+> `--disable-background-timer-throttling`, `--disable-renderer-backgrounding` and
+> `--disable-backgrounding-occluded-windows` (`src/lib/figma-launch-args.js`); a Figma started
+> some other way — by hand, from the Dock — still throttles.
 
 > Benchmarking a mode needs the daemon actually in that mode. An `auto` daemon prefers a
 > connected plugin, so with the Safe Mode plugin still open a `connect --patch` measured the

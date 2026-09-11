@@ -250,3 +250,53 @@ content but no elements were parsed.` then `✓ Rendered`, exit 0, an empty 100�
 **Fix:** it throws `Invalid JSX: content inside <Frame> parsed to no element (an unclosed
 tag?) … Content: <Text>x`; `render` exits 1 and nothing reaches the canvas
 (`tests/jsx-unclosed-tag.test.js`).
+
+## 400 Styled Texts Took 72 s Visible and Over 90 s Hidden (2026-09-11, panel feedback)
+
+**Symptom:** `render` of 400 `<Text textStyle="Label/S">` pills took 71.9 s in the panel's smoke
+test; the same JSX with raw `size`/`weight` props took 14.5 s. Reproduced from the terminal it
+did not finish in 90 s, and the wrapper had 10 children after 108 s.
+
+**Cause:** two, stacked. Each styled text awaited `loadFontAsync` and `setTextStyleIdAsync`, and
+every `await` yields to Figma's timers; that alone costs ~125 ms per text with the window
+visible (measured: old prelude, unthrottled, 67.6 s). With the window occluded, Chromium
+throttles those timers to one per second and, after five minutes, one per minute:
+`document.visibilityState` said `hidden` and `setTimeout(0)` fired 7 times in 44.9 s.
+
+**Fix:** every Figma launch carries `--disable-background-timer-throttling`,
+`--disable-renderer-backgrounding`, `--disable-backgrounding-occluded-windows`
+(`src/lib/figma-launch-args.js`, all three launch sites); and `__setStyle` in the text-style
+prelude loads a style's font once and sets `textStyleId` synchronously, falling back to the
+async setter only when the sync one throws. 17.6 s hidden, 400 styles applied.
+
+## `export screenshot` of a Page Printed `(nullxnull)` (2026-09-11, panel feedback)
+
+**Symptom:** `✓ Screenshot: CLI Lab (nullxnull) → smoke-page.png`; the PNG was fine.
+
+**Cause:** `PageNode` has no `width`/`height`; `Math.round(undefined * scale)` is `NaN`, which
+JSON carries as `null`.
+
+**Fix:** `exportSizeLabel` (`src/lib/export-line.js`) prints ` (WxH)` only when both numbers
+exist; `export screenshot` and `export node` use it.
+
+## A Code Timeout in `eval` Said "Try: daemon restart" (2026-09-11, panel feedback)
+
+**Symptom:** `eval --timeout 2 '…5 s…'` → `Execution timeout (2s). Try: node src/index.js daemon
+restart`, with a healthy daemon and the code run once.
+
+**Cause:** one fixed message for the CLI's `AbortSignal` timeout, whatever the daemon's state.
+
+**Fix:** after the timeout the CLI asks `/health` once; healthy → "the code ran longer than the
+budget allows — raise it with --timeout <seconds>", unreachable → the restart hint
+(`timeoutMessage` in `src/lib/connection-help.js`).
+
+## Unknown `pb` on `<Text>` Was Answered With `did you mean "w"?` (2026-09-11, panel feedback)
+
+**Symptom:** `⚠ Unknown prop "pb" on <Text> — did you mean "w"?`
+
+**Cause:** the typo search took any known prop within edit distance 2; every one-letter prop is
+exactly two edits from any two-letter word.
+
+**Fix:** `suggestProp` (`src/lib/jsx-props.js`): the distance must fit the word (at most half
+its length), and a layout prop on `<Text>` gets the real answer — "padding and layout live on
+the parent <Frame>".

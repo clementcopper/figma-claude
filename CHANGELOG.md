@@ -59,6 +59,19 @@
   string no longer comes back as a silent success, and a finished eval clears its timer.
   The window, the notifications and the daemon's "not connected" message all say `FigCli`,
   the name Figma shows in the menu.
+- **A hidden Figma no longer crawls, and styled text renders 4x faster.** Chromium throttles an
+  occluded window's timers (one a second, after five minutes one a minute) and every `await` in
+  evaluated code waits on them: a 400-text render with `textStyle=` took 72 s visible and did
+  not finish in 90 s hidden. Every launch — Pipe, Yolo, Safe — now carries the three
+  `--disable-*-throttling/backgrounding` switches (`src/lib/figma-launch-args.js`), and the
+  text-style prelude sets `textStyleId` synchronously with the font loaded once per style
+  instead of two awaits per text. Same render: 17.6 s with Figma hidden.
+- **Small things from the panel's smoke test:** `export screenshot` of a page no longer prints
+  `(nullxnull)`; a code timeout says "raise it with --timeout <seconds>" when the daemon is
+  healthy and keeps the restart hint only when it is not; an unknown `pb` on `<Text>` gets
+  "padding and layout live on the parent <Frame>" instead of `did you mean "w"?` (a suggestion
+  now has to fit the word's length). REFERENCE.md carries the measured payload numbers at real
+  sizes and the request/answer ceilings.
 - **`fig-status` knows Pipe and Safe Mode.** Its "CDP" row probed port 9222 and said
   "✗ not reachable" beside a green daemon in Pipe Mode, which has no port by design. The row is
   "Link" now and comes from the daemon's `/health` like everything else: `pipe (no port)`,

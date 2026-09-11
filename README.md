@@ -266,8 +266,9 @@ each has its own trade-off.
 daemon over a local WebSocket.
 - \+ No debug flag of any kind, pure Plugin API — the only mode strict, MDM-managed environments
   allow. Nothing is patched, no port or pipe is opened.
-- − You start the plugin by hand each session, and it's ~4× slower on large payloads (image
-  exports), since results cross the plugin's iframe and are JSON-serialised twice.
+- − You start the plugin by hand each session, and large payloads are slower (an 8.6 MB image
+  export: 21.6 s against Pipe's 13.6 s), since results cross the plugin's iframe and are
+  JSON-serialised twice. Small calls cost the same in every mode.
 
 **Yolo** (`--patch`) — patches one string in Figma's `app.asar` so it exposes a debug port, then
 CDP over `127.0.0.1:9222`. The old default, now legacy.
