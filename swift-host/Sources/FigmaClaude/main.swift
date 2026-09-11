@@ -294,6 +294,9 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     }()
     /// An action that touches the daemon or Figma is running; the menu is read-only until it ends.
     private var figmaBusy = false
+    /// The status card is showing a spinner for a connection that has not completed yet (Safe
+    /// waiting for the plugin, Pipe loading the document); the poll keeps it current until then.
+    private var overlayAwaiting = false
     /// Whether the "should clear" toast has already fired for the current crossing of the
     /// marker. Reset when the fill dips back under it, so a re-crossing toasts again.
     private var markerDangerToasted = false
@@ -330,6 +333,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         watcher.onChange = { [weak self] snapshot in
             self?.toolbar.render(snapshot)
             self?.statusLine.renderSelection(snapshot.selection)
+            self?.updateAwaitingOverlay(snapshot)
         }
         watcher.start()
 
@@ -791,12 +795,41 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             DispatchQueue.main.async {
                 self.figmaBusy = false
                 self.watcher.refresh()
-                if result.ok {
-                    self.statusOverlay.finish(ok: true, text: actionResultLine(title: title, health: health))
-                } else {
+                guard result.ok else {
+                    self.overlayAwaiting = false
                     self.reportFailure(title: title, result.output)
+                    return
+                }
+                let line = actionResultLine(title: title, health: health)
+                let connected = health?.cdp == true || health?.plugin == true
+                // A connect that returned before the connection completed (Safe waiting for the
+                // plugin, Pipe still loading the document): keep a spinner + the next step in the
+                // card and let the poll finish it. Everything else is done now.
+                if title == "Connect" && !connected && health != nil {
+                    self.overlayAwaiting = true
+                    self.statusOverlay.waiting(line)
+                } else {
+                    self.overlayAwaiting = false
+                    self.statusOverlay.finish(ok: true, text: line)
                 }
             }
+        }
+    }
+
+    /// While the card is waiting on a connection (Safe: plugin, Pipe: document), the poll drives
+    /// it: still not connected → keep the spinner and the "run the plugin"/"loading" line; once
+    /// the daemon reports a live link → turn it into the connected result. So "waiting for plugin"
+    /// stays in the toast until the plugin is actually started.
+    private func updateAwaitingOverlay(_ snapshot: FigmaSnapshot) {
+        guard overlayAwaiting else { return }
+        let health = snapshot.health
+        let connected = health?.cdp == true || health?.plugin == true
+        let line = actionResultLine(title: "Connect", health: health)
+        if connected {
+            overlayAwaiting = false
+            statusOverlay.finish(ok: true, text: line)
+        } else {
+            statusOverlay.waiting(line)
         }
     }
 

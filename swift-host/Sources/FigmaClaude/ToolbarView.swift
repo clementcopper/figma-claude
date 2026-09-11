@@ -160,9 +160,19 @@ final class ToolbarView: NSView {
                               mode: FigmaMode(rawValue: snapshot.figmaMode) ?? .pipe)
         figmaButton.setIcons(rows.map { statusIcon($0.state) })
 
-        lastLabel = figmaButtonLabel(daemon: snapshot.status.daemon,
-                                     figma: snapshot.status.figma,
-                                     file: snapshot.file, page: snapshot.page)
+        if snapshot.status.figma == .ok {
+            lastLabel = figmaButtonLabel(daemon: snapshot.status.daemon,
+                                         figma: snapshot.status.figma,
+                                         file: snapshot.file, page: snapshot.page)
+        } else {
+            // Not connected: show WHY on the button itself, not a bare "not connected". The
+            // Daemon row already phrases it — "safe, waiting for plugin", "pipe, connecting…",
+            // "no connection to Figma" — so a glance answers "why is nothing happening" without
+            // opening the menu.
+            lastLabel = rows.last?.value ?? figmaButtonLabel(daemon: snapshot.status.daemon,
+                                                             figma: snapshot.status.figma,
+                                                             file: snapshot.file, page: snapshot.page)
+        }
         // The three rows in words, so the state is readable without opening the menu.
         figmaButton.toolTip = rows.map { "\($0.label): \($0.value)" }.joined(separator: " · ")
         figmaButton.text = lastLabel

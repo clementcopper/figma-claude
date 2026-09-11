@@ -14,6 +14,10 @@ final class StatusOverlay: NSView {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let actionButton = NSButton()
     private let closeButton = NSButton()
+    /// The row holding the buttons. Hidden when there are none (begin/info): an empty but visible
+    /// stack still claims the parent column's 8 pt spacing, which showed as extra padding below
+    /// the text in the spinner state.
+    private let buttonsStack = NSStackView()
 
     private var dismissWork: DispatchWorkItem?
     private var actionHandler: (() -> Void)?
@@ -72,11 +76,12 @@ final class StatusOverlay: NSView {
             symbol.heightAnchor.constraint(equalToConstant: 16),
         ])
 
-        let buttons = NSStackView(views: [actionButton, closeButton])
-        buttons.orientation = .horizontal
-        buttons.spacing = 8
+        buttonsStack.setViews([actionButton, closeButton], in: .leading)
+        buttonsStack.orientation = .horizontal
+        buttonsStack.spacing = 8
+        buttonsStack.isHidden = true
 
-        let textColumn = NSStackView(views: [label, buttons])
+        let textColumn = NSStackView(views: [label, buttonsStack])
         textColumn.orientation = .vertical
         textColumn.alignment = .leading
         textColumn.spacing = 8
@@ -125,6 +130,23 @@ final class StatusOverlay: NSView {
         spinner.startAnimation(nil)
         actionButton.isHidden = true
         closeButton.isHidden = true
+        buttonsStack.isHidden = true
+        label.stringValue = text
+        present()
+    }
+
+    /// A persistent "still connecting" state, refreshed by the poll — the spinner keeps turning
+    /// and the text says what is being waited on ("Safe Mode — run the FigCli plugin in Figma",
+    /// "Pipe Mode — Figma is loading…") until the connection actually completes. The spinner is
+    /// not restarted when it is already turning, so repeated polls do not make it stutter.
+    func waiting(_ text: String) {
+        cancelDismiss()
+        actionHandler = nil
+        symbol.isHidden = true
+        if spinner.isHidden { spinner.isHidden = false; spinner.startAnimation(nil) }
+        actionButton.isHidden = true
+        closeButton.isHidden = true
+        buttonsStack.isHidden = true
         label.stringValue = text
         present()
     }
@@ -148,6 +170,7 @@ final class StatusOverlay: NSView {
             actionButton.isHidden = true
         }
         closeButton.isHidden = false
+        buttonsStack.isHidden = false
         present()
     }
 
@@ -161,6 +184,7 @@ final class StatusOverlay: NSView {
         symbol.isHidden = true
         actionButton.isHidden = true
         closeButton.isHidden = true
+        buttonsStack.isHidden = true
         label.stringValue = text
         present()
         scheduleDismiss(after: 3)

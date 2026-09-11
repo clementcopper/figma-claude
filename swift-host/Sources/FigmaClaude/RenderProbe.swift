@@ -13,10 +13,11 @@ enum RenderProbe {
         // Both states the user sees: the spinner while connecting, and the composed result — so
         // their margins can be compared side by side and the spinner state is not left unstyled.
         let spinning = StatusOverlay(frame: .zero)
-        spinning.begin(actionProgressText("Connect"))
+        // The real persistent waiting state: spinner + the next step, held until the plugin runs.
+        spinning.waiting(actionResultLine(title: "Connect", health: Health(mode: "safe", plugin: false)))
         let done = StatusOverlay(frame: .zero)
         done.finish(ok: true, text: actionResultLine(title: "Connect",
-                                                     health: Health(mode: "safe", plugin: false)))
+                                                     health: Health(mode: "safe", plugin: true, file: "Designdone – Figma")))
         for c in [spinning, done] { c.layoutSubtreeIfNeeded() }
 
         let margin: CGFloat = 20
