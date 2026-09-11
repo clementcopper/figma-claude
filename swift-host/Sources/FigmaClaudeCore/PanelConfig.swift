@@ -17,8 +17,8 @@ public struct PanelConfig: Decodable {
     /// An explicit command or a path to a checkout, when the CLI is not on the PATH.
     public var figmaCli: String = ""
     public var theme: String = "system"
-    /// Which connection mode `connect` runs in — `yolo`, `safe` or `browser`.
-    public var figmaMode: String = "yolo"
+    /// Which connection mode `connect` runs in — `pipe` (default), `yolo`, `safe` or `browser`.
+    public var figmaMode: String = "pipe"
     /// Where the user's clear-threshold marker sits on the context bar, in percent. The bar warns
     /// 10 points before it and turns red when the fill crosses it.
     public var contextMarker: Double = 60
@@ -57,7 +57,7 @@ public struct PanelConfig: Decodable {
         figmaFile = value(.figmaFile, "")
         figmaCli = value(.figmaCli, "")
         theme = value(.theme, "system")
-        figmaMode = value(.figmaMode, "yolo")
+        figmaMode = value(.figmaMode, "pipe")
         contextMarker = value(.contextMarker, 60)
     }
 

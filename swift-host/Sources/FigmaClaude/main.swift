@@ -560,7 +560,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     /// does the quitting itself; `connect` then takes its start-fresh path and brings Figma back
     /// with the flag set. Port of `runConnect` (`app/src/main.ts:561`).
     private func connect() {
-        let mode = FigmaMode(rawValue: PanelConfig.load().figmaMode) ?? .yolo
+        let mode = FigmaMode(rawValue: PanelConfig.load().figmaMode) ?? .pipe
         var restartFigma = false
 
         // From the poll, like the menu: the two answers are at most 2.5 s old, and asking again
@@ -862,7 +862,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             files: cdpOk ? listOpenFiles() : [],
             configuredFile: config.figmaFile,
             snapshotFile: snapshot.file,
-            mode: FigmaMode(rawValue: config.figmaMode) ?? .yolo,
+            mode: FigmaMode(rawValue: config.figmaMode) ?? .pipe,
             theme: ThemeSetting(rawValue: config.theme) ?? .system,
             undoNodes: parseLastRender(try? String(contentsOfFile: lastRenderFile, encoding: .utf8)),
             cwd: cwd,
@@ -1221,7 +1221,7 @@ if CommandLine.arguments.contains("--print-menu") {
         files: cdpOk ? listOpenFiles() : [],
         configuredFile: config.figmaFile,
         snapshotFile: snapshot.file,
-        mode: FigmaMode(rawValue: config.figmaMode) ?? .yolo,
+        mode: FigmaMode(rawValue: config.figmaMode) ?? .pipe,
         theme: ThemeSetting(rawValue: config.theme) ?? .system,
         undoNodes: parseLastRender(try? String(contentsOfFile: lastRenderFile, encoding: .utf8)),
         cwd: cwd,

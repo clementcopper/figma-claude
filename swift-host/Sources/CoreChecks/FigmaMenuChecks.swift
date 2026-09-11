@@ -41,8 +41,8 @@ enum FigmaMenuTests {
         Checks.expect(titles(connected, "Appearance"),
                       ["System — follow macOS", "Light", "Dark"])
         Checks.expect(titles(connected, "Mode"),
-                      ["Yolo — patched app, CDP", "Safe — plugin, no patching",
-                       "Browser — Chromium profile"])
+                      ["Pipe — no patch, no port", "Yolo — patched app, CDP",
+                       "Safe — plugin, no patching", "Browser — Chromium profile"])
     }
 
     static func enabling() {
@@ -117,11 +117,12 @@ enum FigmaMenuTests {
     static func markers() {
         let sections = figmaMenuSections(FigmaMenuInput(figma: .ok, mode: .browser, theme: .dark))
         // One language for "this is selected" in the whole menu — the system's tick.
+        // Four modes now: pipe, yolo, safe, browser.
         Checks.expect(sections.first { $0.heading == "Mode" }?.items.map(\.marker),
-                      [.none, .none, .check])
+                      [.none, .none, .none, .check])
         Checks.expect(sections.first { $0.heading == "Appearance" }?.items.map(\.marker),
                       [.none, .none, .check])
-        Checks.expect(item(sections, "Mode", 2)?.action, .setMode(.browser))
+        Checks.expect(item(sections, "Mode", 3)?.action, .setMode(.browser))
         Checks.expect(item(sections, "Appearance", 1)?.action, .setTheme(.light))
 
         // The bound file is the one the daemon reports, until panel.json names a fragment.
@@ -193,7 +194,7 @@ enum FigmaMenuTests {
         let older = PanelConfig.load(from: path)
         Checks.expect(older.cwd, "/tmp/older")
         Checks.expect(older.theme, "dark")
-        Checks.expect(older.figmaMode, "yolo")
+        Checks.expect(older.figmaMode, "pipe")
         Checks.expect(older.command, "claude")
 
         // A file that does not parse is the user's to fix — it is never overwritten.
@@ -203,11 +204,13 @@ enum FigmaMenuTests {
     }
 
     static func connectFlags() {
-        Checks.expect(connectArguments(mode: .yolo), ["connect"])
+        Checks.expect(connectArguments(mode: .pipe), ["connect"])
+        Checks.expect(connectArguments(mode: .yolo), ["connect", "--patch"])
         Checks.expect(connectArguments(mode: .safe), ["connect", "--safe"])
         Checks.expect(connectArguments(mode: .browser), ["connect", "--browser"])
-        // An unset mode is yolo, the CLI's own default.
+        // An unset mode is pipe, the CLI's default on macOS/Linux.
         Checks.expect(connectArguments(mode: nil), ["connect"])
+        Checks.expect(FigmaMode(rawValue: "pipe"), .pipe)
         Checks.expect(FigmaMode(rawValue: "safe"), .safe)
         Checks.expect(FigmaMode(rawValue: "nonsense"), nil)
     }

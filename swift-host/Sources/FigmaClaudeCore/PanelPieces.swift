@@ -27,22 +27,24 @@ public let appearanceChoices: [(setting: ThemeSetting, label: String)] = [
 
 // MARK: - Which connection mode the CLI is driven in
 
-public enum FigmaMode: String, CaseIterable { case yolo, safe, browser }
+public enum FigmaMode: String, CaseIterable { case pipe, yolo, safe, browser }
 
 /// What each mode is, in the words the menu shows.
 public func modeLabel(_ mode: FigmaMode) -> String {
     switch mode {
+    case .pipe: return "Pipe — no patch, no port"
     case .yolo: return "Yolo — patched app, CDP"
     case .safe: return "Safe — plugin, no patching"
     case .browser: return "Browser — Chromium profile"
     }
 }
 
-/// `connect`, with the flag the mode needs. Yolo is the CLI's default and takes none — port of
-/// `app/src/main.ts:564`.
+/// `connect`, with the flag the mode needs. Pipe is the CLI's default on macOS/Linux and takes
+/// no flag; Yolo now needs `--patch` since Pipe took the default. Port of `app/src/main.ts:564`.
 public func connectArguments(mode: FigmaMode?) -> [String] {
-    switch mode ?? .yolo {
-    case .yolo: return ["connect"]
+    switch mode ?? .pipe {
+    case .pipe: return ["connect"]
+    case .yolo: return ["connect", "--patch"]
     case .safe: return ["connect", "--safe"]
     case .browser: return ["connect", "--browser"]
     }

@@ -95,6 +95,17 @@ enum FigmaStatusTests {
                                       health: Health(mode: "safe", plugin: true))
             Checks.expect(safeMode.map(\.state), [.ok, .warn, .ok])
             Checks.expect(safeMode[1].value, "unused (plugin)")
+
+            // Pipe Mode: no port either — the daemon drives Figma over the debugging pipe.
+            let pipeMode = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,
+                                      health: Health(mode: "pipe", cdp: false))
+            Checks.expect(pipeMode[1].state, .warn)
+            Checks.expect(pipeMode[1].value, "unused (pipe)")
+
+            // Pipe connected: cdp true once the design context attached.
+            let pipeUp = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222,
+                                    health: Health(mode: "pipe", cdp: true))
+            Checks.expect(pipeUp.map(\.state), [.ok, .ok, .ok])
         }
 
         // A change in either of the two probes has to reach the window, so it has to count as a

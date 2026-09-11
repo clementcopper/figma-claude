@@ -63,13 +63,13 @@ public struct MenuSection: Equatable {
 public func connectNeeded(mode: FigmaMode, figmaRunning: Bool, cdpOk: Bool,
                           daemonSaysConnected: Bool) -> Bool {
     switch mode {
-    // Both talk CDP: the way stands when Figma runs and the port answers, whatever the daemon is
-    // doing at the moment.
+    // Both talk CDP over the port: the way stands when Figma runs and the port answers, whatever
+    // the daemon is doing at the moment.
     case .yolo, .browser: return !(figmaRunning && cdpOk)
-    // Safe Mode has no port — the plugin's connection is only visible through the daemon, so its
-    // answer is the only one available. Unknown counts as missing, and `connect --safe` cannot
-    // quit anything.
-    case .safe: return !daemonSaysConnected
+    // Pipe and Safe have no port — the connection is only visible through the daemon, so its
+    // answer is the only one available. Unknown counts as missing, and neither `connect` (Pipe)
+    // nor `connect --safe` quits anything.
+    case .pipe, .safe: return !daemonSaysConnected
     }
 }
 

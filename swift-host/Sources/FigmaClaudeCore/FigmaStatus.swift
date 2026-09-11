@@ -124,6 +124,8 @@ public func statusRows(figmaRunning: Bool, cdpOk: Bool, cdpPort: Int, health: He
     let daemonUp = health != nil
     let connected = health.map { $0.cdp == true || $0.plugin == true } ?? false
     let viaPlugin = health?.plugin == true
+    // Pipe Mode reaches Figma over the debugging pipe, so a closed port is not a fault there.
+    let viaPipe = health?.mode == "pipe"
 
     return [
         StatusRow(label: "Figma",
@@ -131,8 +133,8 @@ public func statusRows(figmaRunning: Bool, cdpOk: Bool, cdpPort: Int, health: He
                   value: figmaRunning ? "running" : "not running"),
         // Safe Mode reaches Figma through the plugin, so a dead port is not a fault there.
         StatusRow(label: "CDP",
-                  state: cdpOk ? .ok : (viaPlugin ? .warn : .off),
-                  value: cdpOk ? "port \(cdpPort)" : (viaPlugin ? "unused (plugin)" : "not reachable")),
+                  state: cdpOk ? .ok : ((viaPlugin || viaPipe) ? .warn : .off),
+                  value: cdpOk ? "port \(cdpPort)" : (viaPlugin ? "unused (plugin)" : (viaPipe ? "unused (pipe)" : "not reachable"))),
         StatusRow(label: "Daemon",
                   state: connected ? .ok : (daemonUp ? .warn : .off),
                   value: !daemonUp ? "not running"
