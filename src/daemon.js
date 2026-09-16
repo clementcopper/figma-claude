@@ -31,6 +31,7 @@ import { spawnFigmaWithPipe, inheritedPipe, successorEnv } from './lib/figma-pip
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
 import { probeCdpClient } from './lib/cdp-health.js';
+import { retryVerdict, failureLine } from './lib/exec-retry.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -573,14 +574,19 @@ async function handleRequest(req, res) {
           return;
         } catch (error) {
           lastError = error;
-          console.log(`[daemon] Attempt ${attempt + 1} failed: ${error.message}`);
+          console.log(failureLine(attempt, error));
 
-          // NEVER retry a mutating render: executeEval may have already created
-          // the frame before the response errored (a transient CDP hiccup under
-          // load, e.g. several heavy files open). Retrying re-runs the render
-          // code and silently produces a DUPLICATE frame. Fail fast instead —
-          // a clear error beats a phantom copy. (Reads/eval may still retry.)
-          if (payload.action === 'render' || payload.action === 'render-batch') break;
+          // Two things are never run twice, whatever the health probe says (src/lib/exec-retry.js):
+          // a mutating render — executeEval may have created the frame before the answer
+          // failed, and a second run is a duplicate frame — and an error Figma itself raised,
+          // because then the code ran up to the throw and a second run repeats every mutation
+          // before it. Only a transport fault may reconnect and try again.
+          const verdict = retryVerdict({ action: payload.action, attempt, maxRetries: MAX_RETRIES, error });
+          if (verdict === 'mutating') break;
+          if (verdict === 'from-figma') {
+            console.log('[daemon] Raised inside Figma — the code ran, not retrying');
+            break;
+          }
 
           // For Safe Mode: wait briefly for potential reconnect
           if (attempt < MAX_RETRIES && MODE === 'plugin') {

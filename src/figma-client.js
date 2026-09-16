@@ -631,7 +631,9 @@ export class FigmaClient {
       const error = result.result.exceptionDetails;
       // Get the actual error message - Figma puts detailed errors in exception.value
       const errorValue = error.exception?.value || error.exception?.description || error.text || 'Evaluation error';
-      throw new Error(errorValue);
+      // Raised by the code inside Figma, so the code ran — the daemon must not run it again
+      // (src/lib/exec-retry.js). Transport and protocol errors above carry no flag.
+      throw Object.assign(new Error(errorValue), { fromFigma: true });
     }
 
     return result.result?.result?.value;

@@ -62,6 +62,12 @@
   panel's "Bind file" had just set (`successorEnv`, unit-tested). A CLI command that finds a pipe
   daemon attached to nothing and carries a pin now asks for the rebind at once instead of only on
   a mismatch.
+- **An error Figma raised is never retried.** A script that throws mid-way (an unloaded font
+  after a detach and a clone) has run up to the throw; the daemon's retry only stayed away
+  because the health probe answered in time — with Figma busy and the probe timing out, it would
+  have run the script again and doubled every mutation. `FigmaClient.eval` flags exceptions from
+  Figma (`fromFigma`), `retryVerdict` (`src/lib/exec-retry.js`) stops on them like on a render,
+  and the log says "Failed: …" instead of "Attempt 1 failed" for a request that is not tried twice.
 - **`status` no longer says Connected after Figma dropped `figma`.** The daemon's health
   probe evaluated `1`, which succeeds in any execution context; when Figma tore down its
   plugin realm in an open tab (16 Sep, mid-session), `/health` stayed green while every command
