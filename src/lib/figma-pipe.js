@@ -216,3 +216,28 @@ export function designTargets(targetInfos) {
     .filter((t) => t.type === 'page' && typeof t.url === 'string' && /figma\.com\/(design|file|board)\//.test(t.url))
     .map((t) => ({ title: t.title, id: t.targetId, url: t.url }));
 }
+
+/**
+ * Which design pages `connectViaPipe` tries, in order. With a pin only the titles containing it
+ * (case-insensitive, like the CLI's own pin check); without one every design/file page as Figma
+ * lists them — a restored tab has no `figma` context, so the first page is not a choice, and
+ * boards never carry the Plugin API.
+ */
+export function pipeCandidates(pages, pin = null) {
+  const design = (pages || []).filter((p) => /figma\.com\/(design|file)\//.test(p.url || ''));
+  const want = (pin || '').trim().toLowerCase();
+  if (!want) return design;
+  return design.filter((p) => (p.title || '').toLowerCase().includes(want));
+}
+
+/**
+ * The environment a `/handoff` successor starts with: the pipe markers, and the pin from the
+ * request body when there is one. `daemon restart` runs in the CLI's environment (the panel's
+ * "Bind file" sets FIGMA_FILE there), the old daemon's environment is what the successor
+ * inherits — without the body the pin never crossed over.
+ */
+export function successorEnv(baseEnv, file) {
+  const env = { ...baseEnv, DAEMON_MODE: 'pipe', FIGMA_PIPE_INHERIT: '1', FIGMA_PIPE_LAUNCH: '' };
+  if (typeof file === 'string' && file.trim()) env.FIGMA_FILE = file.trim();
+  return env;
+}

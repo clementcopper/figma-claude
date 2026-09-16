@@ -27,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { spawn } from 'child_process';
 import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
 import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
-import { spawnFigmaWithPipe, inheritedPipe } from './lib/figma-pipe.js';
+import { spawnFigmaWithPipe, inheritedPipe, successorEnv } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
 
@@ -153,6 +153,9 @@ const HEALTH_CACHE_MS = 30000; // Cache health for 30 seconds (reduces overhead)
 
 // Figma's debugging pipe (Pipe Mode): { transport, toBrowser, fromBrowser, child? }
 let pipe = null;
+// Why the last pipe connect attempt failed, null once attached. Reported in /health so the panel
+// can say "no loaded file — click its tab" instead of "connecting…" forever.
+let pipeError = null;
 let handingOff = false;
 
 // Plugin Client (Safe Mode)
@@ -372,6 +375,9 @@ async function handleRequest(req, res) {
       // Pipe Mode: this daemon holds Figma's debugging pipe. `cdp` says whether a file is
       // attached; `pipe` says Figma is ours even while it is still loading.
       pipe: MODE === 'pipe' && !!pipe && !pipe.transport.closed,
+      // Pipe Mode, not attached: why the last attempt failed (the loop keeps trying). null when
+      // attached or before the first attempt has failed.
+      pipeError: MODE === 'pipe' && !cdpHealthy ? pipeError : null,
       // Which open file this daemon is bound to. The CLI compares it against
       // FIGMA_FILE and rebinds when they diverge — otherwise commands silently
       // hit whichever file happened to be first when the daemon started.
@@ -415,6 +421,10 @@ async function handleRequest(req, res) {
       res.end(JSON.stringify({ error: 'Not in Pipe Mode, or the pipe is closed' }));
       return;
     }
+    // `daemon restart` sends the pin it runs under (`{file}`); the successor must start with it,
+    // or the panel's "Bind file" — which is exactly a pinned restart — lost the pin in the handoff.
+    const handoffBody = await readJsonBody(req);
+    const pinnedFile = handoffBody && typeof handoffBody.file === 'string' ? handoffBody.file : '';
     let successor;
     // The successor opens the log itself (append) rather than inheriting this process's
     // stdout: a daemon that predates the log file has none to hand down, and every later
@@ -425,7 +435,7 @@ async function handleRequest(req, res) {
       successor = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
         detached: true,
         stdio: ['ignore', logFd, logFd, pipe.toBrowser, pipe.fromBrowser],
-        env: { ...process.env, DAEMON_MODE: 'pipe', FIGMA_PIPE_INHERIT: '1', FIGMA_PIPE_LAUNCH: '' },
+        env: successorEnv(process.env, pinnedFile),
       });
       successor.unref();
     } catch (error) {
@@ -808,7 +818,18 @@ function openPipe() {
 async function pipeConnectLoop() {
   while (pipe && !pipe.transport.closed && !handingOff) {
     if (!(cdpClient && cdpClient.ws && cdpClient.ws.readyState === 1)) {
-      try { await getCdpClient(); } catch { /* not yet */ }
+      try {
+        await getCdpClient();
+        pipeError = null;
+      } catch (error) {
+        // Logged when it changes, not every two seconds: the reason is what matters ("no loaded
+        // design file among 2 open tabs"), and it used to be swallowed entirely.
+        const message = error && error.message ? error.message : String(error);
+        if (message !== pipeError) console.log(`[daemon] Pipe: not attached — ${message}`);
+        pipeError = message;
+      }
+    } else {
+      pipeError = null;
     }
     await new Promise((r) => setTimeout(r, 2000));
   }

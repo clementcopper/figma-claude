@@ -65,3 +65,14 @@ public func boundFile(_ file: OpenFile, configured: String, snapshotFile: String
     if pin.isEmpty { return file.title == snapshotFile }
     return file.title.lowercased().contains(pin)
 }
+
+/// The open files for the menu, by whichever link exists. Pipe Mode has no debug port — the port
+/// request answered nothing and the menu listed no files, so "Bind file" could never be chosen.
+/// The daemon's `/files` reads the same target list over the pipe, in the same shape; a held pipe
+/// is enough, the document need not be attached yet (that is exactly when picking one matters).
+public func openFiles(health: Health?, cdpOk: Bool, timeout: TimeInterval = 1.5) -> [OpenFile] {
+    if health?.pipe == true {
+        return parseOpenFiles(daemonRequest(path: "/files", timeout: timeout))
+    }
+    return cdpOk ? listOpenFiles(timeout: timeout) : []
+}

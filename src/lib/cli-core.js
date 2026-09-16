@@ -437,7 +437,19 @@ function writeTempJson(obj) {
 async function ensureDaemonRunning(maxWaitMs = 5000) {
   const pipeMode = (() => { try { return loadConfig().mode === 'pipe'; } catch { return false; } })();
   const mismatched = isDaemonRunning() && daemonPinMismatch();
-  if (isDaemonRunning() && !mismatched) return true;
+  if (isDaemonRunning() && !mismatched) {
+    // Pipe Mode, pin set, daemon attached to nothing yet (`file: null`): its loop is trying
+    // whatever Figma lists first. Point it at the pin now — /reconnect is a one-second rebind
+    // and stores the pin in the daemon, so the loop keeps aiming at the right file afterwards.
+    // `daemonPinMismatch` cannot do this: with no bound file it has nothing to compare.
+    const want = (process.env.FIGMA_FILE || '').trim();
+    if (pipeMode && want && daemonBoundFile() === null) {
+      try {
+        curlDaemon('/reconnect', { method: 'POST', dataFile: writeTempJson({ file: want }), timeout: 10000 });
+      } catch { /* not loaded yet — /health.pipeError says why, the command reports the link */ }
+    }
+    return true;
+  }
   if (mismatched) {
     // Pipe Mode holds Figma's debugging pipe; stopping the daemon would drop it and Figma may
     // quit. Rebind in place instead — /reconnect re-attaches to the pinned file, no restart.
@@ -1039,6 +1051,7 @@ function isInSafeMode() {
 }
 
 export {
+  writeTempJson,
   curlDaemon,
   shouldFallBackToDirect,
   CONFIG_DIR,

@@ -13,7 +13,8 @@ import {
   isDaemonRunning,
   loadConfig,
   startDaemon,
-  stopDaemon
+  stopDaemon,
+  writeTempJson
 } from '../lib/cli-core.js';
 
 // The daemon mode `connect` last set up. `auto` serves a connected plugin too, but only a
@@ -145,7 +146,11 @@ daemon
     // quit. Ask the running daemon to hand the pipe to a fresh process instead.
     if (configuredDaemonMode() === 'plugin' ? false : loadConfig().mode === 'pipe') {
       try {
-        const res = JSON.parse(curlDaemon('/handoff', { method: 'POST', timeout: 5000 }));
+        // With the pin this command runs under: the successor starts with it (the panel's
+        // "Bind file" is a pinned restart; without the body the pin died in the handoff).
+        const res = JSON.parse(curlDaemon('/handoff', {
+          method: 'POST', dataFile: writeTempJson({ file: process.env.FIGMA_FILE || '' }), timeout: 5000
+        }));
         if (res && res.status === 'handing-off') {
           await new Promise(r => setTimeout(r, 1500));
           const ok = isDaemonRunning(true);

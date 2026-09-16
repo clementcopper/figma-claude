@@ -179,8 +179,19 @@ public func panelEnvironment(config: PanelConfig, home: String = NSHomeDirectory
 /// Name and id are empty on a `--resume`/`--continue` spawn, which adopts an existing session.
 /// The status line has to be handed over either way, so it sits outside that condition — a
 /// resumed tab that lost its ring bar was the first thing this got wrong.
+/// Where `fig-feedback-setup` (step 6) puts the Framelink MCP definition. The same string as
+/// `MCP_FILE` in `bin/fig-feedback-setup` — CoreChecks compares the two spellings.
+///
+/// A file, not an entry in `~/.claude.json`: Daniel wants Framelink on the whole machine but off
+/// by default, on only in panel sessions. Claude Code has no "user-scope, disabled unless asked"
+/// switch (`/mcp` disables per project), so the panel loads the file per tab with `--mcp-config`
+/// and a terminal session never sees it unless it passes the same flag.
+public func panelMcpConfigPath(home: String = NSHomeDirectory()) -> String {
+    home + "/.figma-ds-cli/mcp-framelink.json"
+}
+
 public func panelArguments(config: PanelConfig, sessionName: String, sessionId: String = "",
-                           statusLineCommand: String? = nil) -> [String] {
+                           statusLineCommand: String? = nil, mcpConfig: String? = nil) -> [String] {
     var args = config.args
     let runsClaude = (config.command as NSString).lastPathComponent
         .replacingOccurrences(of: "\\.(exe|cmd|bat)$", with: "", options: .regularExpression) == "claude"
@@ -200,6 +211,14 @@ public func panelArguments(config: PanelConfig, sessionName: String, sessionId: 
        let settings = try? JSONSerialization.data(
         withJSONObject: ["statusLine": ["type": "command", "command": command]]) {
         args.append(contentsOf: ["--settings", String(decoding: settings, as: UTF8.self)])
+    }
+
+    // The panel's own MCP servers, loaded on top of whatever the user configured (no
+    // `--strict-mcp-config`, which would drop theirs). Per process, so a resumed session gets
+    // them too. An explicit choice in `panel.json` wins, like `-n` above.
+    if let mcpConfig, !mcpConfig.isEmpty,
+       !args.contains("--mcp-config"), !args.contains("--strict-mcp-config") {
+        args.append(contentsOf: ["--mcp-config", mcpConfig])
     }
     return args
 }

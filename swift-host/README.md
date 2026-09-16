@@ -26,6 +26,11 @@ open "build/Figma Claude.app"
 unsigned bundles need on Apple Silicon. There is no `xcodebuild` anywhere here and none is
 needed — an `.app` is a directory with an `Info.plist`.
 
+The binary links against the SDK of the Mac that builds it, and AppKit changes behaviour with the
+SDK: the first build on macOS 26 lost toolbar and tab strip to a `draw(_:)` that filled
+`dirtyRect`. After a build on a new machine or macOS, run `--render-chrome` (below) — its
+`[probe] separators` line ends in `ok` or `FAIL`.
+
 The bundle carries three numbers, all visible in **About Figma Claude**:
 
 | | |
@@ -37,6 +42,15 @@ The bundle carries three numbers, all visible in **About Figma Claude**:
 So the running app can always answer "which build is this?" — worth more than it sounds, because
 a stale process that looks like the new one costs an afternoon of debugging something already
 fixed.
+
+## MCP in the panel
+
+Every tab starts Claude Code with `--mcp-config ~/.figma-ds-cli/mcp-framelink.json` when that
+file exists (`panelMcpConfigPath`, `panelArguments`). `fig-feedback-setup` writes it: the
+Framelink server with the Figma key as env, mode 600. Nothing is added to `~/.claude.json`, so a
+terminal session does not see Framelink unless it passes the same flag — on the whole machine,
+off by default, on in the panel. A project that disabled `framelink` via `/mcp` stays disabled
+here too, the name is the same.
 
 ## Checks
 

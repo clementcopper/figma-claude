@@ -33,6 +33,11 @@ enum FigmaMenuTests {
         Checks.expect(actionResultLine(title: "Connect",
                                        health: Health(mode: "pipe", cdp: false, pipe: true)),
                       "Pipe Mode — Figma is loading…")
+        // Pipe holding, and the daemon has named the reason: no open tab carries a document.
+        Checks.expect(actionResultLine(title: "Connect",
+                                       health: Health(mode: "pipe", cdp: false, pipe: true,
+                                                      pipeError: "No loaded design file among 2 open tabs.")),
+                      "Pipe Mode — no file loaded yet. Click the file's tab in Figma.")
         // The important one: switching to Safe names the next step, which used to hide in the menu.
         Checks.expect(actionResultLine(title: "Connect",
                                        health: Health(mode: "safe", plugin: false)),

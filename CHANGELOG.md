@@ -49,6 +49,34 @@
 
 ### Fixed
 
+- **Pipe Mode binds to a loaded file, not to Figma's first design tab.** Figma restores its
+  tabs on launch without loading them, and a restored tab has no `figma` context. The daemon
+  attached to the first design page and failed there every two seconds for hours
+  ("Could not find Figma execution context") while the loaded file sat one tab behind it.
+  `connectViaPipe` now tries every design page (`pipeCandidates`, pinned or in Figma's order)
+  and gives up on one without the context in half a second. The reason for a failed attempt is
+  logged once per change and reported in `/health.pipeError`, so a client can say "no file
+  loaded — click its tab" instead of "connecting…" forever.
+- **The file pin survives a Pipe Mode restart.** `daemon restart` sends `FIGMA_FILE` with the
+  `/handoff`; the successor used to inherit the *old* daemon's environment and lost the pin the
+  panel's "Bind file" had just set (`successorEnv`, unit-tested). A CLI command that finds a pipe
+  daemon attached to nothing and carries a pin now asks for the rebind at once instead of only on
+  a mismatch.
+- **Framelink only in Figma Claude sessions, on the whole machine.** `fig-feedback-setup` step 6
+  used to register a user-scope MCP server (on in every session) under a name this Mac never had
+  (`Framelink_Figma_MCP`, the entry here is `framelink`), so it neither recognised nor adopted the
+  existing key, and it put the key on the server's command line. It now writes
+  `~/.figma-ds-cli/mcp-framelink.json` (mode 600, key as env) with a key adopted from any entry
+  that runs `figma-developer-mcp`; the panel passes `--mcp-config` on every tab
+  (`panelArguments`, CoreChecks), a terminal opts in with the same flag. Nothing lands in
+  `~/.claude.json`.
+- **Figma Claude (Swift host) 1.1.1.** Toolbar and tab strip were invisible on the first Apple
+  Silicon build (macOS 26, SDK 26.5): `TerminalColumn.draw` filled `dirtyRect`, which the
+  14+ SDK lets exceed the view, so the terminal column painted white over every band below it in
+  z-order. Fills `bounds ∩ dirtyRect` now; `--render-chrome` measures the two separators against
+  the column fill (`[probe] separators … ok|FAIL`). The panel's Connect passes the pin like
+  Restart does, and the Figma menu lists the open files in Pipe Mode via the daemon's `/files`
+  (there is no port to ask), so "Bind file" is reachable there.
 - **Safe Mode runs the same `eval` code as the other modes.** The plugin decided where to put
   `return` by looking for the last `;`, so `let p = 1\nreturn p`, `if (x) { … }` and
   `const a = 1; const b = 2` were a SyntaxError in Safe Mode only; the CDP path had stopped

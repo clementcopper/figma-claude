@@ -149,6 +149,46 @@ enum RenderProbe {
         guard let data = rep.representation(using: .png, properties: [:]) else { return }
         try? data.write(to: URL(fileURLWithPath: path))
         FileHandle.standardError.write("[probe] wrote \(path)\n".data(using: .utf8)!)
+        // Read back from the render, because a blank band is a measurement, not a look: the
+        // first macOS 26 build drew toolbar and strip as pure white while every layout number
+        // above was right — the terminal column's `draw` had painted over them. The two
+        // separators `PanelContentView.draw` puts under the toolbar and left of the strip are
+        // the sentinels: they sit below everything and must differ from the column's own fill.
+        FileHandle.standardError.write(("[probe] separators " + describeSeparators(rep, canvas: canvas) + "\n")
+            .data(using: .utf8)!)
+    }
+
+    /// One pixel on each separator and one in the terminal column's padding, as `r g b` at two
+    /// decimals, plus a verdict. The rep is in pixels and flipped against the canvas, so the
+    /// points are chosen in view coordinates and converted here. Toolbar and strip backgrounds
+    /// are not compared: in light mode `windowBackgroundColor` and the column's
+    /// `textBackgroundColor` are both white, a check that cannot separate.
+    private static func describeSeparators(_ rep: NSBitmapImageRep, canvas: PanelContentView) -> String {
+        let scale = CGFloat(rep.pixelsWide) / canvas.bounds.width
+        func sample(_ x: CGFloat, _ y: CGFloat) -> (String, NSColor?) {
+            let px = Int(x * scale), py = Int((canvas.bounds.height - y) * scale)
+            guard px >= 0, py >= 0, px < rep.pixelsWide, py < rep.pixelsHigh,
+                  let colour = rep.colorAt(x: px, y: py)?.usingColorSpace(.deviceRGB) else {
+                return ("n/a", nil)
+            }
+            return (String(format: "%.2f %.2f %.2f", colour.redComponent, colour.greenComponent,
+                           colour.blueComponent), colour)
+        }
+        let height = canvas.bounds.height, width = canvas.bounds.width
+        let leftWidth = width - TabStripView.stripWidth - 1
+        // The hairline under the toolbar, the one left of the strip, and the column's 8pt padding.
+        let underToolbar = sample(width * 0.5, height - ToolbarView.barHeight - 0.5)
+        let leftOfStrip = sample(leftWidth + 0.5, height / 2)
+        let column = sample(3, height / 2)
+        func same(_ a: NSColor?, _ b: NSColor?) -> Bool {
+            guard let a, let b else { return false }
+            return abs(a.redComponent - b.redComponent) < 0.01
+                && abs(a.greenComponent - b.greenComponent) < 0.01
+                && abs(a.blueComponent - b.blueComponent) < 0.01
+        }
+        let covered = same(underToolbar.1, column.1) || same(leftOfStrip.1, column.1)
+        return "under-toolbar=\(underToolbar.0) | left-of-strip=\(leftOfStrip.0) | column=\(column.0) | "
+            + (covered ? "FAIL: a separator matches the column fill — something paints over the lower bands" : "ok")
     }
 
     /// Does the status band grow when a Figma selection arrives — in a real window, after a real

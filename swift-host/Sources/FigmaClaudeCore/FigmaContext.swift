@@ -49,7 +49,7 @@ private func readToken() -> String? {
 
 /// One request against the daemon, with the token header it requires. Returns nil for every
 /// failure: a daemon that is down is a normal state here, not an error worth surfacing.
-private func daemonRequest(path: String, method: String = "GET",
+func daemonRequest(path: String, method: String = "GET",
                            body: Data? = nil, timeout: TimeInterval) -> Data? {
     guard let token = readToken(),
           let url = URL(string: "http://127.0.0.1:\(daemonPort)\(path)") else { return nil }

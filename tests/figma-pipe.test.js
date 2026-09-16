@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { PipeCodec, PipeTransport, designTargets, spawnFigmaWithPipe } from '../src/lib/figma-pipe.js';
+import { PipeCodec, PipeTransport, designTargets, pipeCandidates, successorEnv, spawnFigmaWithPipe } from '../src/lib/figma-pipe.js';
 import { FIGMA_LAUNCH_ARGS } from '../src/lib/figma-launch-args.js';
 
 // Figma's --remote-debugging-pipe speaks NUL-framed JSON on fds 3/4 to the *browser*
@@ -128,4 +128,38 @@ test('spawnFigmaWithPipe passes --remote-debugging-pipe and takes fds 3 and 4', 
   assert.deepEqual(call.opts.stdio, ['ignore', 'ignore', 'ignore', 'pipe', 'pipe']);
   assert.equal(transport.toBrowser, fake.stdio[3]);
   assert.equal(transport.fromBrowser, fake.stdio[4]);
+});
+
+test('pipeCandidates: without a pin every design page in order, with a pin only the matching ones', () => {
+  // A restored tab has no `figma` context, so the first design page is not a choice — the
+  // daemon has to be able to try each. Bosch (restored, unloaded) sat at index 0 while the
+  // loaded m2trust sat at 1, and the daemon never got past Bosch.
+  const pages = [
+    { title: 'Website Concept – FigJam', id: 'B', url: 'https://www.figma.com/board/x/Website-Concept' },
+    { title: 'Bosch_12.05.2023 – Figma', id: 'D1', url: 'https://www.figma.com/design/p/Bosch' },
+    { title: 'm2trust – Figma', id: 'D2', url: 'https://www.figma.com/design/j/m2trust' },
+  ];
+  assert.deepEqual(pipeCandidates(pages).map(p => p.id), ['D1', 'D2']);           // boards never
+  assert.deepEqual(pipeCandidates(pages, 'm2trust').map(p => p.id), ['D2']);
+  assert.deepEqual(pipeCandidates(pages, 'M2TRUST').map(p => p.id), ['D2']);       // like the CLI's pin check
+  assert.deepEqual(pipeCandidates(pages, '  ').map(p => p.id), ['D1', 'D2']);      // blank pin = no pin
+  assert.deepEqual(pipeCandidates(pages, 'nope'), []);
+  assert.deepEqual(pipeCandidates(undefined, 'x'), []);
+});
+
+test('successorEnv carries the pin through a handoff and keeps the pipe markers', () => {
+  const base = { PATH: '/bin', FIGMA_PIPE_LAUNCH: '1', DAEMON_PORT: '3456' };
+  const plain = successorEnv(base, '');
+  assert.equal(plain.DAEMON_MODE, 'pipe');
+  assert.equal(plain.FIGMA_PIPE_INHERIT, '1');
+  assert.equal(plain.FIGMA_PIPE_LAUNCH, '');
+  assert.equal(plain.PATH, '/bin');
+  assert.equal('FIGMA_FILE' in plain, false);
+  // The CLI's `daemon restart` runs with FIGMA_FILE (the panel's "Bind file"); the old daemon
+  // did not, so without the body the successor inherited nothing and the pin was lost.
+  assert.equal(successorEnv(base, ' m2trust ').FIGMA_FILE, 'm2trust');
+  // A daemon that already carries a pin keeps it when the body has none.
+  assert.equal(successorEnv({ ...base, FIGMA_FILE: 'Bosch' }, '').FIGMA_FILE, 'Bosch');
+  assert.equal(successorEnv({ ...base, FIGMA_FILE: 'Bosch' }, 'm2trust').FIGMA_FILE, 'm2trust');
+  assert.equal(successorEnv(base, undefined).FIGMA_FILE, undefined);
 });

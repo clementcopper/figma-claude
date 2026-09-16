@@ -37,7 +37,11 @@ public func actionResultLine(title: String, health: Health?) -> String {
         let file = cleanFileName(health.file)
         return file.isEmpty ? "\(modeName(mode)) connected" : "\(modeName(mode)) connected — \(file)"
     }
-    if health.pipe == true { return "Pipe Mode — Figma is loading…" }
+    if health.pipe == true {
+        return health.pipeError == nil
+            ? "Pipe Mode — Figma is loading…"
+            : "Pipe Mode — no file loaded yet. Click the file's tab in Figma."
+    }
     if mode == .safe { return "Safe Mode — run the FigCli plugin in Figma" }
     return "Daemon running, no connection to Figma yet"
 }

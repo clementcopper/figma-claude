@@ -7,7 +7,7 @@
 
 import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
-import { designTargets } from './lib/figma-pipe.js';
+import { designTargets, pipeCandidates } from './lib/figma-pipe.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle, suggestStyleNames } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
@@ -417,21 +417,40 @@ export class FigmaClient {
   async connectViaPipe(transport, pageTitle = null, { timeoutMs = 15000 } = {}) {
     const answer = await transport.send('Target.getTargets', {}, undefined, { timeoutMs });
     if (answer.error) throw new Error(answer.error.message || 'Target.getTargets failed');
-    const pages = designTargets(answer.result?.targetInfos).filter(p => /figma\.com\/(design|file)\//.test(p.url));
-    const page = pageTitle ? pages.find(p => p.title.includes(pageTitle)) : pages[0];
-    if (!page) {
-      throw new Error('No Figma design file open. Please open a design file in Figma Desktop.');
+    const candidates = pipeCandidates(designTargets(answer.result?.targetInfos), pageTitle);
+    if (candidates.length === 0) {
+      throw new Error(pageTitle
+        ? `No open Figma design file matches "${pageTitle}". Open it in Figma Desktop.`
+        : 'No Figma design file open. Please open a design file in Figma Desktop.');
     }
-    this.pageTitle = page.title;
-    this.pageUrl = page.url;
-    const typeMatch = page.url.match(/figma\.com\/(design|file)\//);
-    this.fileType = typeMatch ? typeMatch[1] : 'unknown';
 
-    const attached = await transport.send('Target.attachToTarget', { targetId: page.id, flatten: true }, undefined, { timeoutMs });
-    if (attached.error || !attached.result?.sessionId) {
-      throw new Error(attached.error?.message || 'Target.attachToTarget gave no session');
+    // Every candidate in turn, not the first one: Figma restores its tabs on launch without
+    // loading them, and a restored tab has no `figma` context. The first design page was a
+    // restored one for hours while the loaded file sat right behind it. `_attachSocket` gives up
+    // on a page without the context in about half a second and closes its session, so trying
+    // the next one is cheap.
+    const failures = [];
+    for (const page of candidates) {
+      const attached = await transport.send('Target.attachToTarget', { targetId: page.id, flatten: true }, undefined, { timeoutMs });
+      if (attached.error || !attached.result?.sessionId) {
+        failures.push(`${page.title}: ${attached.error?.message || 'Target.attachToTarget gave no session'}`);
+        continue;
+      }
+      try {
+        await this._attachSocket(transport.session(attached.result.sessionId), { timeoutMs });
+      } catch (error) {
+        failures.push(`${page.title}: ${error.message}`);
+        continue;
+      }
+      this.pageTitle = page.title;
+      this.pageUrl = page.url;
+      const typeMatch = page.url.match(/figma\.com\/(design|file)\//);
+      this.fileType = typeMatch ? typeMatch[1] : 'unknown';
+      return this;
     }
-    return this._attachSocket(transport.session(attached.result.sessionId), { timeoutMs });
+    const names = candidates.map((p) => p.title.replace(/ – Figma$/, '')).join(', ');
+    throw new Error(`No loaded design file among ${candidates.length} open tab${candidates.length === 1 ? '' : 's'} (${names}). `
+      + 'Click the file\'s tab in Figma so it loads. ' + failures.join('; '));
   }
 
   /** The open design files as `/json` lists them, read over the pipe. */
