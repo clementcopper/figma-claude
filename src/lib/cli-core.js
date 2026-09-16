@@ -896,11 +896,13 @@ async function checkConnection() {
   await ensureDaemonRunning();
 
   // First check daemon (works for both CDP and Plugin modes)
+  let daemonReason = null;
   try {
     const data = JSON.parse(curlDaemon('/health'));
     if (data.status === 'ok' && (data.plugin || data.cdp)) {
       return true;
     }
+    daemonReason = data.pipeError || null;
   } catch {}
 
   // Fallback: check CDP directly
@@ -908,8 +910,9 @@ async function checkConnection() {
   if (!connected) {
     console.log(chalk.red('\n✗ Not connected to Figma\n'));
     // The advice used to name `figma-ds-cli` — the legacy alias — and, inside the panel, CLI
-    // commands a panel session is told not to run. `connectAdvice` knows which reader it has.
-    for (const line of connectAdvice({ panel: inPanel() })) console.log(chalk.cyan('  ' + line));
+    // commands a panel session is told not to run. `connectAdvice` knows which reader it has,
+    // and names the daemon's own reason when it has one (a tab restored without its document).
+    for (const line of connectAdvice({ panel: inPanel(), reason: daemonReason })) console.log(chalk.cyan('  ' + line));
     console.log('');
     process.exit(1);
   }
@@ -919,11 +922,13 @@ async function checkConnection() {
 // Helper: Check connection (sync version for backwards compat)
 function checkConnectionSync() {
   // First check daemon (works for both CDP and Plugin modes)
+  let daemonReason = null;
   try {
     const data = JSON.parse(curlDaemon('/health'));
     if (data.status === 'ok' && (data.plugin || data.cdp)) {
       return true;
     }
+    daemonReason = data.pipeError || null;
   } catch {}
 
   // Fallback: check CDP directly
@@ -935,7 +940,7 @@ function checkConnectionSync() {
     console.log(chalk.red('\n✗ Not connected to Figma\n'));
     // The advice used to name `figma-ds-cli` — the legacy alias — and, inside the panel, CLI
     // commands a panel session is told not to run. `connectAdvice` knows which reader it has.
-    for (const line of connectAdvice({ panel: inPanel() })) console.log(chalk.cyan('  ' + line));
+    for (const line of connectAdvice({ panel: inPanel(), reason: daemonReason })) console.log(chalk.cyan('  ' + line));
     console.log('');
     process.exit(1);
   }

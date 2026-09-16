@@ -311,3 +311,29 @@ log file had `'ignore'` there, and every later handoff inherited that.
 
 **Fix:** the successor opens `daemon.log` itself in append mode (`src/daemon.js`, /handoff);
 the handoff test checks the file in a temp HOME.
+
+## `figma` Gone While `status` Said Connected (2026-09-16, panel feedback)
+
+**Symptom:** after hours of normal Pipe Mode work, every command failed with
+`TypeError: Cannot read properties of undefined (reading 'getNodeByIdAsync')` (or `'root'`,
+`'currentPage'`), `figma-cli eval 'return typeof figma'` printed `undefined`, and `status` kept
+saying `Connected to Figma (pipe)`. Twice that day (~12:30 after `loadAllPagesAsync` on a 20+
+page file, ~14:40 after a page switch); daemon.log had 112 such failures from the panel's
+selection poll while `/health` was green. No renderer crash: every Figma Helper dated from launch.
+
+**Cause:** Figma tore down the execution context that holds `figma` with the tab still open,
+and the daemon's health probe evaluated `1`, which succeeds in any context. The stale client
+kept evaluating into a realm without the Plugin API, and `exceptionDetails` from that code read
+as "not connection-related, not retrying". Before 0d64b42 a re-attach would also have picked
+`pages[0]` — a restored, unloaded tab — instead of the loaded file.
+
+**Fix:** `probeCdpClient` (`src/lib/cdp-health.js`) evaluates `typeof figma !== "undefined"`
+and returns healthy / no-figma / dead; on no-figma the daemon releases the client so the next
+request and `pipeConnectLoop` attach anew (`isCdpHealthy`, `src/daemon.js`). `connectViaPipe`
+tries every design tab (`pipeCandidates`) and reports the reason in `/health.pipeError`; the CLI
+prints it under "Not connected" (`connectAdvice({ reason })`), the panel shows Reconnect while
+the pipe is held and nothing is attached. What restores the realm itself is reopening the tab;
+`daemon restart` sees the same targets and `connect` only reuses the pipe.
+
+**Tests:** `tests/cdp-health.test.js`, `tests/figma-pipe.test.js` (candidates),
+`tests/connection-help.test.js` (reason line), CoreChecks `FigmaMenuChecks`/`FigmaStatusChecks`.

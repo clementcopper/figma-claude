@@ -22,6 +22,22 @@ describe('connectAdvice', () => {
   it('defaults to the terminal wording', () => {
     assert.deepStrictEqual(connectAdvice(), connectAdvice({ panel: false }));
   });
+
+  it('puts the daemon\'s own reason first when it has one, and points the panel at Reconnect', () => {
+    // 16 Sep 2026: the panel session read "Connect from the panel" while Connect was rightly
+    // disabled — the pipe was held, the tab restored without its document. The reason from
+    // /health.pipeError is what tells the reader to click the tab instead.
+    const reason = 'No loaded design file among 2 open tabs (Bosch, m2trust). Click the file\'s tab in Figma so it loads.';
+    const panel = connectAdvice({ panel: true, reason });
+    assert.strictEqual(panel[0], 'The daemon says: ' + reason);
+    assert.match(panel[1], /Connect or Reconnect/);
+    const terminal = connectAdvice({ panel: false, reason });
+    assert.strictEqual(terminal[0], 'The daemon says: ' + reason);
+    assert.match(terminal[1], /Check the link/);
+    // No reason, blank or null: unchanged wording, no empty line.
+    assert.deepStrictEqual(connectAdvice({ panel: true, reason: null }), connectAdvice({ panel: true }));
+    assert.deepStrictEqual(connectAdvice({ panel: false, reason: '  ' }), connectAdvice({ panel: false }));
+  });
 });
 
 describe('explainEvalError', () => {
