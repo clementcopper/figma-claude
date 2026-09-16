@@ -7,6 +7,7 @@ import Foundation
 public func actionProgressText(_ title: String) -> String {
     switch title {
     case "Connect": return "Connecting…"
+    case "Reconnect": return "Reconnecting…"
     case "Restart daemon": return "Restarting daemon…"
     case "Stop daemon": return "Stopping daemon…"
     default: return "\(title)…"

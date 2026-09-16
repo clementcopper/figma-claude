@@ -80,6 +80,21 @@ enum FigmaMenuTests {
         Checks.expect(titles(two, "Bound file"), ["A", "B"])
 
         Checks.expect(titles(connected, "Connection"), ["Connect", "Restart daemon", "Stop daemon"])
+
+        // Pipe held, nothing attached: Connect is off by design (it would only reuse the pipe),
+        // so Reconnect is the item that acts — the 16 Sep case where `figma` vanished from the
+        // tab and the menu offered nothing to press.
+        let pipeUnattached = figmaMenuSections(FigmaMenuInput(figma: .off, figmaRunning: true, mode: .pipe, pipeHeld: true))
+        Checks.expect(titles(pipeUnattached, "Connection"), ["Connect", "Reconnect", "Restart daemon", "Stop daemon"])
+        Checks.expect(item(pipeUnattached, "Connection", 0)?.enabled, false)
+        Checks.expect(item(pipeUnattached, "Connection", 1)?.enabled, true)
+        Checks.expect(item(pipeUnattached, "Connection", 1)?.action, .reconnect)
+        // Attached: no Reconnect. Busy: shown but disabled, like every other action.
+        let pipeUp = figmaMenuSections(FigmaMenuInput(figma: .ok, figmaRunning: true, mode: .pipe, pipeHeld: true))
+        Checks.expect(titles(pipeUp, "Connection").contains("Reconnect"), false)
+        let pipeBusy = figmaMenuSections(FigmaMenuInput(figma: .off, figmaRunning: true, mode: .pipe, busy: true, pipeHeld: true))
+        Checks.expect(item(pipeBusy, "Connection", 1)?.enabled, false)
+        Checks.expect(actionProgressText("Reconnect"), "Reconnecting…")
         Checks.expect(titles(connected, "Appearance"),
                       ["System — follow macOS", "Light", "Dark"])
         Checks.expect(titles(connected, "Mode"),

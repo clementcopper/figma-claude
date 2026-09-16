@@ -663,6 +663,17 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         return pin.isEmpty ? nil : ["FIGMA_FILE": pin]
     }
 
+    /// Asks the daemon to attach again, pinned to the bound file. The result line comes from
+    /// `/health` like every action's; a failed attach shows the daemon's reason (the same text
+    /// `/health.pipeError` carries).
+    private func reconnectDaemon() {
+        let pin = PanelConfig.load().figmaFile
+        runInBackground(title: "Reconnect") {
+            if let error = daemonReconnect(file: pin) { return CliResult(ok: false, output: error) }
+            return CliResult(ok: true, output: pin.isEmpty ? "Attached" : "Attached to \(pin)")
+        }
+    }
+
     /// Restarts the daemon, pinned to the bound file when there is one.
     private func restartDaemon() {
         let pin = PanelConfig.load().figmaFile
@@ -1026,6 +1037,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         guard let action = sender.representedObject as? MenuAction else { return }
         switch action {
         case .connect: connect()
+        case .reconnect: reconnectDaemon()
         case .daemonRestart: restartDaemon()
         case .daemonStop: stopDaemon()
         case .bindFile(let title): bindFile(title)

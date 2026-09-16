@@ -30,6 +30,7 @@ import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
 import { spawnFigmaWithPipe, inheritedPipe, successorEnv } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
+import { probeCdpClient } from './lib/cdp-health.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -177,19 +178,19 @@ async function isCdpHealthy(forceCheck = false) {
     return lastHealthResult;
   }
 
-  try {
-    const result = await Promise.race([
-      cdpClient.eval('1'), // Simple eval, just check connection works
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-    ]);
-    lastHealthCheck = now;
-    lastHealthResult = result === 1;
-    return lastHealthResult;
-  } catch {
-    lastHealthCheck = now;
-    lastHealthResult = false;
-    return false;
+  // Asks for `figma`, not for `1`: `1` evaluates in any context, so a Figma that dropped its
+  // plugin realm mid-session still read as Connected while every command failed. A client whose
+  // context lost `figma` is released here, so the next request (and the pipe loop) attach anew
+  // instead of evaluating into a realm without the Plugin API. See src/lib/cdp-health.js.
+  const verdict = await probeCdpClient(cdpClient, { timeoutMs: 2000 });
+  lastHealthCheck = now;
+  lastHealthResult = verdict === 'healthy';
+  if (verdict === 'no-figma' && !isCdpConnecting) {
+    console.log('[daemon] `figma` is gone from the bound execution context — dropping the client to re-attach');
+    try { cdpClient.close(); } catch {}
+    cdpClient = null;
   }
+  return lastHealthResult;
 }
 
 async function getCdpClient() {

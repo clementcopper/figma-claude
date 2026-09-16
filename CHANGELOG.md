@@ -62,6 +62,14 @@
   panel's "Bind file" had just set (`successorEnv`, unit-tested). A CLI command that finds a pipe
   daemon attached to nothing and carries a pin now asks for the rebind at once instead of only on
   a mismatch.
+- **`status` no longer says Connected after Figma dropped `figma`.** The daemon's health
+  probe evaluated `1`, which succeeds in any execution context; when Figma tore down its
+  plugin realm in an open tab (16 Sep, mid-session), `/health` stayed green while every command
+  failed with "Cannot read properties of undefined (reading 'getNodeByIdAsync')". The probe asks
+  `typeof figma !== "undefined"` now (`src/lib/cdp-health.js`, unit-tested), and a client whose
+  context lost it is released so the next request and the pipe loop attach anew. The panel's
+  Figma menu offers **Reconnect** (`POST /reconnect`) while the pipe is held but nothing is
+  attached — Connect is off there by design and used to leave nothing to press.
 - **Framelink only in Figma Claude sessions, on the whole machine.** `fig-feedback-setup` step 6
   used to register a user-scope MCP server (on in every session) under a name this Mac never had
   (`Framelink_Figma_MCP`, the entry here is `framelink`), so it neither recognised nor adopted the

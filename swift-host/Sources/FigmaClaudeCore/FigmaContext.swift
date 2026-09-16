@@ -50,7 +50,8 @@ private func readToken() -> String? {
 /// One request against the daemon, with the token header it requires. Returns nil for every
 /// failure: a daemon that is down is a normal state here, not an error worth surfacing.
 func daemonRequest(path: String, method: String = "GET",
-                           body: Data? = nil, timeout: TimeInterval) -> Data? {
+                   body: Data? = nil, timeout: TimeInterval,
+                   acceptErrorBody: Bool = false) -> Data? {
     guard let token = readToken(),
           let url = URL(string: "http://127.0.0.1:\(daemonPort)\(path)") else { return nil }
 
@@ -67,7 +68,9 @@ func daemonRequest(path: String, method: String = "GET",
     var result: Data?
     let done = DispatchSemaphore(value: 0)
     URLSession.shared.dataTask(with: request) { data, response, _ in
-        if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+        if let http = response as? HTTPURLResponse,
+           (200..<300).contains(http.statusCode) || (acceptErrorBody && http.statusCode >= 400) {
+            // `/reconnect` answers 500 with `{error}` when nothing attached; that text is the answer.
             result = data
         }
         done.signal()
@@ -79,6 +82,20 @@ func daemonRequest(path: String, method: String = "GET",
 public func daemonHealth(timeout: TimeInterval = 1.5) -> Health? {
     guard let data = daemonRequest(path: "/health", timeout: timeout) else { return nil }
     return try? JSONDecoder().decode(Health.self, from: data)
+}
+
+/// Asks the daemon to attach to Figma again, pinned to `file` when given — the same `/reconnect`
+/// the CLI uses to rebind in Pipe Mode. Returns the daemon's error text, or nil when it attached.
+/// A generous timeout: an attach scans the tab's execution contexts (about a second per tab).
+public func daemonReconnect(file: String, timeout: TimeInterval = 20) -> String? {
+    let payload = try? JSONSerialization.data(withJSONObject: ["file": file])
+    guard let payload else { return "could not encode the request" }
+    guard let data = daemonRequest(path: "/reconnect", method: "POST", body: payload, timeout: timeout,
+                                   acceptErrorBody: true) else { return "daemon not reachable" }
+    guard let object = try? JSONSerialization.jsonObject(with: data),
+          let body = object as? [String: Any] else { return "unreadable answer from the daemon" }
+    if let error = body["error"] as? String { return error }
+    return nil
 }
 
 /// Runs code inside Figma through the daemon — the same `/exec` route the CLI uses.
