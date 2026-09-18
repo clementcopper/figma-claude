@@ -55,12 +55,17 @@ KEYCHAIN_ACCOUNT="figma-api-key"
 # Same keychain service `src/credentials.js` uses, so the key has one home rather than two.
 KEYCHAIN_SERVICE="figma-cli"
 TOOLS_MARKER="## Figma lesen: Framelink oder figma-cli"
+# Either language counts as present: ~/.claude/CLAUDE.md is kept in English, so the German section
+# this step appends gets translated by hand, and a marker that knew only German appended it again.
+TOOLS_PRESENT_RE='^## (Figma lesen: Framelink oder figma-cli|Reading Figma: Framelink or figma-cli)'
 
 # Step 8. The handoff the pre-clear skill writes, and where it is read back from after a /clear.
 # The panel writes under "Figma Claude/" (with the space — that is the folder on disk and the
 # app's own name); the terminal writes at the project root. The pre-space spelling stays last so
 # a handoff already written there does not become invisible.
-HANDOFF_CMD='for f in "Figma Claude/Sessions/HANDOFF.md" "Sessions/HANDOFF.md" "FigmaClaude/Sessions/HANDOFF.md"; do [ -f "$f" ] && { echo "# Handoff der vorherigen Session ($f) — Stand pruefen, dann fortsetzen:"; cat "$f"; break; }; done; true'
+# The hook is built from this list in step 8. Paths a user added to the list (~/.claude reads
+# handoff/HANDOFF.md, because sessions/ is Claude Code's own) are kept in front of these.
+HANDOFF_PATHS='["Figma Claude/Sessions/HANDOFF.md", "Sessions/HANDOFF.md", "FigmaClaude/Sessions/HANDOFF.md"]'
 
 ok()   { printf "  ${GREEN}✓${NC}  %s\n" "$1"; }
 skip() { printf "  ${DIM}○${NC}  %s\n" "$1"; }
@@ -80,7 +85,9 @@ fi
 mkdir -p "$HOME/.claude"
 
 if [ -f "$CLAUDE_MD" ] && grep -qF "$CLAUDE_MD_MARKER" "$CLAUDE_MD"; then
-    if grep -qF "$BOTH_TARGETS_MARKER" "$CLAUDE_MD"; then
+    # Whitespace-insensitive: a reflowed CLAUDE.md wraps the sentence across two lines, and a
+    # fixed-string grep then missed it and appended it again on every run.
+    if tr -s ' \n' '  ' < "$CLAUDE_MD" | grep -qF "$BOTH_TARGETS_MARKER"; then
         skip "~/.claude/CLAUDE.md already carries the rule"
     else
         # The section is there but predates the sentence about the competing target.
@@ -380,6 +387,26 @@ PYEOF
     fi
 fi
 
+# A user-scope entry predates the file on a machine set up before 0d64b42 (as `Framelink_Figma_MCP`).
+# Every panel tab would load it next to the file's `framelink` — the same server twice. Named with
+# the command that removes it, never deleted here: a terminal session may rely on it.
+USER_COPIES=$(python3 - <<'PYEOF' 2>/dev/null
+import json, os
+try:
+    data = json.load(open(os.path.expanduser("~/.claude.json")))
+except Exception:
+    raise SystemExit
+for name, e in (data.get("mcpServers") or {}).items():
+    if any("figma-developer-mcp" in str(a) for a in (e.get("args") or [])):
+        print(name)
+PYEOF
+)
+for NAME in $USER_COPIES; do
+    warn "user-scope MCP entry \"$NAME\" runs figma-developer-mcp too — every panel tab loads Framelink twice"
+    printf "     ${DIM}remove it with: claude mcp remove %s -s user${NC}\n" "$NAME"
+    printf "     ${DIM}(a terminal then gets Framelink with: claude --mcp-config %s)${NC}\n" "$MCP_FILE"
+done
+
 # Per-project entries predate the file. Named, never deleted: that is someone else's
 # configuration, and a duplicate is untidy rather than broken.
 PROJECT_COPIES=$(python3 - <<'PYEOF' 2>/dev/null || echo 0
@@ -401,7 +428,7 @@ fi
 
 # --- 7. The rule, so a session knows which of the two tools answers which question -------------
 
-if [ -f "$CLAUDE_MD" ] && grep -qF "$TOOLS_MARKER" "$CLAUDE_MD"; then
+if [ -f "$CLAUDE_MD" ] && grep -qE "$TOOLS_PRESENT_RE" "$CLAUDE_MD"; then
     skip "~/.claude/CLAUDE.md already carries the tool-choice rule"
 else
     [ -f "$CLAUDE_MD" ] && cp "$CLAUDE_MD" "$CLAUDE_MD.bak"
@@ -437,7 +464,15 @@ fi
 
 node -e '
 const fs = require("fs");
-const [settings, command] = process.argv.slice(1);
+const [settings, oursJson] = process.argv.slice(1);
+const ours = JSON.parse(oursJson);
+const build = (paths) => "for f in " + paths.map((p) => JSON.stringify(p)).join(" ")
+  + "; do [ -f \"$f\" ] && { echo \"# Handoff der vorherigen Session ($f) — Stand pruefen, dann fortsetzen:\"; cat \"$f\"; break; }; done; true";
+// The paths an existing hook searches, or null when it is not a `for f in …; do` loop we can read.
+const pathsOf = (cmd) => {
+  const m = /^for f in (.*?); do /.exec(cmd);
+  return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : null;
+};
 let config = {};
 let existed = false;
 try {
@@ -454,6 +489,11 @@ const mine = (h) => typeof h?.command === "string" && h.command.includes("HANDOF
 for (const group of list) {
   const found = (group.hooks || []).find(mine);
   if (!found) continue;
+  const had = pathsOf(found.command);
+  if (!had) { console.log("FOREIGN"); process.exit(0); }
+  // The user\x27s own paths first, in their order; then ours in ours. Replacing the list outright
+  // dropped handoff/HANDOFF.md, and a /clear in ~/.claude printed nothing.
+  const command = build([...had.filter((p) => !ours.includes(p)), ...ours]);
   if (found.command === command) { console.log("PRESENT"); process.exit(0); }
   if (existed) fs.copyFileSync(settings, settings + ".bak");
   found.command = command;
@@ -463,20 +503,21 @@ for (const group of list) {
   process.exit(0);
 }
 const clear = list.find((g) => g.matcher === "clear");
-const entry = { type: "command", command };
+const entry = { type: "command", command: build(ours) };
 if (clear) (clear.hooks = clear.hooks || []).push(entry);
 else list.push({ matcher: "clear", hooks: [entry] });
 if (existed) fs.copyFileSync(settings, settings + ".bak");
 fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
 console.log(existed ? "ADDED" : "CREATED");
-' "$SETTINGS" "$HANDOFF_CMD" > /tmp/fig-handoff-hook.$$ 2>&1
+' "$SETTINGS" "$HANDOFF_PATHS" > /tmp/fig-handoff-hook.$$ 2>&1
 HANDOFF_STATUS=$?
 HANDOFF_RESULT=$(cat /tmp/fig-handoff-hook.$$)
 rm -f /tmp/fig-handoff-hook.$$
 
 case "$HANDOFF_RESULT" in
     PRESENT)  skip "SessionStart handoff hook already installed" ;;
-    UPDATED)  ok "SessionStart handoff hook updated — it was looking in the wrong folder"
+    FOREIGN)  warn "a SessionStart hook reads HANDOFF.md in a form this script does not know — left alone" ;;
+    UPDATED)  ok "SessionStart handoff hook updated — it was missing a folder"
               printf "     ${DIM}backup: %s${NC}\n" "$SETTINGS.bak" ;;
     ADDED)    ok "SessionStart handoff hook added to ~/.claude/settings.json" ;;
     CREATED)  ok "~/.claude/settings.json created with the handoff hook" ;;

@@ -49,6 +49,15 @@
 
 ### Fixed
 
+- **`fig-feedback-setup` on a machine set up before it: four reruns that changed what they should
+  have left alone.** Step 8 replaced the handoff hook's search list and dropped paths the user had
+  added (`handoff/HANDOFF.md` in `~/.claude`); it now keeps them in front of its own. Step 1 missed
+  its own sentence once CLAUDE.md wrapped it across two lines and appended it again; the check is
+  whitespace-insensitive now. Step 7 knew only the German heading and appended a second copy next
+  to the English one. Step 6 names a user-scope `figma-developer-mcp` entry, which every panel tab
+  would load beside the new `framelink` file, with the command that removes it — it never deletes
+  it. `tests/fig-feedback-setup.test.js` runs the script against a temp HOME.
+
 - **Pipe Mode binds to a loaded file, not to Figma's first design tab.** Figma restores its
   tabs on launch without loading them, and a restored tab has no `figma` context. The daemon
   attached to the first design page and failed there every two seconds for hours
