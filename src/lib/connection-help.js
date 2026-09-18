@@ -22,17 +22,24 @@
  */
 
 /**
- * @param {{ panel?: boolean }} [opts]
+ * @param {{ panel?: boolean, reason?: string | null }} [opts]
+ *   `reason` is the daemon's own account of why nothing is attached (`/health.pipeError`,
+ *   e.g. "No loaded design file among 2 open tabs …"). Printed first: a reader who sees the
+ *   reason knows whether to wait, click a tab, or reconnect — the bare hint sent panel sessions
+ *   to a Connect button that was rightly disabled.
  * @returns {string[]} the lines to print, in order, no colour
  */
 export function connectAdvice(opts = {}) {
+  const reason = typeof opts.reason === 'string' && opts.reason.trim() ? ['The daemon says: ' + opts.reason.trim()] : [];
   if (opts.panel) {
     return [
-      'Connect from the panel: the Figma menu in the toolbar → Connect.',
+      ...reason,
+      'Connect from the panel: the Figma menu in the toolbar → Connect' + (reason.length ? ' or Reconnect' : '') + '.',
       'Do not run `connect` yourself here — it can quit a running Figma.'
     ];
   }
   return [
+    ...reason,
     'Check the link, then reconnect if needed:',
     '  figma-cli status             what the daemon thinks it is connected to',
     '  figma-cli daemon restart     a daemon that lost Figma reports cdp:false',

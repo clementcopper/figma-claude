@@ -41,17 +41,64 @@ Append new entries at the end of **Open**; never rewrite one that is already the
 ## Open
 <!-- new entries go here -->
 
-- [ ] `cli` · **One `render` right after a 21 s render answered `✗ Not connected to Figma`; 5 s later everything worked without any action**
+## Done
+
+<!-- triaged entries, each with a → line naming where it went -->
+
+- [x] `cli` · **One `render` right after a 21 s render answered `✗ Not connected to Figma`; 5 s later everything worked without any action**
   **Repro:** the two renders above back to back in one shell loop; the second started ~1 s after the first returned.
   **Observed:** second call exit 1 after 606 ms: `✗ Not connected to Figma` / `Connect from the panel …`. `status` in the same minute: `⚠ Not connected to Figma`, `✓ Daemon running (port 3456)`; Figma PID unchanged (4424), daemon PID 4422 unchanged. After `sleep 5`: `eval '1+1'` → 2, `diagnose` → `✓ Connected to "Designdone" / "CLI Lab"`, the rerun of the second render went through. Another session (triage-smoke-test-feedback) was working against the same daemon at the time, so a concurrent reconnect is possible.
   **Expected:** either the daemon holds the pipe session across calls, or the CLI retries once before printing the panel hint.
   **Context:** fork 1f96d94, Pipe Mode, file Designdone, page CLI Lab, panel session fc-smoke-test, 11 Sep 2026
   → not reproduced (2026-09-11, triage): the daemon logged to nowhere at the time, so that minute cannot be traced. Since 4d092d7 the daemon writes `~/.figma-ds-cli/daemon.log`; on the next sighting, attach the lines around it. Candidate, unproven: a hot-reload of figma-client.js drops the cached CDP client for one request. Three attempts on 2026-09-11 did not reproduce it: a 4 s eval followed at once by a small render (5/5 fine), the 400-pill render followed at once by /health x6 and a render (all ok), and a 5 s synchronous busy loop in the page with the daemon health cache expired (/health answered at once, cdp:true). The daemon pings `1` with a 2 s timeout and caches the answer 30 s, so a ping that lands in a busy moment would show as cdp:false for up to 30 s — but forcing that did not work either.
+  → still open (2026-09-16, triage): not this day's mechanism — here `/health` said *not* connected, in the two 16 Sep entries it said connected with `figma` gone. Since b8d607d the daemon logs every loss with its reason (`[daemon] Pipe: not attached — …`, `[daemon] \`figma\` is gone …`) and `/health.pipeError` carries it, so the next sighting can be read off the log. Keep the two commands and the minute.
+  → fixed the part that is provable (2026-09-18): the hard exit without a second look.
+  `FigmaClient.isConnected()` probes the debug port, which Pipe and Safe Mode never open —
+  measured while the daemon was healthily driving m2trust (`/health` cdp:true,
+  `isConnected()` false). One transient no from `/health` therefore ended the command, which is
+  the 606 ms. Now `connectionVerdict` (`src/lib/connection-gate.js`) asks the daemon a second
+  time through the new `/health/force`, and `serveCachedHealth` keeps a *negative* verdict 2 s
+  instead of 30 — the probe also fails on a Figma that is merely busy. **Still a guess:** that
+  the 11 Sep trigger was the panel's poll landing inside the 21 s render. `.claude/bugs-and-fixes.md`
+  § "Der Port-Test entscheidet in einem portlosen Modus".
 
+- [x] `wish` · **`instantiate` and `duplicate` have no `--parent`/`--page`; nodes land on whatever page Daniel last clicked**
+  **Repro:** `figma-cli instantiate 13690:128805 --count 7` while Daniel had a node on page „User Portal" selected; target page was „Mobile layouts".
+  **Observed:** all seven instances on „User Portal" (`figma-cli eval 'return figma.currentPage.name'` → `User Portal`); happened three times on 16 Sep with instantiate and duplicate, each time fixed by an `eval` with `appendChild`.
+  **Expected:** a `--parent <id>` (like `render`) or `--page <name|id>` option, or at least the page name printed in the success line so the miss is visible.
+  **Context:** figma-cli 2.1.2, Pipe Mode, file m2trust, panel session fc-m2trust-user-portal, 16 Sep 2026.
+  → built (2026-09-18): `--parent <id>` on `instantiate` and `duplicate`, resolved like
+  `render`'s (`src/lib/parent-snippet.js`, shared by all three). A page id is a valid parent, so
+  that covers `--page`. Every success line now names the page. Placement inside a container
+  starts at its origin, and in an auto-layout parent the layout does it; nodes on another page
+  are no longer selected (`figma.currentPage.selection` throws on those).
 
-## Done
+- [x] `docs` · **`render --parent <auto-layout frame>` appends the child into the layout flow; nothing says so, and an overlay landed under the footer**
+  **Repro:** `figma-cli render '<Frame name="Overlay" w={375} h={812} bg="var:Brand/black" opacity={0.5} />' --parent 16572:401075` where the parent is a VERTICAL auto-layout frame.
+  **Observed:** Overlay became the last flow child (y 2960, below the footer), invisible in an 812px clipped frame; needed `layoutPositioning="ABSOLUTE"` via eval afterwards. Also `render '<Text …/>' --parent …` → `✗ Render failed: Invalid JSX: must start with <Frame>`.
+  **Expected:** `docs jsx-syntax` or `render --help` mention that `--parent` into auto-layout means flow placement (and how to get absolute: `position="absolute"` on the root?), and that the root must be `<Frame>`.
+  **Context:** figma-cli 2.1.2, Pipe Mode, file m2trust, 16 Sep 2026 ~13:00.
+  → more than docs (2026-09-18): `position` was accepted for `Frame` but never read on the
+  **root**, so `<Frame position="absolute">` was taken without a warning and dropped. The root
+  reads it now — `layoutPositioning` after the append, with the caller's x/y — and says so when
+  there is no `--parent` to overlay. `docs jsx-syntax` gained the `--parent` block (flow
+  placement, the overlay recipe, root must be `<Frame>`), `render --help` the same in one line.
+  `render --parent` also looks the parent up again after `loadAllPagesAsync`, as the other two
+  commands always did. `.claude/bugs-and-fixes.md` § "Eine Prop, die angenommen und nie gelesen wird".
 
-<!-- triaged entries, each with a → line naming where it went -->
+- [x] `cli` · **`eval` with `await figma.loadAllPagesAsync()` answered, then the next two calls said `✗ Not connected to Figma`; ~1 min later connected again without any action**
+  **Repro:** `figma-cli eval 'await figma.loadAllPagesAsync(); const comps=figma.root.findAll(n=>n.type==="COMPONENT" && /^Icon 24px/.test(n.name) && /menu|burger/i.test(n.name)); return {hits:comps.length}'` — returned a result; then in the same shell call `figma-cli eval '...componentPropertyDefinitions...'` (five getNodeById lookups) and, ~20 s later, `figma-cli status`.
+  **Observed:** both follow-up calls: `✗ Not connected to Figma` / `Connect from the panel …`; `status`: `⚠ Not connected to Figma`, `✓ Daemon running (port 3456)`. `~/.figma-ds-cli/daemon.log` around it: four times `[daemon] Reconnecting CDP before retry...` / `[daemon] CDP reconnect failed: Could not find Figma execution context. Make sure a design file is open.`, then twice `[daemon] Connected to Figma via CDP (Pipe Mode)`. Next `status` (about a minute later, after Daniel had selected nodes in Figma): `Connected to Figma (pipe)`.
+  **Expected:** the execution context stays findable after `loadAllPagesAsync` on a file with 20+ pages, or the CLI says the page load is still running instead of the panel hint.
+  **Context:** figma-cli 2.1.2, Pipe Mode, file m2trust (all pages loaded by that eval), 16 Sep 2026 ~12:30. Looks like the Open entry from 11 Sep (`render` right after a 21 s render), this time with a trigger: the first heavy call after `loadAllPagesAsync`.
+  → same fault as the 14:40 entry below, seen earlier: daemon.log carries 112 × `TypeError: Cannot read properties of undefined (reading 'root')` from the panel's selection poll while `/health` said ok — `figma` gone from the context, the `1`-probe still green. Fixed in b8d607d (probe asks `typeof figma`, lost context is dropped and re-attached) and 0d64b42 (every design tab is tried, reason in `/health.pipeError`); the CLI's "Not connected" now prints that reason (`connectAdvice`). `.claude/bugs-and-fixes.md` § "`figma` Gone While `status` Said Connected".
+
+- [x] `cli` · **`status` says Connected, but every `eval` fails with `Cannot read properties of undefined (reading 'currentPage')` — the `figma` global is gone from the execution context**
+  **Repro:** after ~2 h of normal work in one session (dozens of `eval`/`instantiate`/`duplicate` calls fine), `figma-cli duplicate 16572:400573` → `✗ TypeError: Cannot read properties of undefined (reading 'getNodeByIdAsync')`; then `figma-cli eval 'return typeof figma'` → `undefined`; `figma-cli diagnose` → `✗ Connection failed: TypeError: Cannot read properties of undefined (reading 'root')`.
+  **Observed:** `status`: `Connected to Figma (pipe)` / `File: m2trust – Figma` / daemon running. `files` lists the three open tabs correctly. daemon.log: `[daemon] CDP healthy — error is not connection-related, not retrying`. Daniel had just been selecting nodes on page „User Portal" and the tab URL in `files` now points at page 16572-400572 („Mobile layouts") — a page/tab switch happened right before.
+  **Expected:** either the daemon notices that the evaluated context has no `figma` object and re-acquires the plugin-API context (that is the connection being broken, however healthy the pipe is), or `status` reports it instead of Connected.
+  **Context:** figma-cli 2.1.2, Pipe Mode, Figma 126.7.10, file m2trust, 16 Sep 2026 ~14:40. Not the same as the two `Not connected` entries above: here the pipe is up and the CDP context answers, but without the plugin API.
+  → fixed in b8d607d: the health probe evaluates `typeof figma !== "undefined"` (`src/lib/cdp-health.js`), a client whose context lost it is released and re-attached; the panel's Figma menu offers Reconnect while the pipe is held and nothing is attached. What brought `figma` back that afternoon was reopening the tab (peer session, ~14:50); no renderer crash (all Figma Helper processes from 10:15). `.claude/bugs-and-fixes.md` § "`figma` Gone While `status` Said Connected".
 
 - [x] `cli` · **`eval` prints the return value; `console.log` output never appears**
   **Repro:** `figma-cli eval --file readstyles.js` where the script ends in

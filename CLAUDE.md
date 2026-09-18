@@ -109,7 +109,7 @@ It **hot-reloads `figma-client.js`** by copying it to a temp module when its mti
 | `fig-status` — Figma / link (pipe, plugin or port) / daemon / active file at a glance, all from `/health` | `bin/fig-status` |
 | Non-destructive `connect` — never quits a Figma that is already debuggable | `src/lib/connect-plan.js`, used in `src/commands/setup.js` |
 | Claude Panel — Claude Code in a floating window next to Figma | `app/` (Electron; own `package.json`, own `npm test`) |
-| `fig-feedback-setup` — installs the machine-side half on a new machine: the feedback rule and its hooks, the Framelink MCP server, and the SessionStart hook that prints the handoff after a `/clear` | `bin/fig-feedback-setup`, `.gitattributes` |
+| `fig-feedback-setup` — installs the machine-side half on a new machine: the feedback rule and its hooks, the Framelink MCP file the panel loads per tab (`~/.figma-ds-cli/mcp-framelink.json`, `--mcp-config`), and the SessionStart hook that prints the handoff after a `/clear` | `bin/fig-feedback-setup`, `.gitattributes` |
 
 The `connect` fix is written to be upstreamable (pure function + unit test, no fork specifics). If it lands upstream, drop it here on the next pull.
 

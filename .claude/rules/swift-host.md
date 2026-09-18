@@ -15,6 +15,7 @@ Distilled from `LEARNINGS.md` § Swift host. Stories and measurements there.
 - **A frame set by hand is discarded unless `translatesAutoresizingMaskIntoConstraints` is `true`.** Twice in one afternoon children drew at the same origin while the measurements printed the right rectangles (measured before the discard).
 - **A wrapping view's height depends on the width it has not been given yet.** Override `setFrameSize`, invalidate on width change, propagate upwards; otherwise `intrinsicContentSize` answers the tallest case (212 pt = five stacked rows).
 - **`NSButtonCell` cannot be talked into padding;** a button that needs icon and label with real padding lays them out itself in a stack.
+- **Never fill `dirtyRect` in `draw(_:)`.** With SDK ≥ 14 `clipsToBounds` is false and the rect may exceed the view, so the fill paints over every z-lower sibling — toolbar and strip vanished on the first macOS 26 build. Fill `bounds.intersection(dirtyRect)`; `--render-chrome` measures the separators against the column fill.
 - **A view that implements `draw(_:)` never gets `updateLayer`;** a background set there silently disappears.
 - **Two SF Symbols need macOS 15** (`arrow.trianglehead.*`); `NSImage(systemSymbolName:)` returns nil for unknown names, so every name is asked for with a fallback.
 

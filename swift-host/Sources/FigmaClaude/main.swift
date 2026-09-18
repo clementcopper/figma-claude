@@ -76,9 +76,15 @@ final class TerminalColumn: NSView {
     /// resolves against whatever appearance is current at the moment it is read, so a column
     /// painted once stayed light after the system went dark. Drawing asks the colour again on
     /// every pass, which is what makes it dynamic.
+    ///
+    /// `bounds ∩ dirtyRect`, never `dirtyRect` alone. Linked against the macOS 14+ SDK,
+    /// `clipsToBounds` defaults to false and AppKit may hand `draw(_:)` a rect larger than the
+    /// view; filling it painted white over every sibling below this one in z-order. Measured on
+    /// the first Apple Silicon build (macOS 26, SDK 26.5): toolbar, tab strip and the content
+    /// view's own separators all vanished, while the bands added after this one stayed.
     override func draw(_ dirtyRect: NSRect) {
         NSColor.textBackgroundColor.setFill()
-        dirtyRect.fill()
+        bounds.intersection(dirtyRect).fill()
     }
 
     /// The terminal fills the same colour for everything outside its cells, and it holds an
@@ -429,6 +435,14 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
 
     /// This same binary, invoked as Claude Code's status line command. Nothing else has to be
     /// installed and nothing on the user's PATH is involved.
+    /// The panel's MCP file, only while it exists: a Mac where `fig-feedback-setup` step 6 never
+    /// ran starts its tabs exactly as before. Read per spawn, so installing the file takes effect
+    /// on the next tab without restarting the app.
+    static var panelMcpConfig: String? {
+        let path = panelMcpConfigPath()
+        return FileManager.default.fileExists(atPath: path) ? path : nil
+    }
+
     static var statusLineCommand: String {
         shellPath(Bundle.main.executablePath ?? CommandLine.arguments[0]) + " --statusline"
     }
@@ -467,7 +481,8 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             executable = whichOnPath(config.command, path: environment["PATH"] ?? "")
             args = panelArguments(config: config, sessionName: sessionName,
                                   sessionId: sessionId,
-                                  statusLineCommand: Self.statusLineCommand)
+                                  statusLineCommand: Self.statusLineCommand,
+                                  mcpConfig: Self.panelMcpConfig)
         }
 
         state.append(tab)
@@ -634,17 +649,36 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
                 // arriving before that finds a half-dead app.
                 Thread.sleep(forTimeInterval: 2)
             }
-            return runCli(self.cli, connectArguments(mode: mode), timeout: 120)
+            // With the pin, like `restartDaemon`: `connect` starts the daemon, and a daemon started
+            // without FIGMA_FILE tried Figma's first design tab — a restored, unloaded one — for
+            // hours while the bound file sat behind it.
+            return runCli(self.cli, connectArguments(mode: mode), env: self.pinEnvironment(), timeout: 120)
         }
     }
 
-    /// Restarts the daemon, pinned to the bound file when there is one. `FIGMA_FILE` is the only
-    /// way to say which — the CLI has no flag for it.
+    /// The bound file as the one environment variable the CLI reads for it — the CLI has no flag.
+    /// Shared by `connect` and `restartDaemon`, so both pin the same way.
+    private func pinEnvironment() -> [String: String]? {
+        let pin = PanelConfig.load().figmaFile
+        return pin.isEmpty ? nil : ["FIGMA_FILE": pin]
+    }
+
+    /// Asks the daemon to attach again, pinned to the bound file. The result line comes from
+    /// `/health` like every action's; a failed attach shows the daemon's reason (the same text
+    /// `/health.pipeError` carries).
+    private func reconnectDaemon() {
+        let pin = PanelConfig.load().figmaFile
+        runInBackground(title: "Reconnect") {
+            if let error = daemonReconnect(file: pin) { return CliResult(ok: false, output: error) }
+            return CliResult(ok: true, output: pin.isEmpty ? "Attached" : "Attached to \(pin)")
+        }
+    }
+
+    /// Restarts the daemon, pinned to the bound file when there is one.
     private func restartDaemon() {
         let pin = PanelConfig.load().figmaFile
         runInBackground(title: "Restart daemon") {
-            let result = runCli(self.cli, ["daemon", "restart"],
-                                env: pin.isEmpty ? nil : ["FIGMA_FILE": pin], timeout: 30)
+            let result = runCli(self.cli, ["daemon", "restart"], env: self.pinEnvironment(), timeout: 30)
             // /health needs a moment before it answers; without the wait the menu reads stale.
             Thread.sleep(forTimeInterval: 1.5)
             guard result.ok else { return result }
@@ -886,7 +920,8 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let sessionName = fresh ? mintSessionName(file: file, page: snapshot.page, cwd: old.cwd) : ""
         var args = panelArguments(config: config, sessionName: sessionName,
                                   sessionId: sessionId,
-                                  statusLineCommand: Self.statusLineCommand)
+                                  statusLineCommand: Self.statusLineCommand,
+                                  mcpConfig: Self.panelMcpConfig)
         args.append(contentsOf: extraArgs)
 
         // The old process's exit arrives later, on the main queue — by then `state` no longer
@@ -943,7 +978,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             // Over CDP directly, not `figma-cli files`: a menu is built while the user waits for
             // it to open, and a Node start there is a visible pause. Asked only when the port
             // answers — in Safe Mode there is none, and the request would be a dead wait.
-            files: cdpOk ? listOpenFiles() : [],
+            files: openFiles(health: snapshot.health, cdpOk: cdpOk),
             configuredFile: config.figmaFile,
             snapshotFile: snapshot.file,
             mode: FigmaMode(rawValue: config.figmaMode) ?? .pipe,
@@ -1002,6 +1037,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         guard let action = sender.representedObject as? MenuAction else { return }
         switch action {
         case .connect: connect()
+        case .reconnect: reconnectDaemon()
         case .daemonRestart: restartDaemon()
         case .daemonStop: stopDaemon()
         case .bindFile(let title): bindFile(title)
@@ -1303,7 +1339,7 @@ if CommandLine.arguments.contains("--print-menu") {
         figma: snapshot.status.figma,
         figmaRunning: snapshot.figmaRunning,
         cdpOk: cdpOk,
-        files: cdpOk ? listOpenFiles() : [],
+        files: openFiles(health: snapshot.health, cdpOk: cdpOk),
         configuredFile: config.figmaFile,
         snapshotFile: snapshot.file,
         mode: FigmaMode(rawValue: config.figmaMode) ?? .pipe,

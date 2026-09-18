@@ -15,15 +15,21 @@ public struct Health: Decodable, Equatable {
     /// loading and `cdp` is not yet true — the only signal that Figma is already ours. Without
     /// decoding it the host could not tell "pipe held, connecting" from a broken connection.
     public var pipe: Bool?
+    /// Pipe Mode, not attached: why the daemon's last attempt failed ("No loaded design file
+    /// among 2 open tabs …"). nil while attached, and before the first attempt has failed — so
+    /// its presence separates "still loading" from "the open tabs are restored, not loaded".
+    public var pipeError: String?
     public var file: String?
 
     public init(status: String? = nil, mode: String? = nil,
-                plugin: Bool? = nil, cdp: Bool? = nil, pipe: Bool? = nil, file: String? = nil) {
+                plugin: Bool? = nil, cdp: Bool? = nil, pipe: Bool? = nil, pipeError: String? = nil,
+                file: String? = nil) {
         self.status = status
         self.mode = mode
         self.plugin = plugin
         self.cdp = cdp
         self.pipe = pipe
+        self.pipeError = pipeError
         self.file = file
     }
 }
@@ -163,8 +169,12 @@ public func statusRows(figmaRunning: Bool, cdpOk: Bool, cdpPort: Int,
     } else if connected {
         daemonState = .ok; daemonValue = mode.rawValue
     } else if pipeHeld {
-        // Figma is held over the pipe, its document still loading — not a fault, a wait.
-        daemonState = .warn; daemonValue = "pipe, connecting…"
+        // Figma is held over the pipe but no design tab carries `figma` yet. Before the first
+        // failed attempt that is loading — a wait. Once the daemon has named a reason, the tabs
+        // are restored without their documents, and only a click in Figma loads one; saying
+        // "connecting…" there kept a user waiting on something that would never come.
+        daemonState = .warn
+        daemonValue = health?.pipeError == nil ? "pipe, connecting…" : "pipe, no file loaded — click its tab"
     } else if mode == .safe {
         daemonState = .warn; daemonValue = "safe, waiting for plugin"
     } else {

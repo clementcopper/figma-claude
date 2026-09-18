@@ -42,9 +42,15 @@ CLAUDE_MD_MARKER="## figma-cli Feedback"
 BOTH_TARGETS_MARKER="A project's own LEARNINGS.md does not replace it"
 SWEEP_MARKER="Sweep for CLI feedback"
 
-# Step 6. The MCP server keeps Framelink's name so an existing per-project entry is recognised
-# rather than duplicated under a second name.
-MCP_NAME="Framelink_Figma_MCP"
+# Step 6. Framelink goes into a file the panel loads per tab (`--mcp-config`), not into
+# ~/.claude.json: Daniel wants it on the whole machine but off by default, on only in Figma Claude
+# sessions — and Claude Code has no "user scope, disabled unless asked" (`/mcp` disables per
+# project). The server keeps the name the existing per-project entry carries, so a project that
+# disabled `framelink` keeps it disabled in the panel too. The path is mirrored in
+# `swift-host/Sources/FigmaClaudeCore/PanelConfig.swift` (`panelMcpConfigPath`); CoreChecks
+# compares the two spellings.
+MCP_NAME="framelink"
+MCP_FILE="$HOME/.figma-ds-cli/mcp-framelink.json"
 KEYCHAIN_ACCOUNT="figma-api-key"
 # Same keychain service `src/credentials.js` uses, so the key has one home rather than two.
 KEYCHAIN_SERVICE="figma-cli"
@@ -266,48 +272,65 @@ else
     printf "     ${DIM}fix: cd %s/app && npm run install:app${NC}\n" "$REPO"
 fi
 
-# --- 6. Framelink MCP, so every session on this machine can read a file it did not build -------
+# --- 6. Framelink MCP, so a panel session can read a file it did not build ----------------------
 #
 # Framelink reads Figma over the REST API; figma-cli drives the live document. Neither replaces
 # the other, and a session that has only one of them does the other one's job badly. The
 # measurements behind the division of labour are in `figma-cli docs framelink`.
+#
+# Installed as a file, loaded per panel tab — see the note at MCP_FILE. A terminal session that
+# wants it says `claude --mcp-config "$MCP_FILE"`.
 
-if ! command -v claude >/dev/null 2>&1; then
-    skip "claude CLI not on PATH — cannot register an MCP server"
-elif claude mcp list 2>/dev/null | grep -q "$MCP_NAME"; then
-    skip "$MCP_NAME already registered"
+# The file counts as installed when it holds a key. `claude mcp list` is the wrong probe: it is
+# cwd-dependent and would report a per-project entry as "installed".
+mcp_file_has_key() {
+    python3 - "$MCP_FILE" "$MCP_NAME" <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    entry = json.load(open(sys.argv[1]))["mcpServers"][sys.argv[2]]
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if (entry.get("env") or {}).get("FIGMA_API_KEY") else 1)
+PYEOF
+}
+
+if mcp_file_has_key; then
+    skip "$MCP_NAME already installed for Figma Claude sessions ($MCP_FILE)"
 else
     # The keychain is the source; ask only when it has nothing. `-w` prints the secret, so it is
     # never echoed and never passed through a file.
     KEY="$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null || true)"
-    # Nothing in the keychain, but the key is probably already here: the per-project entries in
-    # ~/.claude.json carry it inline. Adopt it rather than asking — Figma shows a personal access
-    # token exactly once, at creation, so "paste your token" means "make a new one" for anyone
-    # who set this up months ago. Captured into a variable, never printed.
+    # Nothing in the keychain, but the key is probably already here: an entry in ~/.claude.json
+    # (any scope, any name — the one on this Mac was `framelink`, Framelink's own docs say
+    # `Framelink_Figma_MCP`) carries it as `--figma-api-key=` or as env. Recognised by the command
+    # it runs, `figma-developer-mcp`, not by a name we would have given it. Adopt it rather than
+    # asking — Figma shows a personal access token exactly once, at creation, so "paste your
+    # token" means "make a new one" for anyone who set this up months ago. Captured into a
+    # variable, never printed.
     if [ -z "$KEY" ]; then
-        KEY="$(python3 - "$MCP_NAME" <<'PYEOF' 2>/dev/null || true
-import json, os, re, sys
-name = sys.argv[1]
+        KEY="$(python3 - <<'PYEOF' 2>/dev/null || true
+import json, os, re
 try:
     data = json.load(open(os.path.expanduser("~/.claude.json")))
 except Exception:
     raise SystemExit
 for scope in [data, *(data.get("projects") or {}).values()]:
-    entry = (scope.get("mcpServers") or {}).get(name)
-    if not entry:
-        continue
-    for arg in entry.get("args") or []:
-        hit = re.fullmatch(r"--figma-api-key=(.+)", arg)
-        if hit:
-            print(hit.group(1)); raise SystemExit
-    for key in ("FIGMA_API_KEY", "FIGMA_ACCESS_TOKEN"):
-        if (entry.get("env") or {}).get(key):
-            print(entry["env"][key]); raise SystemExit
+    for entry in (scope.get("mcpServers") or {}).values():
+        args = entry.get("args") or []
+        if not any("figma-developer-mcp" in str(a) for a in args):
+            continue
+        for arg in args:
+            hit = re.fullmatch(r"--figma-api-key=(.+)", str(arg))
+            if hit:
+                print(hit.group(1)); raise SystemExit
+        for key in ("FIGMA_API_KEY", "FIGMA_ACCESS_TOKEN"):
+            if (entry.get("env") or {}).get(key):
+                print(entry["env"][key]); raise SystemExit
 PYEOF
 )"
         if [ -n "$KEY" ]; then
             security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w "$KEY" -U 2>/dev/null \
-                && ok "adopted the key from an existing $MCP_NAME entry, saved to the keychain" \
+                && ok "adopted the key from an existing figma-developer-mcp entry, saved to the keychain" \
                 || warn "adopted the key from an existing entry — could not write the keychain"
         fi
     fi
@@ -323,41 +346,57 @@ PYEOF
         if [ -n "$KEY" ]; then
             security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w "$KEY" -U 2>/dev/null \
                 && ok "key saved to the login keychain" \
-                || warn "could not write the keychain — registering anyway, the key is not remembered"
+                || warn "could not write the keychain — installing anyway, the key is not remembered"
         fi
     fi
 
     if [ -z "$KEY" ] && [ ! -t 0 ]; then
-        skip "no Figma API key and no terminal to ask — run this from a shell to register Framelink"
+        skip "no Figma API key and no terminal to ask — run this from a shell to install Framelink"
     elif [ -z "$KEY" ]; then
-        skip "no Figma API key — run again to register Framelink"
-    # --scope user is the point: today the same key sits once per project in ~/.claude.json.
-    elif claude mcp add --scope user "$MCP_NAME" -- \
-            npx -y figma-developer-mcp "--figma-api-key=$KEY" --stdio >/dev/null 2>&1; then
-        ok "$MCP_NAME registered for every project (user scope)"
-        # Say what the storage actually is. Claude Code writes MCP arguments in the clear, so the
-        # keychain is the source and ~/.claude.json is a copy — assuming otherwise is the risk.
-        printf "     ${DIM}Claude Code stores MCP arguments in plain text in ~/.claude.json.${NC}\n"
+        skip "no Figma API key — run again to install Framelink"
+    # The key travels as env inside the file, never as an argument: `ps` and `claude mcp list`
+    # both show a server's command line. Written by Python from the variable — no shell
+    # interpolation into JSON — with the file created 0600 (umask) before the key lands in it.
+    elif (umask 077 && mkdir -p "$(dirname "$MCP_FILE")" && FIGMA_KEY="$KEY" python3 - "$MCP_FILE" "$MCP_NAME" <<'PYEOF'
+import json, os, sys
+path, name = sys.argv[1], sys.argv[2]
+doc = {"mcpServers": {name: {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "figma-developer-mcp", "--stdio"],
+    "env": {"FIGMA_API_KEY": os.environ["FIGMA_KEY"]},
+}}}
+with open(path, "w") as f:
+    json.dump(doc, f, indent=2)
+    f.write("\n")
+os.chmod(path, 0o600)
+PYEOF
+    ); then
+        ok "$MCP_NAME installed for Figma Claude sessions ($MCP_FILE)"
+        printf "     ${DIM}loaded per panel tab with --mcp-config; a terminal gets it with: claude --mcp-config %s${NC}\n" "$MCP_FILE"
+        printf "     ${DIM}the key sits in that file (mode 600) — the keychain is the source, the file a copy.${NC}\n"
     else
-        warn "claude mcp add failed — run it by hand: claude mcp add --scope user $MCP_NAME -- npx -y figma-developer-mcp --figma-api-key=… --stdio"
+        warn "could not write $MCP_FILE — check the directory and run again"
     fi
 fi
 
-# Per-project copies predate the user-scope entry. Named, never deleted: that is someone else's
+# Per-project entries predate the file. Named, never deleted: that is someone else's
 # configuration, and a duplicate is untidy rather than broken.
-PROJECT_COPIES=$(python3 - "$MCP_NAME" <<'PYEOF' 2>/dev/null || echo 0
-import json, os, sys
-name = sys.argv[1]
+PROJECT_COPIES=$(python3 - <<'PYEOF' 2>/dev/null || echo 0
+import json, os
 try:
     data = json.load(open(os.path.expanduser("~/.claude.json")))
 except Exception:
     print(0); raise SystemExit
-print(sum(1 for v in (data.get("projects") or {}).values() if name in (v.get("mcpServers") or {})))
+def runs_framelink(entry):
+    return any("figma-developer-mcp" in str(a) for a in (entry.get("args") or []))
+print(sum(1 for v in (data.get("projects") or {}).values()
+          for e in (v.get("mcpServers") or {}).values() if runs_framelink(e)))
 PYEOF
 )
 if [ "${PROJECT_COPIES:-0}" -gt 0 ]; then
-    warn "$PROJECT_COPIES project(s) still carry their own $MCP_NAME entry with the key inline"
-    printf "     ${DIM}the user-scope entry covers them; remove them with /mcp in that project${NC}\n"
+    warn "$PROJECT_COPIES project(s) carry their own figma-developer-mcp entry with the key inline"
+    printf "     ${DIM}they keep working there; the panel file covers every other project${NC}\n"
 fi
 
 # --- 7. The rule, so a session knows which of the two tools answers which question -------------
@@ -374,7 +413,8 @@ Fremdes Layout lesen — Struktur, Text, Textstile beim Namen, Instanzen: Framel
 Alles Schreibende: figma-cli. Auch lesend figma-cli, wo die Antwort vollstaendig oder wahr sein
 muss — Variablen und Bindungen (Framelink loest zu Hex auf, Dark Mode wird unsichtbar), versteckte
 Knoten (fallen ersatzlos weg) und Vektoren (kommen leer, und die gemeldete ID ist die des
-Wrappers). Belege: \`figma-cli docs framelink\`.
+Wrappers). Belege: \`figma-cli docs framelink\`. Framelink ist nur in Figma-Claude-Sessions
+geladen (per Tab via --mcp-config); im Terminal: \`claude --mcp-config ~/.figma-ds-cli/mcp-framelink.json\`.
 EOF
     ok "tool-choice rule appended to ~/.claude/CLAUDE.md"
     [ -f "$CLAUDE_MD.bak" ] && printf "     ${DIM}backup: %s${NC}\n" "$CLAUDE_MD.bak"

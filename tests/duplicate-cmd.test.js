@@ -58,3 +58,22 @@ describe('duplicateByIdCode', () => {
     assert.doesNotMatch(code, /abc/);
   });
 });
+
+describe('duplicateByIdCode with --parent', () => {
+  it('puts the copy where the caller said, and leaves the instance rule to the other path', () => {
+    const code = duplicateByIdCode('1:2', 20, { parent: '9:9' });
+    assert.doesNotThrow(() => new Function(`return ${code}`));
+    assert.match(code, /__p\.appendChild\(clone\)/);
+    assert.doesNotMatch(code, /outer\.parent\.appendChild\(clone\)/);
+    // An auto-layout parent places its children; the offset would fight it.
+    assert.match(code, /if \(!\(__p\.layoutMode && __p\.layoutMode !== 'NONE'\)\) \{ clone\.x \+= 20/);
+    // The parent is resolved before the clone exists, so a wrong id leaves nothing behind.
+    assert.ok(code.indexOf('Parent not found') < code.indexOf('node.clone()'));
+  });
+
+  it('names the page it landed on', () => {
+    for (const opts of [undefined, { parent: '9:9' }]) {
+      assert.match(duplicateByIdCode('1:2', 20, opts), /on page "' \+ __page\.name \+ '"/);
+    }
+  });
+});

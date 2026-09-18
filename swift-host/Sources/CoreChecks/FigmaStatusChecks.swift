@@ -124,6 +124,15 @@ enum FigmaStatusTests {
             Checks.expect(pipeLoading[1].state, .warn)
             Checks.expect(pipeLoading[1].value, "pipe, connecting…")
 
+            // Pipe held, and the daemon has said why it is not attached: the open tabs are
+            // restored without their documents. Waiting will not fix that — the row says what will.
+            let pipeUnloaded = statusRows(figmaRunning: true, cdpOk: false, cdpPort: 9222,
+                                          health: Health(mode: "pipe", cdp: false, pipe: true,
+                                                         pipeError: "No loaded design file among 2 open tabs (Bosch, m2trust)."),
+                                          mode: .pipe)
+            Checks.expect(pipeUnloaded[1].state, .warn)
+            Checks.expect(pipeUnloaded[1].value, "pipe, no file loaded — click its tab")
+
             // Pipe connected: cdp true once the design context attached. Two dots, both green.
             let pipeUp = statusRows(figmaRunning: true, cdpOk: true, cdpPort: 9222,
                                     health: Health(mode: "pipe", cdp: true, pipe: true), mode: .pipe)

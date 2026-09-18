@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { deletePlan, deleteNodesCode, formatDeleteResult } from '../lib/delete-nodes.js';
 import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
 import { join } from 'path';
+import { resolveParentCode, pageOfCode } from '../lib/parent-snippet.js';
 import {
   program,
   buildNodeSelector,
@@ -401,11 +402,13 @@ program
  *   instance that is a place nobody can move it out of. It goes next to the OUTERMOST instance
  *   instead, which is the sibling the reporter expected.
  */
-export function duplicateByIdCode(nodeId, offset) {
+export function duplicateByIdCode(nodeId, offset, options = {}) {
   const step = Number(offset);
   const delta = Number.isFinite(step) ? step : 20;
+  const hasParent = options.parent !== undefined && options.parent !== null && options.parent !== '';
   return `(async () => {
 const id = ${JSON.stringify(nodeId)};
+${resolveParentCode(options.parent)}
 let node = await figma.getNodeByIdAsync(id);
 if (!node) {
   // Only now: on a large file this walk is expensive, and the common case is a loaded page.
@@ -417,6 +420,11 @@ if (!node) return 'Node not found — searched every page of this file. Wrong id
 let outer = null, p = node.parent;
 while (p) { if (p.type === 'INSTANCE') outer = p; p = p.parent; }
 const clone = node.clone();
+${hasParent ? `
+// --parent wins over both defaults: the caller named where this belongs.
+__p.appendChild(clone);
+// In an auto-layout parent the layout places it; anywhere else the offset keeps it off the original.
+if (!(__p.layoutMode && __p.layoutMode !== 'NONE')) { clone.x += ${delta}; clone.y += ${delta}; }` : `
 if (outer && outer.parent) {
   outer.parent.appendChild(clone);
   clone.x = outer.x + ${delta};
@@ -424,22 +432,34 @@ if (outer && outer.parent) {
 } else {
   clone.x += ${delta};
   clone.y += ${delta};
-}
+}`}
+const __page = ${pageOfCode('clone')};
 figma.currentPage.selection = clone.parent === figma.currentPage ? [clone] : [];
-return 'Duplicated: ' + clone.id + (outer ? ' (out of instance ' + outer.name + ')' : '');
+return 'Duplicated: ' + clone.id + (outer ? ' (out of instance ' + outer.name + ')' : '')
+  + (__page ? ' on page "' + __page.name + '"' : '');
 })()`;
 }
 
 /** Same, for the current selection. `clone()` already lands them as siblings, so only the offset. */
-export function duplicateSelectionCode(offset) {
+export function duplicateSelectionCode(offset, options = {}) {
   const step = Number(offset);
   const delta = Number.isFinite(step) ? step : 20;
+  const hasParent = options.parent !== undefined && options.parent !== null && options.parent !== '';
   return `(async () => {
+${resolveParentCode(options.parent)}
 const sel = figma.currentPage.selection;
 if (sel.length === 0) return 'No selection';
 const clones = sel.map(n => { const c = n.clone(); c.x += ${delta}; c.y += ${delta}; return c; });
+${hasParent ? `
+const flow = !!(__p.layoutMode && __p.layoutMode !== 'NONE');
+for (const c of clones) { __p.appendChild(c); if (flow) { /* the layout places it */ } }
+const __page = ${pageOfCode('clones[0]')};
+if (__page === figma.currentPage) figma.currentPage.selection = clones;
+return 'Duplicated ' + clones.length + ' element' + (clones.length === 1 ? '' : 's')
+  + (__page ? ' on page "' + __page.name + '"' : '');` : `
 figma.currentPage.selection = clones;
-return 'Duplicated ' + clones.length + ' element' + (clones.length === 1 ? '' : 's');
+return 'Duplicated ' + clones.length + ' element' + (clones.length === 1 ? '' : 's')
+  + ' on page "' + figma.currentPage.name + '"';`}
 })()`;
 }
 
@@ -448,14 +468,15 @@ program
   .alias('dup')
   .description('Duplicate node by ID or current selection')
   .option('--offset <n>', 'Offset from original', '20')
+  .option('--parent <id>', 'Node to put the copy in — a frame, or a page id to put it on that page')
   .action(async (nodeId, options) => {
     // The daemon, not the sync fallback: with the daemon holding the CDP connection, the
     // per-command direct path never attached and every `duplicate` died after 60 s with
     // `spawnSync /bin/sh ETIMEDOUT` — a plain top-level frame included.
     await checkConnection();
     const code = nodeId
-      ? duplicateByIdCode(nodeId, options.offset)
-      : duplicateSelectionCode(options.offset);
+      ? duplicateByIdCode(nodeId, options.offset, { parent: options.parent })
+      : duplicateSelectionCode(options.offset, { parent: options.parent });
     const res = await fastEval(code);
     console.log(typeof res === 'string' ? res : JSON.stringify(res));
   });

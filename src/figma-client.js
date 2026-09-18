@@ -7,7 +7,8 @@
 
 import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
-import { designTargets } from './lib/figma-pipe.js';
+import { designTargets, pipeCandidates } from './lib/figma-pipe.js';
+import { resolveParentCode } from './lib/parent-snippet.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle, suggestStyleNames } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
@@ -417,21 +418,40 @@ export class FigmaClient {
   async connectViaPipe(transport, pageTitle = null, { timeoutMs = 15000 } = {}) {
     const answer = await transport.send('Target.getTargets', {}, undefined, { timeoutMs });
     if (answer.error) throw new Error(answer.error.message || 'Target.getTargets failed');
-    const pages = designTargets(answer.result?.targetInfos).filter(p => /figma\.com\/(design|file)\//.test(p.url));
-    const page = pageTitle ? pages.find(p => p.title.includes(pageTitle)) : pages[0];
-    if (!page) {
-      throw new Error('No Figma design file open. Please open a design file in Figma Desktop.');
+    const candidates = pipeCandidates(designTargets(answer.result?.targetInfos), pageTitle);
+    if (candidates.length === 0) {
+      throw new Error(pageTitle
+        ? `No open Figma design file matches "${pageTitle}". Open it in Figma Desktop.`
+        : 'No Figma design file open. Please open a design file in Figma Desktop.');
     }
-    this.pageTitle = page.title;
-    this.pageUrl = page.url;
-    const typeMatch = page.url.match(/figma\.com\/(design|file)\//);
-    this.fileType = typeMatch ? typeMatch[1] : 'unknown';
 
-    const attached = await transport.send('Target.attachToTarget', { targetId: page.id, flatten: true }, undefined, { timeoutMs });
-    if (attached.error || !attached.result?.sessionId) {
-      throw new Error(attached.error?.message || 'Target.attachToTarget gave no session');
+    // Every candidate in turn, not the first one: Figma restores its tabs on launch without
+    // loading them, and a restored tab has no `figma` context. The first design page was a
+    // restored one for hours while the loaded file sat right behind it. `_attachSocket` gives up
+    // on a page without the context in about half a second and closes its session, so trying
+    // the next one is cheap.
+    const failures = [];
+    for (const page of candidates) {
+      const attached = await transport.send('Target.attachToTarget', { targetId: page.id, flatten: true }, undefined, { timeoutMs });
+      if (attached.error || !attached.result?.sessionId) {
+        failures.push(`${page.title}: ${attached.error?.message || 'Target.attachToTarget gave no session'}`);
+        continue;
+      }
+      try {
+        await this._attachSocket(transport.session(attached.result.sessionId), { timeoutMs });
+      } catch (error) {
+        failures.push(`${page.title}: ${error.message}`);
+        continue;
+      }
+      this.pageTitle = page.title;
+      this.pageUrl = page.url;
+      const typeMatch = page.url.match(/figma\.com\/(design|file)\//);
+      this.fileType = typeMatch ? typeMatch[1] : 'unknown';
+      return this;
     }
-    return this._attachSocket(transport.session(attached.result.sessionId), { timeoutMs });
+    const names = candidates.map((p) => p.title.replace(/ – Figma$/, '')).join(', ');
+    throw new Error(`No loaded design file among ${candidates.length} open tab${candidates.length === 1 ? '' : 's'} (${names}). `
+      + 'Click the file\'s tab in Figma so it loads. ' + failures.join('; '));
   }
 
   /** The open design files as `/json` lists them, read over the pipe. */
@@ -612,7 +632,9 @@ export class FigmaClient {
       const error = result.result.exceptionDetails;
       // Get the actual error message - Figma puts detailed errors in exception.value
       const errorValue = error.exception?.value || error.exception?.description || error.text || 'Evaluation error';
-      throw new Error(errorValue);
+      // Raised by the code inside Figma, so the code ran — the daemon must not run it again
+      // (src/lib/exec-retry.js). Transport and protocol errors above carry no flag.
+      throw Object.assign(new Error(errorValue), { fromFigma: true });
     }
 
     return result.result?.result?.value;
@@ -2118,6 +2140,11 @@ export class FigmaClient {
     const strokeAlignProp = props.strokeAlign || null;
     const rounded = props.rounded || props.radius || 0;
     const flex = props.flex || DEFAULT_FLEX;
+    // `position` was in the accepted prop list for Frame (src/lib/jsx-props.js) but the ROOT
+    // never read it: `<Frame position="absolute">` passed without a warning and was dropped in
+    // silence, so an overlay rendered into an auto-layout --parent joined the flow and landed
+    // below the footer (FEEDBACK.md, 16 Sep 2026).
+    const rootAbsolute = props.position === 'absolute';
     const gap = props.gap || 0;
     const p = props.p || props.padding || 0;
     const px = props.px || p;
@@ -2325,10 +2352,15 @@ export class FigmaClient {
         ${opts.parent ? `
         // --parent: re-home the finished frame. Done AFTER the children exist
         // so an auto-layout parent measures real content, not the seed size.
-        const __p = await figma.getNodeByIdAsync(${JSON.stringify(String(opts.parent))});
-        if (!__p) throw new Error('Parent not found: ' + ${JSON.stringify(String(opts.parent))});
-        if (!('appendChild' in __p)) throw new Error('Parent cannot contain children: ' + __p.type);
+        ${resolveParentCode(opts.parent)}
         __p.appendChild(frame);
+        ${rootAbsolute ? `
+        // position="absolute" on the root: overlay the parent instead of joining its flow.
+        // layoutPositioning exists only inside auto-layout; everywhere else x/y alone place it.
+        // Set after the append, because appending re-homes the coordinates set further up.
+        if (__p.layoutMode && __p.layoutMode !== 'NONE') { frame.layoutPositioning = 'ABSOLUTE'; }
+        frame.x = ${cliX !== undefined ? cliX : (Number(props.x) || 0)};
+        frame.y = ${y};` : ''}
         ${rootFill.applyAfterAppend ? `
         // w/h="fill" can only be set once the frame HAS a parent, and only if
         // that parent uses auto-layout — hence here and not up with the other
@@ -2339,6 +2371,7 @@ export class FigmaClient {
         } else {
           globalThis.__layoutWarnings.push(${JSON.stringify(`"${name}" fills ${[fillWidth && 'width', fillHeight && 'height'].filter(Boolean).join(' and ')}, but the --parent frame has no auto-layout`)});
         }` : ''}` : ''}
+        ${rootAbsolute && !opts.parent ? `globalThis.__layoutWarnings.push(${JSON.stringify(`"${name}" has position="absolute" but no --parent — a top-level frame is placed by x/y alone`)});` : ''}
         ${rootFill.warnings.map(w => `globalThis.__layoutWarnings.push(${JSON.stringify(w)});`).join('\n        ')}
 
         // Surface unresolved var: references like the batch path does, so a

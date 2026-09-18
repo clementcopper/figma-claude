@@ -27,9 +27,11 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { spawn } from 'child_process';
 import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
 import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
-import { spawnFigmaWithPipe, inheritedPipe } from './lib/figma-pipe.js';
+import { spawnFigmaWithPipe, inheritedPipe, successorEnv } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
+import { probeCdpClient, serveCachedHealth } from './lib/cdp-health.js';
+import { retryVerdict, failureLine } from './lib/exec-retry.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -149,10 +151,12 @@ let cdpClient = null;
 let isCdpConnecting = false;
 let lastHealthCheck = 0;
 let lastHealthResult = false;
-const HEALTH_CACHE_MS = 30000; // Cache health for 30 seconds (reduces overhead)
 
 // Figma's debugging pipe (Pipe Mode): { transport, toBrowser, fromBrowser, child? }
 let pipe = null;
+// Why the last pipe connect attempt failed, null once attached. Reported in /health so the panel
+// can say "no loaded file — click its tab" instead of "connecting…" forever.
+let pipeError = null;
 let handingOff = false;
 
 // Plugin Client (Safe Mode)
@@ -168,25 +172,28 @@ async function isCdpHealthy(forceCheck = false) {
   if (!cdpClient || !cdpClient.ws) return false;
   if (cdpClient.ws.readyState !== 1) return false;
 
-  // Use cached result if recent (avoids constant eval calls)
+  // Cached while it is worth caching. A positive keeps for half a minute; a negative only for
+  // one panel poll, because the probe also fails on a Figma that is merely busy — a 21 s render
+  // used to leave every command saying "Not connected" for the next 30 seconds
+  // (src/lib/cdp-health.js).
   const now = Date.now();
-  if (!forceCheck && now - lastHealthCheck < HEALTH_CACHE_MS) {
+  if (!forceCheck && serveCachedHealth(lastHealthResult, now - lastHealthCheck)) {
     return lastHealthResult;
   }
 
-  try {
-    const result = await Promise.race([
-      cdpClient.eval('1'), // Simple eval, just check connection works
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-    ]);
-    lastHealthCheck = now;
-    lastHealthResult = result === 1;
-    return lastHealthResult;
-  } catch {
-    lastHealthCheck = now;
-    lastHealthResult = false;
-    return false;
+  // Asks for `figma`, not for `1`: `1` evaluates in any context, so a Figma that dropped its
+  // plugin realm mid-session still read as Connected while every command failed. A client whose
+  // context lost `figma` is released here, so the next request (and the pipe loop) attach anew
+  // instead of evaluating into a realm without the Plugin API. See src/lib/cdp-health.js.
+  const verdict = await probeCdpClient(cdpClient, { timeoutMs: 2000 });
+  lastHealthCheck = now;
+  lastHealthResult = verdict === 'healthy';
+  if (verdict === 'no-figma' && !isCdpConnecting) {
+    console.log('[daemon] `figma` is gone from the bound execution context — dropping the client to re-attach');
+    try { cdpClient.close(); } catch {}
+    cdpClient = null;
   }
+  return lastHealthResult;
 }
 
 async function getCdpClient() {
@@ -358,10 +365,13 @@ async function handleRequest(req, res) {
   resetIdleTimer();
 
   // Health check
-  if (req.url === '/health') {
+  // `/health/force` skips the cache. Pipe and Safe Mode have no debug port, so a command there
+  // has no second opinion to fall back on — it asks this route once before it declares the
+  // connection lost (src/lib/connection-gate.js).
+  if (req.url === '/health' || req.url === '/health/force') {
     const mode = getMode();
     const pluginConnected = isPluginConnected();
-    const cdpHealthy = await isCdpHealthy();
+    const cdpHealthy = await isCdpHealthy(req.url === '/health/force');
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -372,6 +382,9 @@ async function handleRequest(req, res) {
       // Pipe Mode: this daemon holds Figma's debugging pipe. `cdp` says whether a file is
       // attached; `pipe` says Figma is ours even while it is still loading.
       pipe: MODE === 'pipe' && !!pipe && !pipe.transport.closed,
+      // Pipe Mode, not attached: why the last attempt failed (the loop keeps trying). null when
+      // attached or before the first attempt has failed.
+      pipeError: MODE === 'pipe' && !cdpHealthy ? pipeError : null,
       // Which open file this daemon is bound to. The CLI compares it against
       // FIGMA_FILE and rebinds when they diverge — otherwise commands silently
       // hit whichever file happened to be first when the daemon started.
@@ -415,6 +428,10 @@ async function handleRequest(req, res) {
       res.end(JSON.stringify({ error: 'Not in Pipe Mode, or the pipe is closed' }));
       return;
     }
+    // `daemon restart` sends the pin it runs under (`{file}`); the successor must start with it,
+    // or the panel's "Bind file" — which is exactly a pinned restart — lost the pin in the handoff.
+    const handoffBody = await readJsonBody(req);
+    const pinnedFile = handoffBody && typeof handoffBody.file === 'string' ? handoffBody.file : '';
     let successor;
     // The successor opens the log itself (append) rather than inheriting this process's
     // stdout: a daemon that predates the log file has none to hand down, and every later
@@ -425,7 +442,7 @@ async function handleRequest(req, res) {
       successor = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
         detached: true,
         stdio: ['ignore', logFd, logFd, pipe.toBrowser, pipe.fromBrowser],
-        env: { ...process.env, DAEMON_MODE: 'pipe', FIGMA_PIPE_INHERIT: '1', FIGMA_PIPE_LAUNCH: '' },
+        env: successorEnv(process.env, pinnedFile),
       });
       successor.unref();
     } catch (error) {
@@ -483,9 +500,14 @@ async function handleRequest(req, res) {
       if (received > MAX_BODY_BYTES) {
         if (!tooLarge) {
           tooLarge = true;
-          res.writeHead(413, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `Request body over ${MAX_BODY_BYTES / 1024 / 1024} MB` }));
-          req.destroy();
+          // Stop reading, answer, and only then tear the socket down. `req.destroy()` straight
+          // after `res.end()` destroys the socket the answer still rides on: the client then got
+          // ECONNRESET instead of the 413, which is a thrown `fetch` rather than a status. It
+          // depended on load — the full suite saw it three times, the test file alone never.
+          req.pause();
+          res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
+          res.end(JSON.stringify({ error: `Request body over ${MAX_BODY_BYTES / 1024 / 1024} MB` }),
+            () => req.destroy());
         }
         return;
       }
@@ -562,14 +584,19 @@ async function handleRequest(req, res) {
           return;
         } catch (error) {
           lastError = error;
-          console.log(`[daemon] Attempt ${attempt + 1} failed: ${error.message}`);
+          console.log(failureLine(attempt, error));
 
-          // NEVER retry a mutating render: executeEval may have already created
-          // the frame before the response errored (a transient CDP hiccup under
-          // load, e.g. several heavy files open). Retrying re-runs the render
-          // code and silently produces a DUPLICATE frame. Fail fast instead —
-          // a clear error beats a phantom copy. (Reads/eval may still retry.)
-          if (payload.action === 'render' || payload.action === 'render-batch') break;
+          // Two things are never run twice, whatever the health probe says (src/lib/exec-retry.js):
+          // a mutating render — executeEval may have created the frame before the answer
+          // failed, and a second run is a duplicate frame — and an error Figma itself raised,
+          // because then the code ran up to the throw and a second run repeats every mutation
+          // before it. Only a transport fault may reconnect and try again.
+          const verdict = retryVerdict({ action: payload.action, attempt, maxRetries: MAX_RETRIES, error });
+          if (verdict === 'mutating') break;
+          if (verdict === 'from-figma') {
+            console.log('[daemon] Raised inside Figma — the code ran, not retrying');
+            break;
+          }
 
           // For Safe Mode: wait briefly for potential reconnect
           if (attempt < MAX_RETRIES && MODE === 'plugin') {
@@ -808,7 +835,18 @@ function openPipe() {
 async function pipeConnectLoop() {
   while (pipe && !pipe.transport.closed && !handingOff) {
     if (!(cdpClient && cdpClient.ws && cdpClient.ws.readyState === 1)) {
-      try { await getCdpClient(); } catch { /* not yet */ }
+      try {
+        await getCdpClient();
+        pipeError = null;
+      } catch (error) {
+        // Logged when it changes, not every two seconds: the reason is what matters ("no loaded
+        // design file among 2 open tabs"), and it used to be swallowed entirely.
+        const message = error && error.message ? error.message : String(error);
+        if (message !== pipeError) console.log(`[daemon] Pipe: not attached — ${message}`);
+        pipeError = message;
+      }
+    } else {
+      pipeError = null;
     }
     await new Promise((r) => setTimeout(r, 2000));
   }

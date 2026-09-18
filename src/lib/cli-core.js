@@ -17,6 +17,7 @@ import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, parse
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
 import { connectAdvice, inPanel, timeoutMessage } from './connection-help.js';
+import { connectionVerdict } from './connection-gate.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
 import { isOurDaemon } from './daemon-owner.js';
 import { ensureDaemonToken as ensureTokenFile } from './daemon-token.js';
@@ -437,7 +438,19 @@ function writeTempJson(obj) {
 async function ensureDaemonRunning(maxWaitMs = 5000) {
   const pipeMode = (() => { try { return loadConfig().mode === 'pipe'; } catch { return false; } })();
   const mismatched = isDaemonRunning() && daemonPinMismatch();
-  if (isDaemonRunning() && !mismatched) return true;
+  if (isDaemonRunning() && !mismatched) {
+    // Pipe Mode, pin set, daemon attached to nothing yet (`file: null`): its loop is trying
+    // whatever Figma lists first. Point it at the pin now — /reconnect is a one-second rebind
+    // and stores the pin in the daemon, so the loop keeps aiming at the right file afterwards.
+    // `daemonPinMismatch` cannot do this: with no bound file it has nothing to compare.
+    const want = (process.env.FIGMA_FILE || '').trim();
+    if (pipeMode && want && daemonBoundFile() === null) {
+      try {
+        curlDaemon('/reconnect', { method: 'POST', dataFile: writeTempJson({ file: want }), timeout: 10000 });
+      } catch { /* not loaded yet — /health.pipeError says why, the command reports the link */ }
+    }
+    return true;
+  }
   if (mismatched) {
     // Pipe Mode holds Figma's debugging pipe; stopping the daemon would drop it and Figma may
     // quit. Rebind in place instead — /reconnect re-attaches to the pinned file, no restart.
@@ -875,6 +888,11 @@ function figmaUse(args, options = {}) {
   return null;
 }
 
+/** What `connect` last set up, for the rare case where the daemon does not answer at all. */
+function configuredMode() {
+  try { return loadConfig().mode || ''; } catch { return ''; }
+}
+
 // Helper: Check connection
 async function checkConnection() {
   // Self-heal: if the daemon idle-shut-down, bring it back BEFORE any command
@@ -883,21 +901,30 @@ async function checkConnection() {
   // rather than just run slow. Resurrecting it here keeps the fast path alive.
   await ensureDaemonRunning();
 
-  // First check daemon (works for both CDP and Plugin modes)
-  try {
-    const data = JSON.parse(curlDaemon('/health'));
-    if (data.status === 'ok' && (data.plugin || data.cdp)) {
-      return true;
-    }
-  } catch {}
+  // First check daemon (works for both CDP and Plugin modes). In Pipe and Safe Mode there is no
+  // debug port to fall back on, so a single no gets asked again — forced past the daemon's cache
+  // — before the command dies. See src/lib/connection-gate.js for what that fixed.
+  let daemonReason = null;
+  let verdict = 'probe-port';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let health = null;
+    try {
+      health = JSON.parse(curlDaemon(attempt === 0 ? '/health' : '/health/force', { timeout: 5000 }));
+      daemonReason = health.pipeError || null;
+    } catch {}
+    verdict = connectionVerdict({ health, configMode: configuredMode(), attempt });
+    if (verdict === 'ok') return true;
+    if (verdict !== 'retry') break;
+  }
 
-  // Fallback: check CDP directly
-  const connected = await FigmaClient.isConnected();
+  // Fallback: check CDP directly — only where a port can answer at all.
+  const connected = verdict === 'probe-port' ? await FigmaClient.isConnected() : false;
   if (!connected) {
     console.log(chalk.red('\n✗ Not connected to Figma\n'));
     // The advice used to name `figma-ds-cli` — the legacy alias — and, inside the panel, CLI
-    // commands a panel session is told not to run. `connectAdvice` knows which reader it has.
-    for (const line of connectAdvice({ panel: inPanel() })) console.log(chalk.cyan('  ' + line));
+    // commands a panel session is told not to run. `connectAdvice` knows which reader it has,
+    // and names the daemon's own reason when it has one (a tab restored without its document).
+    for (const line of connectAdvice({ panel: inPanel(), reason: daemonReason })) console.log(chalk.cyan('  ' + line));
     console.log('');
     process.exit(1);
   }
@@ -906,16 +933,24 @@ async function checkConnection() {
 
 // Helper: Check connection (sync version for backwards compat)
 function checkConnectionSync() {
-  // First check daemon (works for both CDP and Plugin modes)
-  try {
-    const data = JSON.parse(curlDaemon('/health'));
-    if (data.status === 'ok' && (data.plugin || data.cdp)) {
-      return true;
-    }
-  } catch {}
+  // Same two-step as the async version above: in a portless mode the daemon is asked twice,
+  // the second time past its cache, because no port probe can contradict it.
+  let daemonReason = null;
+  let verdict = 'probe-port';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let health = null;
+    try {
+      health = JSON.parse(curlDaemon(attempt === 0 ? '/health' : '/health/force', { timeout: 5000 }));
+      daemonReason = health.pipeError || null;
+    } catch {}
+    verdict = connectionVerdict({ health, configMode: configuredMode(), attempt });
+    if (verdict === 'ok') return true;
+    if (verdict !== 'retry') break;
+  }
 
-  // Fallback: check CDP directly
+  // Fallback: check CDP directly — only where a port can answer at all.
   try {
+    if (verdict !== 'probe-port') throw new Error('no debug port in this mode');
     const port = getCdpPort();
     execSync(`curl -s http://localhost:${port}/json`, { stdio: 'pipe', timeout: 2000 });
     return true;
@@ -923,7 +958,7 @@ function checkConnectionSync() {
     console.log(chalk.red('\n✗ Not connected to Figma\n'));
     // The advice used to name `figma-ds-cli` — the legacy alias — and, inside the panel, CLI
     // commands a panel session is told not to run. `connectAdvice` knows which reader it has.
-    for (const line of connectAdvice({ panel: inPanel() })) console.log(chalk.cyan('  ' + line));
+    for (const line of connectAdvice({ panel: inPanel(), reason: daemonReason })) console.log(chalk.cyan('  ' + line));
     console.log('');
     process.exit(1);
   }
@@ -1039,6 +1074,7 @@ function isInSafeMode() {
 }
 
 export {
+  writeTempJson,
   curlDaemon,
   shouldFallBackToDirect,
   CONFIG_DIR,

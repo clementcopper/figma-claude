@@ -30,6 +30,26 @@ enum PanelConfigTests {
                                      sessionId: "7f3a1c2d-4b5e-4a6f-8c9d-0e1f2a3b4c5d"), [])
     }
 
+    // Framelink rides along per tab as `--mcp-config <file>`; the path is the one string the
+    // setup script and the panel have to agree on (`MCP_FILE` in bin/fig-feedback-setup).
+    // testLoadsThePanelMcpFilePerTabUnlessTheUserChoseTheirOwn
+    do {
+        Checks.expect(panelMcpConfigPath(home: "/Users/x"), "/Users/x/.figma-ds-cli/mcp-framelink.json")
+        var config = PanelConfig()
+        Checks.expect(panelArguments(config: config, sessionName: "", mcpConfig: "/Users/x/.figma-ds-cli/mcp-framelink.json"),
+                      ["--mcp-config", "/Users/x/.figma-ds-cli/mcp-framelink.json"])
+        // No file on this machine (step 6 never ran): nothing is added, the tab starts as before.
+        Checks.expect(panelArguments(config: config, sessionName: "", mcpConfig: nil), [])
+        // A resumed session loads servers per process too, so it gets the flag as well.
+        config.args = ["--resume"]
+        Checks.expect(panelArguments(config: config, sessionName: "", mcpConfig: "/f.json"),
+                      ["--resume", "--mcp-config", "/f.json"])
+        // The user's own MCP choice in panel.json wins, strict or not.
+        config.args = ["--strict-mcp-config", "--mcp-config", "/mine.json"]
+        Checks.expect(panelArguments(config: config, sessionName: "", mcpConfig: "/f.json"),
+                      ["--strict-mcp-config", "--mcp-config", "/mine.json"])
+    }
+
     // A resume spawn passes neither, so it adopts the picked session instead of renaming it.
     // testPassesNothingWhenThereIsNoNameAndNoId
     do {

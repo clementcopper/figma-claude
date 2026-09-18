@@ -16,6 +16,11 @@ public enum MenuMarker: Equatable { case none, check }
 
 public enum MenuAction: Equatable {
     case connect
+    /// Pipe Mode, pipe held but no document attached: ask the daemon to attach again
+    /// (`POST /reconnect`) — after the user reopened the tab, or when Figma dropped its plugin
+    /// realm in place. `Connect` is rightly disabled there (it would only "reuse" the pipe), so
+    /// without this the menu had nothing to press.
+    case reconnect
     case daemonRestart
     case daemonStop
     case bindFile(String)
@@ -144,16 +149,23 @@ public func figmaMenuSections(_ input: FigmaMenuInput) -> [MenuSection] {
         }))
     }
 
-    sections.append(MenuSection(heading: "Connection", items: [
+    var connection = [
         MenuItem(title: input.busy ? "Working…" : "Connect", action: .connect,
                  enabled: usable && connectNeeded(mode: input.mode,
                                                   figmaRunning: input.figmaRunning,
                                                   cdpOk: input.cdpOk,
                                                   daemonSaysConnected: input.figma == .ok || input.pipeHeld),
-                 hint: connectHint(input.mode)),
-        MenuItem(title: "Restart daemon", action: .daemonRestart, enabled: usable),
-        MenuItem(title: "Stop daemon", action: .daemonStop, enabled: usable)
-    ]))
+                 hint: connectHint(input.mode))
+    ]
+    // Pipe held, nothing attached: the one state where Connect is off and something is still
+    // wrong. Reconnect is the lever — it re-runs the attach against the pinned file now.
+    if input.pipeHeld && input.figma != .ok {
+        connection.append(MenuItem(title: "Reconnect", action: .reconnect, enabled: usable,
+                                   hint: "Attach to the bound file again — after reopening its tab in Figma"))
+    }
+    connection.append(MenuItem(title: "Restart daemon", action: .daemonRestart, enabled: usable))
+    connection.append(MenuItem(title: "Stop daemon", action: .daemonStop, enabled: usable))
+    sections.append(MenuSection(heading: "Connection", items: connection))
 
     sections.append(MenuSection(heading: "Canvas", items: [
         MenuItem(title: undoLabel(input.undoNodes), action: .undo,

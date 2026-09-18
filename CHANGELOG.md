@@ -49,6 +49,69 @@
 
 ### Fixed
 
+- **Pipe Mode binds to a loaded file, not to Figma's first design tab.** Figma restores its
+  tabs on launch without loading them, and a restored tab has no `figma` context. The daemon
+  attached to the first design page and failed there every two seconds for hours
+  ("Could not find Figma execution context") while the loaded file sat one tab behind it.
+  `connectViaPipe` now tries every design page (`pipeCandidates`, pinned or in Figma's order)
+  and gives up on one without the context in half a second. The reason for a failed attempt is
+  logged once per change and reported in `/health.pipeError`, so a client can say "no file
+  loaded — click its tab" instead of "connecting…" forever.
+- **The file pin survives a Pipe Mode restart.** `daemon restart` sends `FIGMA_FILE` with the
+  `/handoff`; the successor used to inherit the *old* daemon's environment and lost the pin the
+  panel's "Bind file" had just set (`successorEnv`, unit-tested). A CLI command that finds a pipe
+  daemon attached to nothing and carries a pin now asks for the rebind at once instead of only on
+  a mismatch.
+- **The daemon flushes its 413 before it closes the socket.** `req.destroy()` came straight after
+  `res.end()` and killed the socket the answer was still riding on, so a client that sent an
+  oversized body got `ECONNRESET` instead of the refusal. That was the suite's only flaky test —
+  it failed under load and never on its own.
+- **A transient no longer kills the command in Pipe Mode.** `checkConnection` let
+  `FigmaClient.isConnected()` decide after the daemon said no — a probe of the debug port, which
+  Pipe and Safe Mode never open. Measured while the daemon was healthily driving a file: `/health`
+  `cdp:true`, `isConnected()` false. A portless mode now asks the daemon a second time through the
+  new `/health/force` (`connectionVerdict`, `src/lib/connection-gate.js`), and a *negative* health
+  verdict is cached 2 s instead of 30 (`serveCachedHealth`) — the probe also fails on a Figma that
+  is merely busy rendering.
+- **`--parent` for `instantiate` and `duplicate`, and the page in every success line.** Both placed
+  nodes on whatever page was last clicked, three times in one day. `--parent <id>` takes a frame or
+  a page id; all three placing commands now share one resolver (`src/lib/parent-snippet.js`), which
+  also gives `render --parent` the `loadAllPagesAsync` retry it was missing — a parent on an
+  unloaded page used to answer "Parent not found".
+- **`position="absolute"` works on a root `<Frame>`.** It was in the accepted prop list and never
+  read there, so an overlay rendered into an auto-layout `--parent` silently joined the flow and
+  landed below the footer. The root sets `layoutPositioning` after the append now, keeps the
+  caller's x/y, and warns when there is no parent to overlay. `docs jsx-syntax` and `render --help`
+  say what `--parent` does in an auto-layout frame, and that the root tag must be `<Frame>`.
+- **An error Figma raised is never retried.** A script that throws mid-way (an unloaded font
+  after a detach and a clone) has run up to the throw; the daemon's retry only stayed away
+  because the health probe answered in time — with Figma busy and the probe timing out, it would
+  have run the script again and doubled every mutation. `FigmaClient.eval` flags exceptions from
+  Figma (`fromFigma`), `retryVerdict` (`src/lib/exec-retry.js`) stops on them like on a render,
+  and the log says "Failed: …" instead of "Attempt 1 failed" for a request that is not tried twice.
+- **`status` no longer says Connected after Figma dropped `figma`.** The daemon's health
+  probe evaluated `1`, which succeeds in any execution context; when Figma tore down its
+  plugin realm in an open tab (16 Sep, mid-session), `/health` stayed green while every command
+  failed with "Cannot read properties of undefined (reading 'getNodeByIdAsync')". The probe asks
+  `typeof figma !== "undefined"` now (`src/lib/cdp-health.js`, unit-tested), and a client whose
+  context lost it is released so the next request and the pipe loop attach anew. The panel's
+  Figma menu offers **Reconnect** (`POST /reconnect`) while the pipe is held but nothing is
+  attached — Connect is off there by design and used to leave nothing to press.
+- **Framelink only in Figma Claude sessions, on the whole machine.** `fig-feedback-setup` step 6
+  used to register a user-scope MCP server (on in every session) under a name this Mac never had
+  (`Framelink_Figma_MCP`, the entry here is `framelink`), so it neither recognised nor adopted the
+  existing key, and it put the key on the server's command line. It now writes
+  `~/.figma-ds-cli/mcp-framelink.json` (mode 600, key as env) with a key adopted from any entry
+  that runs `figma-developer-mcp`; the panel passes `--mcp-config` on every tab
+  (`panelArguments`, CoreChecks), a terminal opts in with the same flag. Nothing lands in
+  `~/.claude.json`.
+- **Figma Claude (Swift host) 1.1.1.** Toolbar and tab strip were invisible on the first Apple
+  Silicon build (macOS 26, SDK 26.5): `TerminalColumn.draw` filled `dirtyRect`, which the
+  14+ SDK lets exceed the view, so the terminal column painted white over every band below it in
+  z-order. Fills `bounds ∩ dirtyRect` now; `--render-chrome` measures the two separators against
+  the column fill (`[probe] separators … ok|FAIL`). The panel's Connect passes the pin like
+  Restart does, and the Figma menu lists the open files in Pipe Mode via the daemon's `/files`
+  (there is no port to ask), so "Bind file" is reachable there.
 - **Safe Mode runs the same `eval` code as the other modes.** The plugin decided where to put
   `return` by looking for the last `;`, so `let p = 1\nreturn p`, `if (x) { … }` and
   `const a = 1; const b = 2` were a SyntaxError in Safe Mode only; the CDP path had stopped
