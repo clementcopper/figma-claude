@@ -49,6 +49,16 @@
 
 ### Fixed
 
+- **Pipe Mode: Reconnect takes Connect's place, and reloads the tab when attaching is not
+  enough.** With the pipe held, the Figma menu's first Connection item is Reconnect — always
+  enabled, also while the daemon still says ok — instead of a greyed Connect with a Reconnect
+  below it that only appeared after the daemon had noticed the loss. The panel sends
+  `POST /reconnect {"reload": true}`: when the attach fails, the daemon reloads the bound file's
+  tab over the pipe (`Page.reload`) and attaches again as soon as `figma` is back — what closing
+  and reopening the file did by hand. Measured on a throwaway file: 9 s, Figma's PID unchanged,
+  no dialog. Only the one tab the pin names is reloaded (`reloadTarget`, unit-tested); without a
+  pin or with several matches nothing is. The CLI's own `/reconnect` calls stay reload-free.
+
 - **`fig-feedback-setup` on a machine set up before it: four reruns that changed what they should
   have left alone.** Step 8 replaced the handoff hook's search list and dropped paths the user had
   added (`handoff/HANDOFF.md` in `~/.claude`); it now keeps them in front of its own. Step 1 missed

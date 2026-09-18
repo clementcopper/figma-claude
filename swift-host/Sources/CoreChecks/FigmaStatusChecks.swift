@@ -4,6 +4,20 @@ import FigmaClaudeCore
 /// Ported from `app/tests/figma-status.test.js`.
 enum FigmaStatusTests {
     static func run() {
+        // `/reconnect` answers: attached, attached after reloading the tab, or the daemon's reason.
+        do {
+            let json = { (s: String) in s.data(using: .utf8)! }
+            Checks.expect(parseReconnectAnswer(json(#"{"status":"reconnected","file":"D – Figma","reloaded":false}"#)),
+                          .attached(reloaded: false))
+            Checks.expect(parseReconnectAnswer(json(#"{"status":"reconnected","reloaded":true}"#)),
+                          .attached(reloaded: true))
+            // An older daemon sends no `reloaded` at all.
+            Checks.expect(parseReconnectAnswer(json(#"{"status":"reconnected"}"#)), .attached(reloaded: false))
+            Checks.expect(parseReconnectAnswer(json(#"{"error":"not reloaded: no bound file"}"#)),
+                          .failed("not reloaded: no bound file"))
+            Checks.expect(parseReconnectAnswer(json("nope")), .failed("unreadable answer from the daemon"))
+        }
+
         // reports both halves down when the daemon is unreachable
         do {
             let view = toStatusView(nil)

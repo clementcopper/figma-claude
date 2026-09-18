@@ -84,18 +84,32 @@ public func daemonHealth(timeout: TimeInterval = 1.5) -> Health? {
     return try? JSONDecoder().decode(Health.self, from: data)
 }
 
+/// What `/reconnect` answered: attached (and whether the tab had to be reloaded first), or the
+/// daemon's reason.
+public enum ReconnectResult: Equatable {
+    case attached(reloaded: Bool)
+    case failed(String)
+}
+
 /// Asks the daemon to attach to Figma again, pinned to `file` when given — the same `/reconnect`
-/// the CLI uses to rebind in Pipe Mode. Returns the daemon's error text, or nil when it attached.
-/// A generous timeout: an attach scans the tab's execution contexts (about a second per tab).
-public func daemonReconnect(file: String, timeout: TimeInterval = 20) -> String? {
-    let payload = try? JSONSerialization.data(withJSONObject: ["file": file])
-    guard let payload else { return "could not encode the request" }
-    guard let data = daemonRequest(path: "/reconnect", method: "POST", body: payload, timeout: timeout,
-                                   acceptErrorBody: true) else { return "daemon not reachable" }
+/// the CLI uses to rebind in Pipe Mode. With `reload`, a failed attach reloads the bound file's
+/// tab and waits for `figma` (~9 s measured, up to 30 s allowed), so the timeout covers that.
+public func daemonReconnect(file: String, reload: Bool = false,
+                            timeout: TimeInterval? = nil) -> ReconnectResult {
+    let payload = try? JSONSerialization.data(withJSONObject: ["file": file, "reload": reload])
+    guard let payload else { return .failed("could not encode the request") }
+    guard let data = daemonRequest(path: "/reconnect", method: "POST", body: payload,
+                                   timeout: timeout ?? (reload ? 45 : 20),
+                                   acceptErrorBody: true) else { return .failed("daemon not reachable") }
+    return parseReconnectAnswer(data)
+}
+
+/// The body of a `/reconnect` answer, separate so it can be checked without a daemon.
+public func parseReconnectAnswer(_ data: Data) -> ReconnectResult {
     guard let object = try? JSONSerialization.jsonObject(with: data),
-          let body = object as? [String: Any] else { return "unreadable answer from the daemon" }
-    if let error = body["error"] as? String { return error }
-    return nil
+          let body = object as? [String: Any] else { return .failed("unreadable answer from the daemon") }
+    if let error = body["error"] as? String { return .failed(error) }
+    return .attached(reloaded: body["reloaded"] as? Bool ?? false)
 }
 
 /// Runs code inside Figma through the daemon — the same `/exec` route the CLI uses.

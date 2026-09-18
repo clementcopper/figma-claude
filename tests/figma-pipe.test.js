@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { PipeCodec, PipeTransport, designTargets, pipeCandidates, successorEnv, spawnFigmaWithPipe } from '../src/lib/figma-pipe.js';
+import { PipeCodec, PipeTransport, designTargets, pipeCandidates, reloadTarget, successorEnv, spawnFigmaWithPipe } from '../src/lib/figma-pipe.js';
 import { FIGMA_LAUNCH_ARGS } from '../src/lib/figma-launch-args.js';
 
 // Figma's --remote-debugging-pipe speaks NUL-framed JSON on fds 3/4 to the *browser*
@@ -162,4 +162,32 @@ test('successorEnv carries the pin through a handoff and keeps the pipe markers'
   assert.equal(successorEnv({ ...base, FIGMA_FILE: 'Bosch' }, '').FIGMA_FILE, 'Bosch');
   assert.equal(successorEnv({ ...base, FIGMA_FILE: 'Bosch' }, 'm2trust').FIGMA_FILE, 'm2trust');
   assert.equal(successorEnv(base, undefined).FIGMA_FILE, undefined);
+});
+
+// Reconnect's last resort: reload the bound file's tab when attaching found no `figma` in it.
+// Measured 18 Sep on a throwaway file: the reload took ~9 s until `figma` answered again, Figma's
+// PID stayed, no dialog. Which tab is the whole decision — never guess one that is not ours.
+test('reloadTarget: the one tab the pin names', () => {
+  const pages = [
+    { title: 'Designdone – Figma', id: 'A', url: 'https://www.figma.com/design/x/Designdone' },
+    { title: 'Untitled – Figma', id: 'B', url: 'https://www.figma.com/design/y/Untitled' },
+    { title: 'Board – Figma', id: 'C', url: 'https://www.figma.com/board/z/Board' },
+  ];
+  assert.deepEqual(reloadTarget(pages, 'designdone'), { target: pages[0] });
+});
+
+test('reloadTarget: no pin, no reload — which tab is not ours to guess', () => {
+  const pages = [{ title: 'A – Figma', id: '1', url: 'https://www.figma.com/design/a/A' }];
+  const plan = reloadTarget(pages, '');
+  assert.equal(plan.target, undefined);
+  assert.match(plan.reason, /no bound file/);
+});
+
+test('reloadTarget: a closed tab cannot be reloaded, an ambiguous pin must not be', () => {
+  const pages = [
+    { title: 'Design A – Figma', id: '1', url: 'https://www.figma.com/design/a/A' },
+    { title: 'Design B – Figma', id: '2', url: 'https://www.figma.com/design/b/B' },
+  ];
+  assert.match(reloadTarget(pages, 'gone').reason, /not open/);
+  assert.match(reloadTarget(pages, 'design').reason, /2 open tabs/);
 });

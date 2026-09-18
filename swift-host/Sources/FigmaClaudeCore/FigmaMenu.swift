@@ -149,19 +149,23 @@ public func figmaMenuSections(_ input: FigmaMenuInput) -> [MenuSection] {
         }))
     }
 
-    var connection = [
-        MenuItem(title: input.busy ? "Working…" : "Connect", action: .connect,
-                 enabled: usable && connectNeeded(mode: input.mode,
-                                                  figmaRunning: input.figmaRunning,
-                                                  cdpOk: input.cdpOk,
-                                                  daemonSaysConnected: input.figma == .ok || input.pipeHeld),
-                 hint: connectHint(input.mode))
-    ]
-    // Pipe held, nothing attached: the one state where Connect is off and something is still
-    // wrong. Reconnect is the lever — it re-runs the attach against the pinned file now.
-    if input.pipeHeld && input.figma != .ok {
-        connection.append(MenuItem(title: "Reconnect", action: .reconnect, enabled: usable,
-                                   hint: "Attach to the bound file again — after reopening its tab in Figma"))
+    // One slot. In Pipe Mode with the pipe held it is Reconnect: Connect would only reuse the
+    // pipe, and a greyed Connect above a Reconnect that showed only after the daemon had noticed
+    // the loss (1.1.1) was never found. Reconnect re-attaches over the held pipe, pinned to the
+    // bound file; Figma keeps running. Enabled while attached too — the file can feel lost while
+    // the daemon still says ok, and that is exactly when a manual re-attach is the lever.
+    var connection: [MenuItem]
+    if input.mode == .pipe && input.pipeHeld {
+        connection = [MenuItem(title: input.busy ? "Working…" : "Reconnect", action: .reconnect,
+                               enabled: usable,
+                               hint: "Attach to the bound file again over the held pipe — Figma keeps running")]
+    } else {
+        connection = [MenuItem(title: input.busy ? "Working…" : "Connect", action: .connect,
+                               enabled: usable && connectNeeded(mode: input.mode,
+                                                                figmaRunning: input.figmaRunning,
+                                                                cdpOk: input.cdpOk,
+                                                                daemonSaysConnected: input.figma == .ok || input.pipeHeld),
+                               hint: connectHint(input.mode))]
     }
     connection.append(MenuItem(title: "Restart daemon", action: .daemonRestart, enabled: usable))
     connection.append(MenuItem(title: "Stop daemon", action: .daemonStop, enabled: usable))

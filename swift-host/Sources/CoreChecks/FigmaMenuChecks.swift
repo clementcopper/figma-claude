@@ -81,19 +81,30 @@ enum FigmaMenuTests {
 
         Checks.expect(titles(connected, "Connection"), ["Connect", "Restart daemon", "Stop daemon"])
 
-        // Pipe held, nothing attached: Connect is off by design (it would only reuse the pipe),
-        // so Reconnect is the item that acts — the 16 Sep case where `figma` vanished from the
-        // tab and the menu offered nothing to press.
+        // Pipe Mode with the pipe held: one slot, and it says Reconnect. Connect would only reuse
+        // the pipe, so a greyed Connect with Reconnect below it (1.1.1) was an item nobody could
+        // use above one that showed only after the daemon had noticed the loss — Daniel never
+        // found it. Reconnect re-attaches over the held pipe; Figma keeps running.
         let pipeUnattached = figmaMenuSections(FigmaMenuInput(figma: .off, figmaRunning: true, mode: .pipe, pipeHeld: true))
-        Checks.expect(titles(pipeUnattached, "Connection"), ["Connect", "Reconnect", "Restart daemon", "Stop daemon"])
-        Checks.expect(item(pipeUnattached, "Connection", 0)?.enabled, false)
-        Checks.expect(item(pipeUnattached, "Connection", 1)?.enabled, true)
-        Checks.expect(item(pipeUnattached, "Connection", 1)?.action, .reconnect)
-        // Attached: no Reconnect. Busy: shown but disabled, like every other action.
+        Checks.expect(titles(pipeUnattached, "Connection"), ["Reconnect", "Restart daemon", "Stop daemon"])
+        Checks.expect(item(pipeUnattached, "Connection", 0)?.action, .reconnect)
+        Checks.expect(item(pipeUnattached, "Connection", 0)?.enabled, true)
+        // Attached as well: exactly when the daemon still says ok and the file feels lost, a
+        // manual re-attach is the lever.
         let pipeUp = figmaMenuSections(FigmaMenuInput(figma: .ok, figmaRunning: true, mode: .pipe, pipeHeld: true))
-        Checks.expect(titles(pipeUp, "Connection").contains("Reconnect"), false)
+        Checks.expect(titles(pipeUp, "Connection"), ["Reconnect", "Restart daemon", "Stop daemon"])
+        Checks.expect(item(pipeUp, "Connection", 0)?.enabled, true)
+        // No pipe yet: Connect, which launches Figma over it.
+        let pipeNone = figmaMenuSections(FigmaMenuInput(figma: .off, figmaRunning: false, mode: .pipe, pipeHeld: false))
+        Checks.expect(titles(pipeNone, "Connection"), ["Connect", "Restart daemon", "Stop daemon"])
+        Checks.expect(item(pipeNone, "Connection", 0)?.action, .connect)
+        // Another mode never shows Reconnect, whatever `pipeHeld` says.
+        let safeHeld = figmaMenuSections(FigmaMenuInput(figma: .off, mode: .safe, pipeHeld: true))
+        Checks.expect(titles(safeHeld, "Connection").first, "Connect")
+        // Busy: the slot reads Working… and is off, like every other action.
         let pipeBusy = figmaMenuSections(FigmaMenuInput(figma: .off, figmaRunning: true, mode: .pipe, busy: true, pipeHeld: true))
-        Checks.expect(item(pipeBusy, "Connection", 1)?.enabled, false)
+        Checks.expect(item(pipeBusy, "Connection", 0)?.title, "Working…")
+        Checks.expect(item(pipeBusy, "Connection", 0)?.enabled, false)
         Checks.expect(actionProgressText("Reconnect"), "Reconnecting…")
         Checks.expect(titles(connected, "Appearance"),
                       ["System — follow macOS", "Light", "Dark"])
@@ -140,9 +151,10 @@ enum FigmaMenuTests {
                                     daemonSaysConnected: true), false)
         Checks.expect(connectNeeded(mode: .pipe, figmaRunning: false, cdpOk: false,
                                     daemonSaysConnected: false), true)
-        // pipeHeld reaches the menu through the input and disables Connect while loading.
+        // pipeHeld reaches the menu through the input: while the document loads, the slot is
+        // Reconnect (harmless, it only re-runs the attach), never an enabled Connect.
         let pipeHeldInput = FigmaMenuInput(figma: .off, figmaRunning: true, mode: .pipe, pipeHeld: true)
-        Checks.expect(item(figmaMenuSections(pipeHeldInput), "Connection", 0)?.enabled, false)
+        Checks.expect(item(figmaMenuSections(pipeHeldInput), "Connection", 0)?.action, .reconnect)
 
         // No CLI: every action that shells out is dead, and the note says why.
         let noCli = figmaMenuSections(FigmaMenuInput(figma: .off, cliFound: false))

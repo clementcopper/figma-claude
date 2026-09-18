@@ -669,8 +669,12 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     private func reconnectDaemon() {
         let pin = PanelConfig.load().figmaFile
         runInBackground(title: "Reconnect") {
-            if let error = daemonReconnect(file: pin) { return CliResult(ok: false, output: error) }
-            return CliResult(ok: true, output: pin.isEmpty ? "Attached" : "Attached to \(pin)")
+            switch daemonReconnect(file: pin, reload: true) {
+            case .failed(let error): return CliResult(ok: false, output: error)
+            case .attached(let reloaded):
+                let target = pin.isEmpty ? "Attached" : "Attached to \(pin)"
+                return CliResult(ok: true, output: reloaded ? target + " — its tab was reloaded" : target)
+            }
         }
     }
 

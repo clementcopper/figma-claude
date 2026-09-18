@@ -231,6 +231,21 @@ export function pipeCandidates(pages, pin = null) {
 }
 
 /**
+ * Which tab `/reconnect` may reload after attaching found no `figma` in it — the automated form
+ * of closing and reopening the file. Only the tab the pin names, and only when it names exactly
+ * one: without a pin, or with several matches, the tab is not ours to guess; a tab that is not
+ * open cannot be reloaded. Returns `{ target }` or `{ reason }`.
+ */
+export function reloadTarget(pages, pin) {
+  const want = (pin || '').trim();
+  if (!want) return { reason: 'no bound file, so no tab to reload' };
+  const matches = pipeCandidates(pages, want);
+  if (matches.length === 0) return { reason: `"${want}" is not open in Figma` };
+  if (matches.length > 1) return { reason: `"${want}" matches ${matches.length} open tabs` };
+  return { target: matches[0] };
+}
+
+/**
  * The environment a `/handoff` successor starts with: the pipe markers, and the pin from the
  * request body when there is one. `daemon restart` runs in the CLI's environment (the panel's
  * "Bind file" sets FIGMA_FILE there), the old daemon's environment is what the successor

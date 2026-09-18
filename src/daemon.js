@@ -27,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { spawn } from 'child_process';
 import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
 import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
-import { spawnFigmaWithPipe, inheritedPipe, successorEnv } from './lib/figma-pipe.js';
+import { spawnFigmaWithPipe, inheritedPipe, successorEnv, designTargets, reloadTarget } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
 import { probeCdpClient, serveCachedHealth } from './lib/cdp-health.js';
@@ -463,19 +463,30 @@ async function handleRequest(req, res) {
 
   // Force reconnect. POST {"file": "…"} rebinds to another open file without a restart —
   // the only way to rebind in Pipe Mode, where a restart means handing over the pipe.
+  // With "reload": true (the panel's Reconnect), a failed attach in Pipe Mode reloads the bound
+  // file's tab and waits for `figma` — what closing and reopening the file did by hand.
   if (req.url === '/reconnect') {
+    let reload = false;
     try {
       if (req.method === 'POST') {
         const body = await readJsonBody(req);
         if (body && typeof body.file === 'string') process.env.FIGMA_FILE = body.file;
+        reload = !!(body && body.reload);
       }
       if (cdpClient) {
         try { cdpClient.close(); } catch {}
         cdpClient = null;
       }
-      await getCdpClient();
+      let reloaded = false;
+      try {
+        await getCdpClient();
+      } catch (error) {
+        if (!(reload && MODE === 'pipe')) throw error;
+        await reloadBoundTab(error);
+        reloaded = true;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'reconnected', mode: getMode(), file: cdpClient && cdpClient.pageTitle || null }));
+      res.end(JSON.stringify({ status: 'reconnected', mode: getMode(), file: cdpClient && cdpClient.pageTitle || null, reloaded }));
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
@@ -850,6 +861,39 @@ async function pipeConnectLoop() {
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
+}
+
+// Reconnect's last resort in Pipe Mode: the attach found the tab but no `figma` in it — Figma
+// dropped its plugin realm, or the tab was restored without loading. Reload that one tab over the
+// pipe (Page.reload on its own session) and attach again as soon as `figma` is back. Measured
+// 18 Sep on a throwaway file: ~9 s, Figma's PID unchanged, no dialog; while the page loads its
+// title is briefly gone, so "not open" answers during the wait are expected and retried.
+const RELOAD_WAIT_MS = 30000;
+async function reloadBoundTab(attachError) {
+  if (!pipe || pipe.transport.closed) throw attachError;
+  const transport = pipe.transport;
+  const answer = await transport.send('Target.getTargets', {}, undefined, { timeoutMs: 5000 });
+  if (answer.error) throw attachError;
+  const plan = reloadTarget(designTargets(answer.result?.targetInfos), process.env.FIGMA_FILE || '');
+  if (!plan.target) throw new Error(`${attachError.message} — not reloaded: ${plan.reason}`);
+  const attached = await transport.send('Target.attachToTarget', { targetId: plan.target.id, flatten: true }, undefined, { timeoutMs: 5000 });
+  const sessionId = attached.result?.sessionId;
+  if (attached.error || !sessionId) throw new Error(`${attachError.message} — reload failed: ${attached.error?.message || 'no session'}`);
+  try {
+    const reloaded = await transport.send('Page.reload', {}, sessionId, { timeoutMs: 5000 });
+    if (reloaded.error) throw new Error(`${attachError.message} — reload failed: ${reloaded.error.message}`);
+  } finally {
+    transport.send('Target.detachFromTarget', { sessionId }, undefined, { timeoutMs: 2000 }).catch(() => {});
+  }
+  console.log(`[daemon] Reconnect: reloaded "${plan.target.title}", waiting for figma`);
+  const deadline = Date.now() + RELOAD_WAIT_MS;
+  let last = attachError;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (cdpClient && cdpClient.ws && cdpClient.ws.readyState === 1) return; // the background loop won
+    try { await getCdpClient(); return; } catch (error) { last = error; }
+  }
+  throw new Error(`Reloaded "${plan.target.title}", but figma did not come back within ${RELOAD_WAIT_MS / 1000} s: ${last.message}`);
 }
 
 if (MODE === 'pipe') {
