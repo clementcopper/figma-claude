@@ -62,6 +62,27 @@
   panel's "Bind file" had just set (`successorEnv`, unit-tested). A CLI command that finds a pipe
   daemon attached to nothing and carries a pin now asks for the rebind at once instead of only on
   a mismatch.
+- **The daemon flushes its 413 before it closes the socket.** `req.destroy()` came straight after
+  `res.end()` and killed the socket the answer was still riding on, so a client that sent an
+  oversized body got `ECONNRESET` instead of the refusal. That was the suite's only flaky test —
+  it failed under load and never on its own.
+- **A transient no longer kills the command in Pipe Mode.** `checkConnection` let
+  `FigmaClient.isConnected()` decide after the daemon said no — a probe of the debug port, which
+  Pipe and Safe Mode never open. Measured while the daemon was healthily driving a file: `/health`
+  `cdp:true`, `isConnected()` false. A portless mode now asks the daemon a second time through the
+  new `/health/force` (`connectionVerdict`, `src/lib/connection-gate.js`), and a *negative* health
+  verdict is cached 2 s instead of 30 (`serveCachedHealth`) — the probe also fails on a Figma that
+  is merely busy rendering.
+- **`--parent` for `instantiate` and `duplicate`, and the page in every success line.** Both placed
+  nodes on whatever page was last clicked, three times in one day. `--parent <id>` takes a frame or
+  a page id; all three placing commands now share one resolver (`src/lib/parent-snippet.js`), which
+  also gives `render --parent` the `loadAllPagesAsync` retry it was missing — a parent on an
+  unloaded page used to answer "Parent not found".
+- **`position="absolute"` works on a root `<Frame>`.** It was in the accepted prop list and never
+  read there, so an overlay rendered into an auto-layout `--parent` silently joined the flow and
+  landed below the footer. The root sets `layoutPositioning` after the append now, keeps the
+  caller's x/y, and warns when there is no parent to overlay. `docs jsx-syntax` and `render --help`
+  say what `--parent` does in an auto-layout frame, and that the root tag must be `<Frame>`.
 - **An error Figma raised is never retried.** A script that throws mid-way (an unloaded font
   after a detach and a clone) has run up to the throw; the daemon's retry only stayed away
   because the health probe answered in time — with Figma busy and the probe timing out, it would

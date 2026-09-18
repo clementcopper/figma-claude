@@ -59,13 +59,24 @@ describe('daemon', () => {
   before(async () => { d = await startDaemon(); });
   after(() => d.stop());
 
-  it('rejects a body over the limit with 413 and keeps serving', async () => {
-    const res = await fetch(`http://127.0.0.1:${d.port}/exec`, {
-      method: 'POST',
-      headers: { 'X-Daemon-Token': TOKEN, 'Content-Type': 'application/json' },
-      body: '{"action":"eval","code":"' + 'x'.repeat(70 * 1024 * 1024) + '"}',
-    });
-    assert.strictEqual(res.status, 413);
+  it('refuses a body over the limit and keeps serving', async () => {
+    // What is guaranteed: the daemon does not swallow 70 MB, and it is still there afterwards.
+    // The status is not: rejecting mid-upload means closing the socket while the client is still
+    // writing, and undici then throws `fetch failed` instead of handing over the 413 it may
+    // already hold. Asserting the status made this the suite's only flaky test — it failed under
+    // full-suite load and never on its own. The daemon flushes the 413 before it destroys the
+    // socket (src/daemon.js), which is as far as HTTP goes here.
+    let status = null;
+    try {
+      const res = await fetch(`http://127.0.0.1:${d.port}/exec`, {
+        method: 'POST',
+        headers: { 'X-Daemon-Token': TOKEN, 'Content-Type': 'application/json' },
+        body: '{"action":"eval","code":"' + 'x'.repeat(70 * 1024 * 1024) + '"}',
+      });
+      status = res.status;
+      await res.arrayBuffer();
+    } catch { /* the upload was cut off — the refusal, seen from the writing end */ }
+    assert.ok(status === 413 || status === null, `expected 413 or a cut-off upload, got ${status}`);
     const health = await fetch(`http://127.0.0.1:${d.port}/health`, { headers: { 'X-Daemon-Token': TOKEN } });
     assert.strictEqual(health.status, 200);
   });
@@ -97,6 +108,20 @@ describe('daemon', () => {
     ws.close();
     await sleep(200);
     assert.strictEqual((await health()).file, null, 'no plugin, no file');
+  });
+
+  it('serves /health/force with the same shape as /health, past the cache', async () => {
+    // Pipe and Safe Mode have no debug port, so a command that gets a no from /health has no
+    // second opinion — it asks this route before it declares the connection lost. Without the
+    // route it got "Not found" and the two-step gate would have ended on the first no.
+    const headers = { 'X-Daemon-Token': TOKEN };
+    const plain = await fetch(`http://127.0.0.1:${d.port}/health`, { headers });
+    const forced = await fetch(`http://127.0.0.1:${d.port}/health/force`, { headers });
+    assert.strictEqual(plain.status, 200);
+    assert.strictEqual(forced.status, 200);
+    assert.deepStrictEqual(Object.keys(await forced.json()).sort(), Object.keys(await plain.json()).sort());
+    const noToken = await fetch(`http://127.0.0.1:${d.port}/health/force`);
+    assert.notStrictEqual(noToken.status, 200, 'the forced route needs the token like every other');
   });
 
   it('leaves no hot-reload copy of figma-client.js behind in src/', async () => {

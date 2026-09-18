@@ -535,6 +535,22 @@ fontWeight="bold"     →  weight="bold"
 
 ---
 
+**`--parent <id>`: the root goes *into* that node.** In an auto-layout parent that means the
+layout's flow — the frame becomes the last child, under everything already there, whatever `x`
+and `y` say. A 375×812 overlay rendered into a vertical 812px frame landed at y 2960 and was
+clipped away. To lie *over* the parent instead, put `position="absolute"` on the **root** frame
+and give it `x`/`y`; the CLI then sets `layoutPositioning` after the append and keeps your
+coordinates. Without a `--parent` the prop has nothing to overlay and the render says so.
+`--parent` also takes a **page id**, which is how you render onto a page that is not the one
+open in Figma.
+
+```bash
+figma-cli render '<Frame name="Overlay" position="absolute" x={0} y={0} w={375} h={812} bg="#000" opacity={0.5} />' --parent 16572:401075
+```
+
+**The root tag is always `<Frame>`.** `<Text>`, `<Rect>`, `<Icon>` and the rest are child tags;
+a JSX string starting with one answers `Invalid JSX: must start with <Frame>`. Wrap it.
+
 **Screenshot in the same call:** `render '<Frame…>' --verify` renders and returns the PNG, so a
 separate `figma-cli verify` roundtrip is not needed. It exports at native size; `--verify 3`
 scales up, which is what small type and thin strokes need to be judged at all. (Standalone

@@ -17,6 +17,7 @@ import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, parse
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
 import { connectAdvice, inPanel, timeoutMessage } from './connection-help.js';
+import { connectionVerdict } from './connection-gate.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
 import { isOurDaemon } from './daemon-owner.js';
 import { ensureDaemonToken as ensureTokenFile } from './daemon-token.js';
@@ -887,6 +888,11 @@ function figmaUse(args, options = {}) {
   return null;
 }
 
+/** What `connect` last set up, for the rare case where the daemon does not answer at all. */
+function configuredMode() {
+  try { return loadConfig().mode || ''; } catch { return ''; }
+}
+
 // Helper: Check connection
 async function checkConnection() {
   // Self-heal: if the daemon idle-shut-down, bring it back BEFORE any command
@@ -895,18 +901,24 @@ async function checkConnection() {
   // rather than just run slow. Resurrecting it here keeps the fast path alive.
   await ensureDaemonRunning();
 
-  // First check daemon (works for both CDP and Plugin modes)
+  // First check daemon (works for both CDP and Plugin modes). In Pipe and Safe Mode there is no
+  // debug port to fall back on, so a single no gets asked again — forced past the daemon's cache
+  // — before the command dies. See src/lib/connection-gate.js for what that fixed.
   let daemonReason = null;
-  try {
-    const data = JSON.parse(curlDaemon('/health'));
-    if (data.status === 'ok' && (data.plugin || data.cdp)) {
-      return true;
-    }
-    daemonReason = data.pipeError || null;
-  } catch {}
+  let verdict = 'probe-port';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let health = null;
+    try {
+      health = JSON.parse(curlDaemon(attempt === 0 ? '/health' : '/health/force', { timeout: 5000 }));
+      daemonReason = health.pipeError || null;
+    } catch {}
+    verdict = connectionVerdict({ health, configMode: configuredMode(), attempt });
+    if (verdict === 'ok') return true;
+    if (verdict !== 'retry') break;
+  }
 
-  // Fallback: check CDP directly
-  const connected = await FigmaClient.isConnected();
+  // Fallback: check CDP directly — only where a port can answer at all.
+  const connected = verdict === 'probe-port' ? await FigmaClient.isConnected() : false;
   if (!connected) {
     console.log(chalk.red('\n✗ Not connected to Figma\n'));
     // The advice used to name `figma-ds-cli` — the legacy alias — and, inside the panel, CLI
@@ -921,18 +933,24 @@ async function checkConnection() {
 
 // Helper: Check connection (sync version for backwards compat)
 function checkConnectionSync() {
-  // First check daemon (works for both CDP and Plugin modes)
+  // Same two-step as the async version above: in a portless mode the daemon is asked twice,
+  // the second time past its cache, because no port probe can contradict it.
   let daemonReason = null;
-  try {
-    const data = JSON.parse(curlDaemon('/health'));
-    if (data.status === 'ok' && (data.plugin || data.cdp)) {
-      return true;
-    }
-    daemonReason = data.pipeError || null;
-  } catch {}
+  let verdict = 'probe-port';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let health = null;
+    try {
+      health = JSON.parse(curlDaemon(attempt === 0 ? '/health' : '/health/force', { timeout: 5000 }));
+      daemonReason = health.pipeError || null;
+    } catch {}
+    verdict = connectionVerdict({ health, configMode: configuredMode(), attempt });
+    if (verdict === 'ok') return true;
+    if (verdict !== 'retry') break;
+  }
 
-  // Fallback: check CDP directly
+  // Fallback: check CDP directly — only where a port can answer at all.
   try {
+    if (verdict !== 'probe-port') throw new Error('no debug port in this mode');
     const port = getCdpPort();
     execSync(`curl -s http://localhost:${port}/json`, { stdio: 'pipe', timeout: 2000 });
     return true;

@@ -8,6 +8,7 @@
 import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
 import { designTargets, pipeCandidates } from './lib/figma-pipe.js';
+import { resolveParentCode } from './lib/parent-snippet.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle, suggestStyleNames } from './lib/text-styles.js';
 import { autoFillDefeatsAlign } from './lib/text-autofill.js';
@@ -2139,6 +2140,11 @@ export class FigmaClient {
     const strokeAlignProp = props.strokeAlign || null;
     const rounded = props.rounded || props.radius || 0;
     const flex = props.flex || DEFAULT_FLEX;
+    // `position` was in the accepted prop list for Frame (src/lib/jsx-props.js) but the ROOT
+    // never read it: `<Frame position="absolute">` passed without a warning and was dropped in
+    // silence, so an overlay rendered into an auto-layout --parent joined the flow and landed
+    // below the footer (FEEDBACK.md, 16 Sep 2026).
+    const rootAbsolute = props.position === 'absolute';
     const gap = props.gap || 0;
     const p = props.p || props.padding || 0;
     const px = props.px || p;
@@ -2346,10 +2352,15 @@ export class FigmaClient {
         ${opts.parent ? `
         // --parent: re-home the finished frame. Done AFTER the children exist
         // so an auto-layout parent measures real content, not the seed size.
-        const __p = await figma.getNodeByIdAsync(${JSON.stringify(String(opts.parent))});
-        if (!__p) throw new Error('Parent not found: ' + ${JSON.stringify(String(opts.parent))});
-        if (!('appendChild' in __p)) throw new Error('Parent cannot contain children: ' + __p.type);
+        ${resolveParentCode(opts.parent)}
         __p.appendChild(frame);
+        ${rootAbsolute ? `
+        // position="absolute" on the root: overlay the parent instead of joining its flow.
+        // layoutPositioning exists only inside auto-layout; everywhere else x/y alone place it.
+        // Set after the append, because appending re-homes the coordinates set further up.
+        if (__p.layoutMode && __p.layoutMode !== 'NONE') { frame.layoutPositioning = 'ABSOLUTE'; }
+        frame.x = ${cliX !== undefined ? cliX : (Number(props.x) || 0)};
+        frame.y = ${y};` : ''}
         ${rootFill.applyAfterAppend ? `
         // w/h="fill" can only be set once the frame HAS a parent, and only if
         // that parent uses auto-layout — hence here and not up with the other
@@ -2360,6 +2371,7 @@ export class FigmaClient {
         } else {
           globalThis.__layoutWarnings.push(${JSON.stringify(`"${name}" fills ${[fillWidth && 'width', fillHeight && 'height'].filter(Boolean).join(' and ')}, but the --parent frame has no auto-layout`)});
         }` : ''}` : ''}
+        ${rootAbsolute && !opts.parent ? `globalThis.__layoutWarnings.push(${JSON.stringify(`"${name}" has position="absolute" but no --parent — a top-level frame is placed by x/y alone`)});` : ''}
         ${rootFill.warnings.map(w => `globalThis.__layoutWarnings.push(${JSON.stringify(w)});`).join('\n        ')}
 
         // Surface unresolved var: references like the batch path does, so a

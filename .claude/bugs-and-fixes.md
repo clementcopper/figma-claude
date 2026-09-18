@@ -337,3 +337,52 @@ the pipe is held and nothing is attached. What restores the realm itself is reop
 
 **Tests:** `tests/cdp-health.test.js`, `tests/figma-pipe.test.js` (candidates),
 `tests/connection-help.test.js` (reason line), CoreChecks `FigmaMenuChecks`/`FigmaStatusChecks`.
+
+## Der Port-Test entscheidet in einem portlosen Modus (2026-09-18, panel feedback)
+
+**Symptom:** ein `render` direkt nach einem 21 s langen `render` antwortete nach 606 ms mit
+`✗ Not connected to Figma`; `status` sagte in derselben Minute dasselbe, fünf Sekunden später lief
+alles wieder, ohne dass jemand etwas getan hatte. Figma- und Daemon-PID unverändert.
+
+**Cause:** `checkConnection` fragt `/health`, und wenn die Antwort einmal „nicht verbunden" lautet,
+entscheidet `FigmaClient.isConnected()` — ein `fetch` auf `http://localhost:<port>/json`. Pipe und
+Safe Mode öffnen diesen Port nie, die Sonde ist dort also immer falsch. Gemessen am 18.09.2026,
+während der Daemon gesund an m2trust hing: `/health` `cdp:true`, `isConnected()` `false`. Ein
+einziges vorübergehendes Nein beendete den Befehl mit `exit 1`, ohne zweiten Blick — daher die
+606 ms, in denen keine Netzarbeit stattfand. Verstärkt durch den Cache: `/health` rief
+`isCdpHealthy()` ohne `forceCheck`, und ein fehlgeschlagener 2-s-Probe galt danach 30 Sekunden.
+Der Probe scheitert auch an einem Figma, das nur beschäftigt ist. **Vermutung, unbelegt:** dass am
+11.09. die 2,5-s-Umfrage des Panels genau in den 21-s-Render lief.
+
+**Fix:** `connectionVerdict` (`src/lib/connection-gate.js`) entscheidet nach Modus: wo es keinen
+Port gibt, wird der Daemon ein zweites Mal gefragt, über die neue Route `/health/force`, die den
+Cache überspringt. `serveCachedHealth` (`src/lib/cdp-health.js`) hält ein Positiv weiter 30 s, ein
+Negativ nur 2 s — eine Panel-Umfrage lang. Yolo und Browser behalten die Port-Sonde.
+
+**Tests:** `tests/connection-gate.test.js`, `tests/cdp-health.test.js`, und in
+`tests/daemon-live.test.js` die Route selbst (gleiche Felder wie `/health`, Token nötig).
+
+## Eine Prop, die angenommen und nie gelesen wird (2026-09-18, panel feedback)
+
+**Symptom:** `render '<Frame name="Overlay" w={375} h={812} … />' --parent <auto-layout frame>`
+hängte das Overlay als letztes Flow-Kind an, y 2960 in einem 812 px hohen, beschneidenden Frame —
+unsichtbar. Der Reporter fragte im Eintrag selbst, ob `position="absolute"` an der Wurzel der Weg
+sei, und half sich per `eval` mit `layoutPositioning`.
+
+**Cause:** `position` steht in der Prop-Liste für `Frame` (`src/lib/jsx-props.js`), also meldet
+`warnUnknownProps` nichts — gelesen wird sie aber nur für **Kinder**
+(`src/figma-client.js`, `effectivePosition`). Der Wurzel-Frame kennt sie nicht. Angenommen und
+still verworfen: die schlimmste Sorte, weil nichts auf den Fehler zeigt.
+
+**Fix:** die Wurzel liest `position`. Im `--parent`-Block, **nach** dem Anhängen (vorher gesetzte
+Koordinaten überschreibt es): `frame.layoutPositioning = 'ABSOLUTE'` nur in einem Auto-Layout-
+Parent — anderswo wirft die Plugin-API — plus die x/y des Aufrufers. Ohne `--parent` gibt es eine
+Layout-Warnung statt Schweigen. Dazu in `docs jsx-syntax` und `render --help`, was `--parent` in
+Auto-Layout bedeutet und dass die Wurzel `<Frame>` sein muss.
+
+**Nebenbefund, mitgefixt:** `render --parent` war der einzige der drei Befehle ohne
+`loadAllPagesAsync` vor `getNodeByIdAsync` — ein Parent auf einer ungeladenen Seite antwortete
+„Parent not found". Jetzt teilen sich alle drei `src/lib/parent-snippet.js`.
+
+**Tests:** `tests/render-root-absolute.test.js`, `tests/parent-snippet.test.js`,
+`tests/instantiate-cmd.test.js`, `tests/duplicate-cmd.test.js`.

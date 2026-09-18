@@ -191,7 +191,7 @@ function getNextFreeY(gap = 100) {
 program
   .command('render <jsx>')
   .description('Render JSX to Figma (use --as-component to also convert result to a Figma component)')
-  .option('--parent <id>', 'Parent node ID')
+  .option('--parent <id>', 'Put the frame into this node (a page id works too). In an auto-layout parent that is flow placement — add position="absolute" x= y= on the root to overlay instead')
   .option('-x <n>', 'X position')
   .option('-y <n>', 'Y position')
   .option('--no-smart-position', 'Disable auto-positioning')

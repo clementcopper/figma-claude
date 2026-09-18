@@ -6,6 +6,7 @@ import { program, checkConnection, fastEval } from '../lib/cli-core.js';
 import { findComponentSpec } from '../lib/design-spec.js';
 import { locateDesignMd } from '../lib/design-md-locate.js';
 import { resolveInstancePlan, looksLikeNodeId, planFromNodeId } from '../lib/instance-plan.js';
+import { resolveParentCode, pageOfCode } from '../lib/parent-snippet.js';
 
 // Build the async, dynamic-page-safe eval that tries each plan step in order.
 // Exported for unit testing. A COMPONENT_SET resolves to its default variant
@@ -13,11 +14,15 @@ import { resolveInstancePlan, looksLikeNodeId, planFromNodeId } from '../lib/ins
 export function instantiateCode(plan, options = {}) {
   const count = Math.max(1, Math.min(200, Number(options.count) || 1));
   const gap = Number.isFinite(Number(options.gap)) ? Number(options.gap) : 24;
+  const hasParent = options.parent !== undefined && options.parent !== null && options.parent !== '';
   return `(async () => {
     const plan = ${JSON.stringify(plan)};
     const count = ${count};
     const gap = ${gap};
     const tried = [];
+    // Resolved once, before anything is created: a wrong --parent must not leave instances
+    // behind on the page the user happened to be looking at. A PAGE is a valid parent too.
+    ${resolveParentCode(options.parent)}
     for (const step of plan) {
       try {
         let comp;
@@ -32,21 +37,32 @@ export function instantiateCode(plan, options = {}) {
         if (!comp) { tried.push(step.via + ': not found'); continue; }
         if (comp.type === 'COMPONENT_SET') comp = comp.defaultVariant || comp.children[0];
         if (!comp || comp.type !== 'COMPONENT') { tried.push(step.via + ': not a component'); continue; }
-        const c = figma.viewport.center;
+        // Where the row starts. Without --parent that is the viewport, as before; inside a
+        // container the coordinates are the container's, so they start at its origin. In an
+        // auto-layout parent they are not ours to set at all — the layout places the children.
+        const base = ${hasParent ? `(__p === figma.currentPage) ? figma.viewport.center : { x: 0, y: 0 }` : `figma.viewport.center`};
+        const flow = ${hasParent ? `!!(__p.layoutMode && __p.layoutMode !== 'NONE')` : 'false'};
         const made = [];
         for (let i = 0; i < count; i++) {
           const inst = comp.createInstance();
-          // A row, so twenty instances do not land on top of each other.
-          inst.x = Math.round(c.x + i * (inst.width + gap));
-          inst.y = Math.round(c.y);
-          figma.currentPage.appendChild(inst);
+          if (!flow) {
+            // A row, so twenty instances do not land on top of each other.
+            inst.x = Math.round(base.x + i * (inst.width + gap));
+            inst.y = Math.round(base.y);
+          }
+          ${hasParent ? '__p' : 'figma.currentPage'}.appendChild(inst);
           made.push(inst);
         }
-        figma.currentPage.selection = made;
-        figma.viewport.scrollAndZoomIntoView(made);
+        // Selection and viewport belong to one page: selecting a node of another page throws.
+        const __page = ${pageOfCode('made[0]')};
+        if (__page === figma.currentPage) {
+          figma.currentPage.selection = made;
+          figma.viewport.scrollAndZoomIntoView(made);
+        }
         return JSON.stringify({
           ok: true, via: step.via, count: made.length,
-          id: made[0].id, ids: made.map(n => n.id), name: made[0].name
+          id: made[0].id, ids: made.map(n => n.id), name: made[0].name,
+          page: __page ? __page.name : null
         });
       } catch (e) { tried.push(step.via + ': ' + e.message); }
     }
@@ -60,8 +76,9 @@ program
   .option('-f, --file <path>', 'DESIGN.md to read (default: auto-locate in cwd / subdirs)')
   .option('--count <n>', 'How many instances to place, in a row', '1')
   .option('--gap <n>', 'Gap between them in px', '24')
+  .option('--parent <id>', 'Node to place them in — a frame, or a page id to put them on that page')
   .action(async (name, options) => {
-    const placement = { count: options.count, gap: options.gap };
+    const placement = { count: options.count, gap: options.gap, parent: options.parent };
 
     // An id needs no DESIGN.md: it already names the component. This is the route a session has
     // when it read the id off the live file, which is where the CLI's own output points people.
@@ -74,7 +91,8 @@ program
           res?.tried ? chalk.gray('Tried — ' + res.tried.join('; ')) : '');
         process.exit(1);
       }
-      console.log(chalk.green(`✓ Instanced "${res.name}" ×${res.count} → ${res.ids.join(', ')}`));
+      console.log(chalk.green(`✓ Instanced "${res.name}" ×${res.count} → ${res.ids.join(', ')}`)
+        + (res.page ? chalk.gray(` on page "${res.page}"`) : ''));
       process.exit(0);
     }
 
@@ -105,6 +123,6 @@ program
     console.log(chalk.green(
       `✓ Instanced ${JSON.stringify(spec.name)} via ${res.via}` +
       (res.count > 1 ? ` ×${res.count} → ${res.ids.join(', ')}` : ` → ${res.id}`)
-    ));
+    ) + (res.page ? chalk.gray(` on page "${res.page}"`) : ''));
     process.exit(0);
   });

@@ -30,7 +30,7 @@ import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
 import { spawnFigmaWithPipe, inheritedPipe, successorEnv } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
-import { probeCdpClient } from './lib/cdp-health.js';
+import { probeCdpClient, serveCachedHealth } from './lib/cdp-health.js';
 import { retryVerdict, failureLine } from './lib/exec-retry.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
@@ -151,7 +151,6 @@ let cdpClient = null;
 let isCdpConnecting = false;
 let lastHealthCheck = 0;
 let lastHealthResult = false;
-const HEALTH_CACHE_MS = 30000; // Cache health for 30 seconds (reduces overhead)
 
 // Figma's debugging pipe (Pipe Mode): { transport, toBrowser, fromBrowser, child? }
 let pipe = null;
@@ -173,9 +172,12 @@ async function isCdpHealthy(forceCheck = false) {
   if (!cdpClient || !cdpClient.ws) return false;
   if (cdpClient.ws.readyState !== 1) return false;
 
-  // Use cached result if recent (avoids constant eval calls)
+  // Cached while it is worth caching. A positive keeps for half a minute; a negative only for
+  // one panel poll, because the probe also fails on a Figma that is merely busy — a 21 s render
+  // used to leave every command saying "Not connected" for the next 30 seconds
+  // (src/lib/cdp-health.js).
   const now = Date.now();
-  if (!forceCheck && now - lastHealthCheck < HEALTH_CACHE_MS) {
+  if (!forceCheck && serveCachedHealth(lastHealthResult, now - lastHealthCheck)) {
     return lastHealthResult;
   }
 
@@ -363,10 +365,13 @@ async function handleRequest(req, res) {
   resetIdleTimer();
 
   // Health check
-  if (req.url === '/health') {
+  // `/health/force` skips the cache. Pipe and Safe Mode have no debug port, so a command there
+  // has no second opinion to fall back on — it asks this route once before it declares the
+  // connection lost (src/lib/connection-gate.js).
+  if (req.url === '/health' || req.url === '/health/force') {
     const mode = getMode();
     const pluginConnected = isPluginConnected();
-    const cdpHealthy = await isCdpHealthy();
+    const cdpHealthy = await isCdpHealthy(req.url === '/health/force');
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -495,9 +500,14 @@ async function handleRequest(req, res) {
       if (received > MAX_BODY_BYTES) {
         if (!tooLarge) {
           tooLarge = true;
-          res.writeHead(413, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `Request body over ${MAX_BODY_BYTES / 1024 / 1024} MB` }));
-          req.destroy();
+          // Stop reading, answer, and only then tear the socket down. `req.destroy()` straight
+          // after `res.end()` destroys the socket the answer still rides on: the client then got
+          // ECONNRESET instead of the 413, which is a thrown `fetch` rather than a status. It
+          // depended on load — the full suite saw it three times, the test file alone never.
+          req.pause();
+          res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
+          res.end(JSON.stringify({ error: `Request body over ${MAX_BODY_BYTES / 1024 / 1024} MB` }),
+            () => req.destroy());
         }
         return;
       }
