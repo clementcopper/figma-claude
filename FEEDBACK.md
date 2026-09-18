@@ -40,8 +40,20 @@ Append new entries at the end of **Open**; never rewrite one that is already the
 
 ## Open
 <!-- new entries go here -->
+- [ ] `wish` · **`fig-feedback-setup --dry-run`: show what a run would change without writing to HOME**
+  **Repro:** on 18.09 at 21:02 an ad-hoc look at the output ran the script for real (`bash bin/fig-feedback-setup </dev/null | sed …`) and changed `~/.claude/CLAUDE.md`, `settings.json` and the PostToolUse guard.
+  **Observed:** the script has no way to show its effect without applying it; the only safe method is a hand-made temp HOME (copies of `CLAUDE.md`, `settings.json`, `.claude.json`, `mcp-framelink.json`, a link `figma-cli` → checkout). That is how 661d400 and d5993ab were checked against the real config.
+  **Expected:** `--dry-run` builds exactly that temp HOME, runs there, prints the diff per file and deletes it. Open point before building: step 6 calls `security` (keychain), which a temp HOME does not isolate, so the dry run has to skip the keychain or refuse without an MCP file. Bigger than a small change, so it waits for Daniel.
+  **Context:** figma-cli d5993ab, 18.09.2026.
 
 ## Done
+
+- [x] `loop` · **fig-feedback-setup section 3 replaces the guarded PostToolUse hook with the bare path**
+  **Repro:** `~/.claude/settings.json` carries the guarded hook from ~/.claude commit 036ebfd: `if [ -n "$FIGMACLAUDE" ] || [ -f "$HOME/.figma-ds-cli/.feedback-hook-force" ]; then exec "$HOME/figma-cli/bin/fig-feedback-hook"; fi`. Then run `bash bin/fig-feedback-setup`.
+  **Observed:** section 3 finds the hook by name (`includes("fig-feedback-hook")`), sees `command !== "$REPO/bin/fig-feedback-hook"`, and REPATHs it to `/Users/danielmartin/figma-cli/bin/fig-feedback-hook`. The guard is gone, so the hook forks after every Bash call in every session. Happened on 18.09. at 21:02, in an unintended run of the m2-fixes-intel-mac-compatibility session. The 21:19 run then said "already installed" and kept the bare path.
+  **Expected:** same class as the section-8 fix in 661d400: keep what the user added. PRESENT for any command that execs `…/fig-feedback-hook` from this checkout (including through `$HOME`), and a fresh install writes the guarded form. Separately, `HOME_BAK=1` did not stop that run from writing to the real HOME; a dry run would help.
+  **Context:** figma-cli 661d400, found from ~/.claude (CTO session) on 18.09.2026. Guard restored there by hand.
+  → fixed in d5993ab: section 3 compares only the path the command runs (resolved through `$HOME`/`~`/links). This checkout means PRESENT and no write; a moved checkout gets its path swapped inside the guard; a fresh install writes the guarded form. Four cases in `tests/fig-feedback-setup.test.js`, three red before. A note on `HOME_BAK=1`: the script never knew that variable, it was an invented name in an ad-hoc command, not an override the script ignored. The dry run is its own entry under Open.
 
 <!-- triaged entries, each with a → line naming where it went -->
 
