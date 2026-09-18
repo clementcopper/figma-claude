@@ -45,6 +45,7 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Observed:** the script has no way to show its effect without applying it; the only safe method is a hand-made temp HOME (copies of `CLAUDE.md`, `settings.json`, `.claude.json`, `mcp-framelink.json`, a link `figma-cli` → checkout). That is how 661d400 and d5993ab were checked against the real config.
   **Expected:** `--dry-run` builds exactly that temp HOME, runs there, prints the diff per file and deletes it. Open point before building: step 6 calls `security` (keychain), which a temp HOME does not isolate, so the dry run has to skip the keychain or refuse without an MCP file. Bigger than a small change, so it waits for Daniel.
   **Context:** figma-cli d5993ab, 18.09.2026.
+  Daniel 18.09.: build it only when the next Mac gets set up.
 
 ## Done
 
