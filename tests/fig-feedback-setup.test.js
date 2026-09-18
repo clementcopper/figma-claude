@@ -1,7 +1,7 @@
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,9 +12,11 @@ const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'fig-f
 const homes = [];
 after(() => { for (const h of homes) rmSync(h, { recursive: true, force: true }); });
 
-function runSetup({ claudeMd, claudeJson, settings }) {
+function runSetup({ claudeMd, claudeJson, settings, linkCheckout }) {
   const home = mkdtempSync(join(tmpdir(), 'fig-setup-'));
   homes.push(home);
+  // $HOME/figma-cli as a link to this checkout: the layout a `$HOME`-relative hook assumes.
+  if (linkCheckout) symlinkSync(join(dirname(SCRIPT), '..'), join(home, 'figma-cli'));
   mkdirSync(join(home, '.claude'), { recursive: true });
   mkdirSync(join(home, '.figma-ds-cli'), { recursive: true });
   writeFileSync(join(home, '.figma-ds-cli', 'mcp-framelink.json'), JSON.stringify({
@@ -108,5 +110,44 @@ describe('fig-feedback-setup step 8: the handoff hook', () => {
   it('installs our list on a machine without the hook', () => {
     const r = runSetup({ claudeMd: '# x\n', settings: {} });
     assert.deepStrictEqual(paths(hookCommand(r.settings())), OURS);
+  });
+});
+
+describe('fig-feedback-setup step 3: the PostToolUse hook', () => {
+  const GUARDED = 'if [ -n "$FIGMACLAUDE" ] || [ -f "$HOME/.figma-ds-cli/.feedback-hook-force" ]; '
+    + 'then exec "$HOME/figma-cli/bin/fig-feedback-hook"; fi';
+  const withHook = (command) => ({ hooks: { PostToolUse: [{ matcher: 'Bash',
+    hooks: [{ type: 'command', command, timeout: 5 }] }] } });
+  const hookOf = (s) => s.hooks.PostToolUse.flatMap((g) => g.hooks)
+    .find((h) => h.command.includes('fig-feedback-hook')).command;
+
+  it('leaves a guarded hook byte-identical', () => {
+    // The guard (~/.claude 036ebfd) keeps the fork out of every non-panel session; matching the
+    // bare path replaced it on 18.09 and the hook forked after every Bash call again.
+    const r = runSetup({ claudeMd: '# x\n', settings: withHook(GUARDED), linkCheckout: true });
+    assert.strictEqual(hookOf(r.settings()), GUARDED);
+    assert.match(r.out, /PostToolUse hook already installed/);
+  });
+
+  it('leaves a bare hook on this checkout alone too', () => {
+    const bare = join(dirname(SCRIPT), 'fig-feedback-hook');
+    const r = runSetup({ claudeMd: '# x\n', settings: withHook(bare) });
+    assert.strictEqual(hookOf(r.settings()), bare);
+  });
+
+  it('re-points a stale checkout and keeps the guard around it', () => {
+    const stale = GUARDED.replace('$HOME/figma-cli', '/nowhere/old-checkout');
+    const r = runSetup({ claudeMd: '# x\n', settings: withHook(stale) });
+    const cmd = hookOf(r.settings());
+    assert.ok(cmd.startsWith('if [ -n "$FIGMACLAUDE" ]'), cmd);
+    assert.doesNotMatch(cmd, /old-checkout/);
+    assert.ok(cmd.includes(join(dirname(SCRIPT), 'fig-feedback-hook')), cmd);
+    assert.match(r.out, /re-pointed/);
+  });
+
+  it('installs the guarded form on a machine without the hook', () => {
+    const r = runSetup({ claudeMd: '# x\n', settings: {} });
+    const cmd = hookOf(r.settings());
+    assert.match(cmd, /^if \[ -n "\$FIGMACLAUDE" \] \|\| \[ -f "\$HOME\/\.figma-ds-cli\/\.feedback-hook-force" \]; then exec ".*fig-feedback-hook"; fi$/);
   });
 });

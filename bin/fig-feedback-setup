@@ -195,7 +195,20 @@ if [ ! -x "$HOOK" ] || [ ! -f "$DECIDER" ]; then
 else
     node -e '
 const fs = require("fs");
-const [settings, hook] = process.argv.slice(1);
+const path = require("path");
+const [settings, hook, home] = process.argv.slice(1);
+// A fresh install writes the guarded form (~/.claude 036ebfd): the fork happens only in a panel
+// session or when the force file exists, not after every Bash call everywhere. The path goes
+// through $HOME when the checkout lives under it, so the line survives a user rename.
+const ref = hook.startsWith(home + "/") ? "\"$HOME" + hook.slice(home.length) + "\"" : JSON.stringify(hook);
+const guarded = "if [ -n \"$FIGMACLAUDE\" ] || [ -f \"$HOME/.figma-ds-cli/.feedback-hook-force\" ]; then exec " + ref + "; fi";
+// The hook path an existing command runs, as written, and resolved ($HOME, ${HOME}, ~, links).
+const HOOK_RE = /"?((?:\$HOME|\$\{HOME\}|~)?[^"\s;]*fig-feedback-hook)"?/;
+const resolve = (p) => {
+  const expanded = p.replace(/^(\$HOME|\$\{HOME\}|~)(?=\/)/, home);
+  try { return fs.realpathSync(expanded); } catch { return path.resolve(expanded); }
+};
+const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
 let config = {};
 let existed = false;
 try {
@@ -213,21 +226,23 @@ for (const group of list) {
   const hooks = group.hooks || [];
   const found = hooks.find(mine);
   if (!found) continue;
-  if (found.command === hook) { console.log("PRESENT"); process.exit(0); }
+  // Whatever wraps the call (a guard, a redirect) is the user\x27s; only the path is ours.
+  const m = HOOK_RE.exec(found.command);
+  if (m && resolve(m[1]) === real(hook)) { console.log("PRESENT"); process.exit(0); }
   if (existed) fs.copyFileSync(settings, settings + ".bak");
-  found.command = hook;
+  found.command = m ? found.command.replace(m[0], ref) : guarded;
   fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
   console.log("REPATHED");
   process.exit(0);
 }
 const bash = list.find((g) => g.matcher === "Bash");
-const entry = { type: "command", command: hook, timeout: 5 };
+const entry = { type: "command", command: guarded, timeout: 5 };
 if (bash) (bash.hooks = bash.hooks || []).push(entry);
 else list.push({ matcher: "Bash", hooks: [entry] });
 if (existed) fs.copyFileSync(settings, settings + ".bak");
 fs.writeFileSync(settings, JSON.stringify(config, null, 2) + "\n");
 console.log(existed ? "ADDED" : "CREATED");
-' "$SETTINGS" "$HOOK" > /tmp/fig-feedback-hook.$$ 2>&1
+' "$SETTINGS" "$HOOK" "$HOME" > /tmp/fig-feedback-hook.$$ 2>&1
     HOOK_STATUS=$?
     HOOK_RESULT=$(cat /tmp/fig-feedback-hook.$$)
     rm -f /tmp/fig-feedback-hook.$$

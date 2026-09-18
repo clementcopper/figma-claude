@@ -56,7 +56,11 @@
   whitespace-insensitive now. Step 7 knew only the German heading and appended a second copy next
   to the English one. Step 6 names a user-scope `figma-developer-mcp` entry, which every panel tab
   would load beside the new `framelink` file, with the command that removes it — it never deletes
-  it. `tests/fig-feedback-setup.test.js` runs the script against a temp HOME.
+  it. Step 3 matched its PostToolUse hook against the bare path and replaced the guarded form
+  (`if [ -n "$FIGMACLAUDE" ] || … then exec …/fig-feedback-hook; fi`), so the hook forked after
+  every Bash call in every session again; it now compares only the path the command runs, keeps
+  any wrapper when it re-points a moved checkout, and installs the guarded form fresh.
+  `tests/fig-feedback-setup.test.js` runs the script against a temp HOME.
 
 - **Pipe Mode binds to a loaded file, not to Figma's first design tab.** Figma restores its
   tabs on launch without loading them, and a restored tab has no `figma` context. The daemon
