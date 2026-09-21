@@ -47,6 +47,12 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Context:** figma-cli d5993ab, 18.09.2026.
   Daniel 18.09.: build it only when the next Mac gets set up.
 
+- [ ] `cli` · **A script that throws inside `run` reports only the message — no stack, no line number in the submitted file**
+  **Repro:** `figma-cli run /tmp/.../build-cert-request.js` with a helper that walks a tree and touches a node removed by an earlier `detachInstance()`.
+  **Observed:** `✗ Error: in get_visible: The node (instance sublayer or table cell) with id "I16614:159373;10544:223986" does not exist` and nothing else. A second throw the same day came back as `✗ TypeError: Cannot convert a Symbol value to a string` with no location at all — that one was a `cornerRadius` read on a mixed-radius node, which took three extra runs to find in a 200-line script.
+  **Expected:** the stack, or at least the line number in the submitted file, so the failing statement can be located without bisecting the script.
+  **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 18 Sep 2026.
+
 ## Done
 
 - [x] `loop` · **fig-feedback-setup section 3 replaces the guarded PostToolUse hook with the bare path**
