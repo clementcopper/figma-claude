@@ -435,3 +435,27 @@ bei Symbolen wie Figma.
 
 **Tests:** `tests/eval-wrap.test.js` (Zeilen bleiben, Recovery, Slot leer), `tests/plugin-executor.test.js`,
 `tests/exec-retry.test.js` (Flag).
+
+## Ein Timeout galt als Transportfehler und ließ das Skript dreimal laufen (2026-10-03, panel feedback)
+
+**Symptom:** ein dateiweites `figma.root.findAll` lief über die 90 s; danach `status: ⚠ Not
+connected`, jeder `eval` „Not connected", bis Daniel aus dem Panel neu verband. Die Meldung
+riet zu `daemon restart`, was die Panel-Regel verbietet.
+
+**Cause:** `execWithTimeout` (`src/daemon.js`) ist ein `Promise.race`; verliert der Eval, läuft
+er in Figma weiter. `retryVerdict` gab für den Timeout `consider` zurück, also fragte der Daemon
+die Health-Probe (2 s) — die wartete hinter dem laufenden findAll, las „dead", der Daemon schloss
+den Pipe-Client (`Target.detachFromTarget`), der Re-Attach wartete hinter demselben findAll und
+scheiterte, und Versuch 1 und 2 **starteten das findAll erneut**, je mit frischen 90 s. Jeder
+andere Request in der Zeit (Panel-Poll, `status`) lief in den geschlossenen Client. Gemessen mit
+12-s-Schleife und `--timeout 3`: `Reconnecting CDP before retry…`, `Retry 1 failed`, `Retry 2
+failed`, 36 s. Auf der CLI-Seite fragte `daemonExec` nach dem Timeout `/health` mit 1 s — die
+Probe dort wartete ebenfalls — und schloss aus dem Schweigen auf einen toten Daemon.
+
+**Fix (832a747):** `retryVerdict` kennt `'timed-out'` (`/^Execution timeout/`), der Daemon bricht ab
+ohne Probe, ohne `close()`, ohne zweiten Lauf. `timeoutMessage(ms, healthy, { panel })` nennt
+den Daemon beschäftigt statt tot und im Panel nie `daemon restart`. Nach dem Fix dieselbe
+Schleife: zwei Log-Zeilen, `status` grün, der nächste `eval` antwortete, sobald die Schleife zu
+Ende war. Nicht gebaut: das Skript abbrechen (`Runtime.terminateExecution`).
+
+**Tests:** `tests/exec-retry.test.js`, `tests/timeout-message.test.js`.

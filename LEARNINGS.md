@@ -73,6 +73,8 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 
 - **Wenn der Transport den Wert verweigert, ist der Code trotzdem gelaufen.** CDPs `returnByValue` lehnt ein Symbol im Ergebnis als Protokollfehler ab; der Fehler sah aus wie ein Verbindungsproblem und war ohne `fromFigma`-Flag ein Kandidat für einen zweiten Lauf. Werte parken, dann lesen — nie den Code wiederholen, um an sein Ergebnis zu kommen (2026-10-03).
 
+- **Ein Timeout beendet nichts; es beendet nur das Warten.** Das Skript lief in Figma weiter, die Health-Probe wartete dahinter und las „tot", und der Retry-Pfad für Transportfehler startete dasselbe Skript zweimal neu — ein findAll über alle Seiten dreimal, dazwischen die Pipe abgehängt. Wer nach einem Timeout den Zustand prüft, misst das laufende Skript, nicht die Verbindung. Erst reproduzieren (12-s-Schleife, `--timeout 3`, `daemon.log`), dann die Verdict-Tabelle erweitern (2026-10-03).
+
 - **A fix that lands on one of two twin commands is not a fix.** `eval` learned to name an empty result in August; `run` — its own copy of the same three decisions — did not, and `REFERENCE.md` documented the behavior as if it covered both. The same friction was reported from the panel a second time, six weeks later, against a doc line that was already there and already wrong. When two commands share a decision, give them one function, not two copies that pass review separately.
 - **`docs <topic>` is what a panel session reads; `REFERENCE.md` is not.** Three of four entries in this round asked for something REFERENCE.md either said or did not need to say. Documentation that only exists there does not reach the reader who files the report.
 

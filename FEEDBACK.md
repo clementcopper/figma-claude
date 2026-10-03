@@ -47,12 +47,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Context:** figma-cli d5993ab, 18.09.2026.
   Daniel 18.09.: build it only when the next Mac gets set up.
 
-- [ ] `cli` · **A file-wide `figma.root.findAll` inside `eval` hit the 90-s timeout and the pipe connection was gone afterwards**
-  **Repro:** `figma-cli eval '… figma.root.findAll(function(n){return n.type==="COMPONENT_SET"&&/List-Item/i.test(n.name);}) …'` on the m2trust file (all pages), plus two cheap lookups in the same call.
-  **Observed:** `✗ Execution timeout (90s): the daemon did not answer. Try: node src/index.js daemon restart`. The next `figma-cli status` said `⚠ Not connected to Figma` with `✓ Daemon running`; every following `eval`/`find` returned `✗ Not connected to Figma` until Daniel reconnected from the panel (Figma menu → Connect). The advertised `daemon restart` is not what the panel rule allows and would not have been the fix.
-  **Expected:** either the eval is cancelled and the connection survives, or the timeout message says that a reconnect from the panel is needed instead of pointing at `daemon restart`. The findAll itself was my mistake (too broad), the lost connection was the surprise.
-  **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 21 Sep 2026.
-
 - [ ] `cli` · **`eval` intermittently answers "The request never reached Figma" while `status` says Connected, and the identical call succeeds seconds later**
   **Repro:** `figma-cli eval 'const c=(await figma.variables.getLocalVariableCollectionsAsync())[0]; …return out'` (read-only variable dump, ~90 variables) — twice in one session (09:0x and 09:11), each time the immediate retry of the same script succeeded
   **Observed:** `✗ The request never reached Figma.` / `Connect from the panel: the Figma menu in the toolbar → Connect.`; `figma-cli status` right after: `Connected to Figma (pipe)`, `Daemon running (port 3456)`; `eval 'return typeof figma'` → `object`
@@ -76,6 +70,24 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   → fixed in d5993ab: section 3 compares only the path the command runs (resolved through `$HOME`/`~`/links). This checkout means PRESENT and no write; a moved checkout gets its path swapped inside the guard; a fresh install writes the guarded form. Four cases in `tests/fig-feedback-setup.test.js`, three red before. A note on `HOME_BAK=1`: the script never knew that variable, it was an invented name in an ad-hoc command, not an override the script ignored. The dry run is its own entry under Open.
 
 <!-- triaged entries, each with a → line naming where it went -->
+
+- [x] `cli` · **A file-wide `figma.root.findAll` inside `eval` hit the 90-s timeout and the pipe connection was gone afterwards**
+  **Repro:** `figma-cli eval '… figma.root.findAll(function(n){return n.type==="COMPONENT_SET"&&/List-Item/i.test(n.name);}) …'` on the m2trust file (all pages), plus two cheap lookups in the same call.
+  **Observed:** `✗ Execution timeout (90s): the daemon did not answer. Try: node src/index.js daemon restart`. The next `figma-cli status` said `⚠ Not connected to Figma` with `✓ Daemon running`; every following `eval`/`find` returned `✗ Not connected to Figma` until Daniel reconnected from the panel (Figma menu → Connect). The advertised `daemon restart` is not what the panel rule allows and would not have been the fix.
+  **Expected:** either the eval is cancelled and the connection survives, or the timeout message says that a reconnect from the panel is needed instead of pointing at `daemon restart`. The findAll itself was my mistake (too broad), the lost connection was the surprise.
+  **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 21 Sep 2026.
+  → fixed in 832a747, and the surprise had a cause you could not see: the timeout cancels nothing,
+    so the daemon's health probe waited behind your findAll, read "dead", detached the pipe
+    client — and then **ran the findAll again**, twice, one fresh 90 s budget each
+    (`retryVerdict` treated a timeout as a transport fault). Reproduced with a 12 s busy loop
+    and `--timeout 3`: `daemon.log` showed `Reconnecting CDP before retry…`, `Retry 1 failed`,
+    `Retry 2 failed`, 36 s of a frozen Figma. Now a timeout is its own verdict
+    (`src/lib/exec-retry.js`): no probe, no teardown, no second run; the same loop after the fix
+    left two log lines and `status` green throughout. The message no longer says "the daemon
+    did not answer. Try: daemon restart" when the 1 s probe merely waited; inside the panel it
+    never names `daemon restart`. Not built: cancelling the script itself
+    (`Runtime.terminateExecution`) — a known-long walk takes `--timeout` up front. The log
+    still has no timestamps; that is the next commit
 
 - [x] `cli` · **`eval` fails with "Object couldn't be returned by value" and does not say which field**
   **Repro:** `figma-cli eval '… return {text:{style:t.textStyleId, size:t.fontSize, …}, …}'` on a TEXT node with mixed styles (`9747:168902` Terms text) — `textStyleId` and `fontSize` are `figma.mixed` (a Symbol).
