@@ -70,7 +70,7 @@ as Meta by default, so nothing needs switching on:
 | ⌥⌫ | delete the word before the cursor |
 | ⌥D | delete to the end of the word |
 | ⌃W | delete back to the previous whitespace (a whole path in one press) |
-| ⌃U, ⌘⌫ | delete to the line start (⌘⌫ is the host's own mapping, as in Terminal.app) |
+| ⌘⌫ | delete to the line start — the host sends ⌃U's byte for it, as Terminal.app does. ⌃U itself sends the same `15` (key log, 2026-10-03) and did nothing in the test; unexplained, and ⌘⌫ is the key people press |
 | ⌃K | delete to the line end |
 | ⌃C once | clear the whole prompt (twice quits Claude Code); or ⌃E then ⌃U, repeated per line |
 | ⌃Y | bring deleted text back |
