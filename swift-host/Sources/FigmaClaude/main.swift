@@ -44,13 +44,71 @@ final class PanelTerminalView: LocalProcessTerminalView {
     /// Called when the user types, so the dot clears before the next check runs.
     var onInput: (() -> Void)?
 
+    /// `FIGMACLAUDE_KEYLOG=<path>`: every outgoing chunk and every kitty negotiation coming in,
+    /// one line each (src: FigmaClaudeCore/KeyLog.swift). The measurement, not the guess.
+    /// Read from the host's own environment or from `env` in panel.json — an app started from
+    /// the Dock has no shell to set a variable in.
+    static func hostSetting(_ name: String) -> String? {
+        if let v = ProcessInfo.processInfo.environment[name], !v.isEmpty { return v }
+        if let v = PanelConfig.load().env[name], !v.isEmpty { return v }
+        return nil
+    }
+
+    static let keyLogPath: String? = hostSetting("FIGMACLAUDE_KEYLOG").map { ($0 as NSString).expandingTildeInPath }
+
+    func keyLog(_ line: String) {
+        guard let path = Self.keyLogPath else { return }
+        let stamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        let data = Data(("[\(stamp)] " + line + "\n").utf8)
+        if let h = FileHandle(forWritingAtPath: path) {
+            h.seekToEndOfFile(); h.write(data); h.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: data)
+        }
+    }
+
+    /// `FIGMACLAUDE_KITTY=1` lets the kitty keyboard negotiation through to SwiftTerm. Off by
+    /// default: with it on, ⌃C reached Claude Code as `ESC[99;5u` and came out as the letter
+    /// (2026-10-03). Without the negotiation the panel behaves like Terminal.app, which does
+    /// not speak kitty either (src: FigmaClaudeCore/KittyFilter.swift).
+    static let keepKitty = hostSetting("FIGMACLAUDE_KITTY") == "1"
+    private var kittyFilter = KittyFilterState()
+
     override func dataReceived(slice: ArraySlice<UInt8>) {
         sawOutput = true
+        var bytes = Array(slice)
+        let negotiations = Self.keyLogPath != nil ? kittyNegotiations(in: bytes) : []
+        for seq in negotiations {
+            keyLog("in:  \(seq)   flags before=\(terminal.keyboardEnhancementFlags.rawValue)" + (Self.keepKitty ? "" : "   (stripped)"))
+        }
+        if !Self.keepKitty { bytes = stripKittyNegotiation(bytes, state: &kittyFilter) }
         if let onOutput {
-            let text = String(decoding: slice, as: UTF8.self)
+            let text = String(decoding: bytes, as: UTF8.self)
             DispatchQueue.main.async { onOutput(text) }
         }
-        super.dataReceived(slice: slice)
+        super.dataReceived(slice: bytes[...])
+        if !negotiations.isEmpty {
+            keyLog("     flags after=\(terminal.keyboardEnhancementFlags.rawValue)")
+        }
+    }
+
+    // ---- ⌫ on a mouse selection (experiment, FigmaClaudeCore/SelectionDelete.swift) ----
+    private var lastSelection: SelectionSnapshot?
+    private var selectionReleasedAt: Date?
+
+    /// SwiftTerm turns the selection off as the first thing in `keyDown`; this is where the host
+    /// learns it, with `start`/`end`/text still intact.
+    override func selectionChanged(source: Terminal) {
+        super.selectionChanged(source: source)
+        guard let sel = selection else { return }
+        if sel.active && sel.hasSelectionRange {
+            lastSelection = SelectionSnapshot(startCol: sel.start.col, endCol: sel.end.col,
+                                              startRow: sel.start.row, endRow: sel.end.row,
+                                              text: sel.getSelectedText())
+            selectionReleasedAt = nil
+        } else if lastSelection != nil, selectionReleasedAt == nil {
+            selectionReleasedAt = Date()
+        }
     }
 
     /// `send` rather than `keyDown`: SwiftTerm marks its key handling `public override` rather
@@ -58,7 +116,27 @@ final class PanelTerminalView: LocalProcessTerminalView {
     /// every keystroke leaves for the PTY, and it is `open`.
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
         onInput?()
+        if Self.keyLogPath != nil { keyLog("out: " + hexLine(Array(data))) }
+        // A plain ⌫ right after a selection went off, on the cursor's row: act the line editor's
+        // "delete selection" out as cursor-lefts and backspaces. Rows compare in buffer
+        // coordinates; while scrolled back the plan is nil and the ⌫ goes through as typed.
+        if Array(data) == [0x7f], let buffer = terminal?.buffer,
+           let plan = selectionDeletePlan(lastSelection, cursorCol: buffer.x, cursorRow: buffer.y + buffer.yDisp,
+                                          now: Date(), releasedAt: selectionReleasedAt) {
+            lastSelection = nil
+            selectionReleasedAt = nil
+            keyLog("sel: ← ×\(plan.lefts), ⌫ ×\(plan.backspaces)")
+            super.send(source: source, data: selectionDeleteBytes(plan)[...])
+            return
+        }
         super.send(source: source, data: data)
+    }
+
+    /// SwiftTerm validates `copy:`/`paste:`/`selectAll:` and answers `false` for every other
+    /// selector — which disabled the Edit menu's ⌘⌫ item the moment it was added (2026-10-03).
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(deleteToLineStart(_:)) { return true }
+        return super.validateUserInterfaceItem(item)
     }
 
     /// ⌘V with an image on the clipboard: SwiftTerm's `paste` would insert `""`. Claude Code reads
@@ -1371,7 +1449,14 @@ if CommandLine.arguments.contains("--print-mainmenu") {
         guard let submenu = top.submenu else { continue }
         print(submenu.title.isEmpty ? "(app)" : submenu.title)
         for item in submenu.items where !item.isSeparatorItem {
-            let action = item.action.map { NSStringFromSelector($0) } ?? "-"
+            var action = item.action.map { NSStringFromSelector($0) } ?? "-"
+            // An item with no target asks the responder chain; the terminal view is where it
+            // ends, and SwiftTerm says no to any selector it does not know (⌘⌫ was disabled for
+            // a morning). Ask the same view the window would.
+            if submenu.title == "Edit", item.target == nil {
+                let enabled = PanelTerminalView(frame: .zero).validateUserInterfaceItem(item)
+                action += enabled ? "  (enabled)" : "  (DISABLED)"
+            }
             let mods = item.keyEquivalentModifierMask
             let glyphs = (mods.contains(.control) ? "⌃" : "") + (mods.contains(.option) ? "⌥" : "")
                 + (mods.contains(.shift) ? "⇧" : "") + (mods.contains(.command) ? "⌘" : "")

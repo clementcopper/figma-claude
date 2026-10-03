@@ -12,13 +12,13 @@ enum EditMenuTests {
     /// ⌘C, ⌘V and ⌘A did nothing because no menu item carried the standard selectors.
     static func standardItems() {
         let selectors = editMenuEntries.map(\.selector)
-        Checks.expect(selectors, ["cut:", "copy:", "paste:", "selectAll:", "deleteToLineStart:"])
+        Checks.expect(selectors, ["copy:", "paste:", "selectAll:", "deleteToLineStart:"])
         // ⌘⌫ is the one chord the host has to map itself: SwiftTerm sends nothing for it, and
         // Terminal.app / iTerm2 turn it into ⌃U (Claude Code's "delete to line start").
-        Checks.expect(editMenuEntries.map(\.key), ["x", "c", "v", "a", "\u{08}"])
+        Checks.expect(editMenuEntries.map(\.key), ["c", "v", "a", "\u{08}"])
         Checks.expect(Set(editMenuEntries.map(\.key)).count, editMenuEntries.count)
         Checks.expect(editMenuEntries.allSatisfy { $0.selector.hasSuffix(":") }, true)
-        Checks.expect(editMenuEntries.map(\.separatorBefore), [false, false, false, true, true])
+        Checks.expect(editMenuEntries.map(\.separatorBefore), [false, false, true, true])
         Checks.expect(controlUByte, 0x15)
     }
 

@@ -76,6 +76,21 @@ as Meta by default, so nothing needs switching on:
 | ⌃Y | bring deleted text back |
 | ⌥←, ⌥→, ⌥B, ⌥F | move by word |
 
+**⌫ on a mouse selection** is an experiment: a selection on the cursor's row, released by the
+⌫ itself, is acted out as cursor-lefts to its end and one ⌫ per selected character. One row only,
+columns are cells but ⌫ deletes characters, so an emoji inside the selection costs one ⌫ too
+many; a wrapped prompt or a selection on another row gets the plain ⌫.
+
+**Kitty keyboard protocol is kept out.** Claude Code asks for it (`ESC[?u`), SwiftTerm answers
+and then encodes keys the kitty way — ⌃C arrived as `ESC[99;5u` and showed up as a "c". The host
+strips the negotiation from the PTY stream, so the panel behaves like Terminal.app; Shift+Enter
+for a newline is then Claude Code's `/terminal-setup`, not the protocol. `FIGMACLAUDE_KITTY=1`
+(in the environment or under `env` in `panel.json`) lets it through again.
+
+**Measuring keys:** `FIGMACLAUDE_KEYLOG=~/.figma-ds-cli/keys.log` (same two places) appends one
+line per outgoing chunk (`out: 03  "^C"`), every kitty negotiation seen (`in: ESC[>1u`) and each
+selection delete. Read the bytes before believing a symptom.
+
 ## Checks
 
 ```bash

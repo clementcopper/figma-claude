@@ -25,7 +25,8 @@ public struct EditMenuEntry: Equatable {
 }
 
 public let editMenuEntries: [EditMenuEntry] = [
-    EditMenuEntry(title: "Cut", selector: "cut:", key: "x"),
+    // No Cut: a terminal has nothing to cut, and SwiftTerm has no `cut:` — the item was dead
+    // from the start (`--print-mainmenu` showed it DISABLED).
     EditMenuEntry(title: "Copy", selector: "copy:", key: "c"),
     EditMenuEntry(title: "Paste", selector: "paste:", key: "v"),
     EditMenuEntry(title: "Select All", selector: "selectAll:", key: "a", separatorBefore: true),
