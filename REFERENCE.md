@@ -144,7 +144,15 @@ node src/index.js canvas info                  # What's on canvas
 node src/index.js canvas next                  # Next free position
 node src/index.js arrange -g 100               # Arrange frames
 node src/index.js arrange -g 100 -c 3          # 3 columns
+node src/index.js section create "Drafts" 1:2,1:3   # A section drawn around the nodes
+node src/index.js section add <sectionId> 1:4        # Grows the section to enclose the node
+node src/index.js section list
 ```
+
+A section is sized from the min/max of its children's canvas boxes plus `--padding <px>`
+(default 40 — a value picked here, not measured from Figma's own "Create section"), and the
+children keep their canvas positions. `create` without node ids makes an empty section at the
+origin. `section create|add` print the box: `… with 2 child(ren) at 9138,-40 680×480 on page "Website"`.
 
 ## Instantiate an existing component
 

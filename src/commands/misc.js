@@ -1,6 +1,7 @@
 // Commands: misc (extracted from index.js)
 import chalk from 'chalk';
 import { parseIdList, ID_LIST_HELP } from '../lib/id-list.js';
+import { enclosingBox, relativeTo } from '../lib/section-bounds.js';
 import ora from 'ora';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -206,26 +207,64 @@ const sectionCmd = program
   .command('section')
   .description('Manage Figma sections (organize frames into named groups)');
 
+// The section is drawn around its children (src/lib/section-bounds.js): absolute boxes first,
+// then the section's own position and size, then the children re-placed so their canvas
+// positions do not change. `createSection()` alone left a 496 × 496 box at the origin.
+const SECTION_HELPERS = `
+      ${enclosingBox.toString()}
+      ${relativeTo.toString()}
+      const absBox = (n) => n.absoluteBoundingBox
+        ? { x: n.absoluteBoundingBox.x, y: n.absoluteBoundingBox.y, width: n.absoluteBoundingBox.width, height: n.absoluteBoundingBox.height }
+        : { x: n.absoluteTransform[0][2], y: n.absoluteTransform[1][2], width: n.width, height: n.height };
+      const enclose = (section, nodes, padding) => {
+        const boxes = nodes.map(absBox);
+        const box = enclosingBox(boxes, padding);
+        if (!box) return null;
+        section.x = box.x;
+        section.y = box.y;
+        section.resizeWithoutConstraints(box.width, box.height);
+        nodes.forEach((n, i) => {
+          if (n.parent !== section) section.appendChild(n);
+          const p = relativeTo(boxes[i], box);
+          n.x = p.x;
+          n.y = p.y;
+        });
+        return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
+      };
+      const lookup = async (ids) => {
+        const nodes = [];
+        for (const id of ids) {
+          const n = await figma.getNodeByIdAsync(id);
+          if (!n) throw new Error('Node not found: ' + id);
+          nodes.push(n);
+        }
+        return nodes;
+      };`;
+
+const boxLabel = (box) => box ? ` at ${box.x},${box.y} ${box.width}×${box.height}` : '';
+
 sectionCmd
   .command('create <name> [nodeIds]')
-  .description(`Create a section, optionally moving nodes into it (${ID_LIST_HELP})`)
-  .action(async (name, nodeIds) => {
+  .description(`Create a section around the given nodes (${ID_LIST_HELP}); without nodes, an empty one at the origin`)
+  .option('--padding <px>', 'Space between the children and the section edge', '40')
+  .action(async (name, nodeIds, options) => {
     await checkConnection();
     const ids = JSON.stringify(parseIdList(nodeIds));
-    const code = `(async () => {
+    const padding = Number(options.padding);
+    if (!Number.isFinite(padding) || padding < 0) {
+      console.log(chalk.red(`✗ --padding must be a number of px, got "${options.padding}"`)); process.exitCode = 1;
+      return;
+    }
+    const code = `(async () => {${SECTION_HELPERS}
+      const nodes = await lookup(${ids});
       const section = figma.createSection();
       section.name = ${JSON.stringify(name)};
-      const ids = ${ids};
-      for (const id of ids) {
-        const n = await figma.getNodeByIdAsync(id);
-        if (!n) throw new Error('Node not found: ' + id);
-        section.appendChild(n);
-      }
-      return { id: section.id, name: section.name, count: ids.length };
+      const box = enclose(section, nodes, ${JSON.stringify(padding)});
+      return { id: section.id, name: section.name, count: nodes.length, box, page: figma.currentPage.name };
     })()`;
     try {
       const r = await daemonExec('eval', { code });
-      console.log(chalk.green('✓'), `Created section "${r.name}" (${r.id}) with ${r.count} child(ren)`);
+      console.log(chalk.green('✓'), `Created section "${r.name}" (${r.id}) with ${r.count} child(ren)${boxLabel(r.box)} on page "${r.page}"`);
     } catch (e) {
       handleEvalError(e);
     }
@@ -256,25 +295,40 @@ sectionCmd
 
 sectionCmd
   .command('add <sectionId> <nodeIds>')
-  .description('Add comma-separated nodes into an existing section')
-  .action(async (sectionId, nodeIds) => {
+  .description('Add nodes into an existing section; the section grows to enclose them')
+  .option('--padding <px>', 'Space between the children and the section edge', '40')
+  .action(async (sectionId, nodeIds, options) => {
     await checkConnection();
     const ids = JSON.stringify(parseIdList(nodeIds));
-    const code = `(async () => {
+    const padding = Number(options.padding);
+    if (!Number.isFinite(padding) || padding < 0) {
+      console.log(chalk.red(`✗ --padding must be a number of px, got "${options.padding}"`)); process.exitCode = 1;
+      return;
+    }
+    const code = `(async () => {${SECTION_HELPERS}
       const s = await figma.getNodeByIdAsync(${JSON.stringify(sectionId)});
       if (!s) throw new Error(${JSON.stringify(`Section not found: ${sectionId}`)});
       if (s.type !== 'SECTION') throw new Error(${JSON.stringify(`Not a section: ${sectionId}`)});
-      const ids = ${ids};
-      for (const id of ids) {
-        const n = await figma.getNodeByIdAsync(id);
-        if (!n) throw new Error('Node not found: ' + id);
-        s.appendChild(n);
-      }
-      return { id: s.id, name: s.name, count: s.children.length };
+      const added = await lookup(${ids});
+      // Existing children keep their canvas positions too; the box never shrinks below what
+      // the section already covered.
+      const all = s.children.filter(c => !added.includes(c)).concat(added);
+      const keep = { x: s.x, y: s.y, width: s.width, height: s.height };
+      const boxes = all.map(absBox);
+      const wanted = enclosingBox(boxes, ${JSON.stringify(padding)});
+      const box = enclosingBox([keep, wanted], 0);
+      s.x = box.x; s.y = box.y;
+      s.resizeWithoutConstraints(box.width, box.height);
+      all.forEach((n, i) => {
+        if (n.parent !== s) s.appendChild(n);
+        const p = relativeTo(boxes[i], box);
+        n.x = p.x; n.y = p.y;
+      });
+      return { id: s.id, name: s.name, count: s.children.length, box: { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) } };
     })()`;
     try {
       const r = await daemonExec('eval', { code });
-      console.log(chalk.green('✓'), `Added to section "${r.name}" (${r.id}). Total children: ${r.count}`);
+      console.log(chalk.green('✓'), `Added to section "${r.name}" (${r.id}). Total children: ${r.count}, now${boxLabel(r.box)}`);
     } catch (e) {
       handleEvalError(e);
     }
