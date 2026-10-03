@@ -364,7 +364,7 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
       // /health call tells whether the daemon is fine (the code was slow) or gone.
       let healthy = false;
       try { healthy = isDaemonRunning(false, true) === true; } catch {}
-      throw Object.assign(new Error(timeoutMessage(timeoutMs, healthy)), { fromDaemon: true });
+      throw Object.assign(new Error(timeoutMessage(timeoutMs, healthy, { panel: inPanel() })), { fromDaemon: true });
     }
     throw e;
   }

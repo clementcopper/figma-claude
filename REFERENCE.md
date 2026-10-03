@@ -351,7 +351,8 @@ never sees — a script that ends in a log used to print nothing at all and exit
 return the value instead (`return JSON.stringify(x)`).
 
 A walk over every page can outlast the default budget. `--timeout <seconds>` raises it; there is
-no partial output, so a long walk either answers or is killed.
+no partial output. The budget cancels nothing — Figma finishes the script after the CLI has
+given up, and every command (and the daemon's own health probe) waits behind it until then.
 
 **Errors name the line.** A throw inside the script prints V8's frames against the submitted
 file (`at get_visible (build.js:3:17)`), the wrapper's own line is already subtracted. A file

@@ -60,3 +60,11 @@ test('a value CDP cannot return by value counts as raised inside Figma: the code
   client.send = async () => ({ error: { message: "Object couldn't be returned by value", code: -32000 } });
   await assert.rejects(client.eval('1'), (e) => e.fromFigma === true && /returned by value/.test(e.message));
 });
+
+test('a timed-out eval is never retried or torn down: Figma may still be running the code', () => {
+  // FEEDBACK.md 21 Sep 2026: a file-wide findAll ran past 90 s; the daemon probed a renderer
+  // still busy with it, read "dead", detached the pipe client and ran the findAll twice more.
+  const timeout = new Error('Execution timeout (90s)');
+  assert.equal(retryVerdict({ action: 'eval', attempt: 0, maxRetries: 2, error: timeout }), 'timed-out');
+  assert.equal(retryVerdict({ action: 'eval', attempt: 1, maxRetries: 2, error: timeout }), 'timed-out');
+});

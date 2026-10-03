@@ -617,6 +617,11 @@ async function handleRequest(req, res) {
             console.log('[daemon] Raised inside Figma — the code ran, not retrying');
             break;
           }
+          if (verdict === 'timed-out') {
+            // Nothing cancelled the script; a probe now would wait behind it and read "dead".
+            console.log('[daemon] Timed out — Figma may still be running the code; not probing, not retrying');
+            break;
+          }
 
           // For Safe Mode: wait briefly for potential reconnect
           if (attempt < MAX_RETRIES && MODE === 'plugin') {

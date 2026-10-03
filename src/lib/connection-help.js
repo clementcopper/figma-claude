@@ -89,15 +89,22 @@ export function explainEvalError(message, opts = {}) {
  * different advice. "Try: daemon restart" after a 2 s budget on a healthy daemon (reported from
  * the panel) sent the reader to restart a daemon that had done nothing wrong.
  *
+ * A /health that does not answer is not a dead daemon either: the budget cancelled nothing,
+ * Figma is still running the script, and the daemon's probe waits behind it. "The daemon did
+ * not answer. Try: daemon restart" after a 90 s findAll (21 Sep 2026, from the panel) named
+ * a command the panel rule forbids, for a daemon that was merely waiting.
+ *
  * @param {number} timeoutMs the budget that ran out
  * @param {boolean} daemonHealthy whether /health answered after the timeout
+ * @param {{ panel?: boolean }} [opts]
  */
-export function timeoutMessage(timeoutMs, daemonHealthy) {
+export function timeoutMessage(timeoutMs, daemonHealthy, opts = {}) {
   const s = timeoutMs / 1000;
   if (daemonHealthy) {
     return `Execution timeout (${s}s): the code ran longer than the budget allows — raise it with --timeout <seconds> (eval, run)`;
   }
-  return `Execution timeout (${s}s): the daemon did not answer. Try: node src/index.js daemon restart`;
+  const last = opts.panel ? '' : '; a daemon that stays silent after that takes `node src/index.js daemon restart`';
+  return `Execution timeout (${s}s): Figma is still busy with the code (the daemon's probe did not answer either). Wait for it, then \`figma-cli status\`; a known-long walk takes --timeout <seconds>${last}`;
 }
 
 /** Whether this process runs inside FigmaClaude.app. */

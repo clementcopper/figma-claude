@@ -24,3 +24,22 @@ test('neither message is mistaken for a lost connection', () => {
     assert.equal(explainEvalError(timeoutMessage(2000, healthy)).connection, false);
   }
 });
+
+// 21 Sep 2026, from the panel: a 90 s findAll timed out, the 1 s /health call could not answer
+// while Figma was still busy, and the message said "the daemon did not answer. Try: daemon
+// restart" — a command the panel rule forbids and that would not have helped.
+
+test('a daemon that did not answer the probe is called busy, not dead', () => {
+  const msg = timeoutMessage(90000, false);
+  assert.match(msg, /^Execution timeout \(90s\)/);
+  assert.match(msg, /still busy/);
+  assert.match(msg, /figma-cli status/);
+  assert.match(msg, /--timeout <seconds>/);
+});
+
+test('inside the panel the message never names daemon restart', () => {
+  const msg = timeoutMessage(90000, false, { panel: true });
+  assert.doesNotMatch(msg, /daemon restart/);
+  assert.match(msg, /still busy/);
+  assert.doesNotMatch(timeoutMessage(2000, true, { panel: true }), /daemon restart/);
+});

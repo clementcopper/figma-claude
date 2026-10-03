@@ -158,7 +158,8 @@ exits 0, which looks exactly like a broken connection. `return JSON.stringify(x)
 throw prints the stack with the file's own line numbers (`at get_visible (build.js:3:17)`), and
 a file that does not parse is refused before it is sent, with line, column and caret.
 `figma.mixed` in a returned value (a `fontSize` or `textStyleId` on text with two styles) comes
-back as the string `"mixed"`.
+back as the string `"mixed"`. A timeout cancels nothing: Figma finishes the script, and every
+command waits behind it until then — give a known-long walk `--timeout <seconds>` up front.
 
 **eval is allowed for:**
 - Single-node operations that don't have a CLI command (e.g. setting an obscure Plugin API property)
