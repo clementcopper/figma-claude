@@ -133,3 +133,44 @@ describe('wrapCodeIfNeeded — edges', () => {
     assert.strictEqual(await runnable(`'return me'`, fakeFigma()), 'return me');
   });
 });
+
+// ---- a result CDP cannot return by value (FEEDBACK.md, 21 Sep 2026) ----
+import { captureResult, RECOVER_RESULT_EXPR, RESULT_SLOT, isUnreturnable } from '../src/lib/eval-wrap.js';
+
+describe('captureResult / RECOVER_RESULT_EXPR — figma.mixed in a result', () => {
+  it('keeps the user code on the same lines as the plain wrapper', () => {
+    const plain = wrapCodeIfNeeded('const a = 1;\nreturn a');
+    const captured = captureResult(plain);
+    assert.strictEqual(plain.split('\n')[1], 'const a = 1;');
+    assert.strictEqual(captured.split('\n')[1], 'const a = 1;', 'line numbers must not shift again');
+  });
+
+  it('returns the value as before and parks it for recovery', async () => {
+    // eslint-disable-next-line no-new-func
+    const value = await new Function('figma', `return (${captureResult(wrapCodeIfNeeded('return { n: figma.n }'))});`)({ n: 7 });
+    assert.deepStrictEqual(value, { n: 7 });
+    assert.deepStrictEqual(globalThis[RESULT_SLOT], { n: 7 });
+    delete globalThis[RESULT_SLOT];
+  });
+
+  it('recovery serialises figma.mixed as "mixed", other symbols as text, and clears the slot', () => {
+    globalThis.figma = { mixed: Symbol('figma.mixed') };
+    globalThis[RESULT_SLOT] = { text: { style: globalThis.figma.mixed, size: 12 }, other: Symbol('x'), list: [globalThis.figma.mixed] };
+    // eslint-disable-next-line no-eval
+    const json = (0, eval)(RECOVER_RESULT_EXPR);
+    assert.deepStrictEqual(JSON.parse(json), { text: { style: 'mixed', size: 12 }, other: 'Symbol(x)', list: ['mixed'] });
+    assert.strictEqual(globalThis[RESULT_SLOT], undefined);
+    delete globalThis.figma;
+  });
+
+  it('recovery of an undefined result is undefined, not the string "undefined"', () => {
+    globalThis[RESULT_SLOT] = undefined;
+    // eslint-disable-next-line no-eval
+    assert.strictEqual((0, eval)(RECOVER_RESULT_EXPR), undefined);
+  });
+
+  it('knows the protocol error that means the code ran but the value could not cross', () => {
+    assert.strictEqual(isUnreturnable("Object couldn't be returned by value"), true);
+    assert.strictEqual(isUnreturnable('Cannot find context with specified id'), false);
+  });
+});

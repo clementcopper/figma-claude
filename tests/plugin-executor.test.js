@@ -21,6 +21,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const posted = [];
 const stubFigma = () => ({
   root: { name: 'My File' },
+  mixed: Symbol('figma.mixed'),
   currentPage: { name: 'Page 1', children: [{ name: 'a' }, { name: 'b' }] },
   getNodeByIdAsync: async (id) => (id === '1:2' ? { id, name: 'Found' } : null),
   showUI() {},
@@ -33,6 +34,9 @@ const stubFigma = () => ({
       // Figma's postMessage rejects values that cannot be structured-cloned (a SceneNode);
       // the stub does the same for a marker so the plugin's handling of it is under test.
       if (msg.result && msg.result.__node) throw new Error('Cannot clone a node');
+      // … and a Symbol (figma.mixed) anywhere in the value, as the real one does.
+      const hasSymbol = (v) => typeof v === 'symbol' || (v && typeof v === 'object' && Object.values(v).some(hasSymbol));
+      if (hasSymbol(msg.result)) throw new Error('Cannot clone a Symbol');
       posted.push(msg);
     },
   },
@@ -121,6 +125,14 @@ describe('plugin/code.js errors', () => {
   it('a result that cannot be posted arrives as an error', async () => {
     const msg = await runInPlugin(`({ __node: true })`);
     assert.match(String(msg.error), /clone/i);
+  });
+
+  it('figma.mixed in a result arrives as the string "mixed", as on the CDP path', async () => {
+    // FEEDBACK.md 21 Sep 2026: a TEXT node with mixed styles made the whole call fail with
+    // "Object couldn't be returned by value" and no field named.
+    const msg = await runInPlugin(`({ text: { style: figma.mixed, size: 12 }, list: [figma.mixed] })`);
+    assert.strictEqual(msg.error, undefined);
+    assert.deepStrictEqual(msg.result, { text: { style: 'mixed', size: 12 }, list: ['mixed'] });
   });
 
   it('deciding the wrapper is parse-only: nothing runs twice', async () => {

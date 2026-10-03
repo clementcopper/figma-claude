@@ -358,6 +358,10 @@ file (`at get_visible (build.js:3:17)`), the wrapper's own line is already subtr
 that does not parse never leaves the machine: `✗ SyntaxError in build.js:3:12: Invalid or
 unexpected token`, with the source line and a caret, exit 1.
 
+**`figma.mixed` comes back as `"mixed"`.** A Symbol cannot cross the protocol by value; the
+daemon reads such a result back through JSON, so `{ size: t.fontSize }` on text with two sizes
+prints `{ "size": "mixed" }` instead of `Object couldn't be returned by value`.
+
 ## Configuration
 
 ```bash

@@ -25,7 +25,7 @@ import { join, dirname } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { spawn } from 'child_process';
-import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
+import { wrapCodeIfNeeded, captureResult, RECOVER_RESULT_EXPR, isUnreturnable } from './lib/eval-wrap.js';
 import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
 import { spawnFigmaWithPipe, inheritedPipe, successorEnv, designTargets, reloadTarget } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
@@ -252,7 +252,16 @@ async function getCdpClient() {
 
 async function evalViaCdp(code) {
   const client = await getCdpClient();
-  return client.eval(code);
+  try {
+    return await client.eval(captureResult(code));
+  } catch (e) {
+    // The code ran, only the value could not cross by value (a Symbol such as `figma.mixed`
+    // in it). Read the parked value back through JSON — a read, never a second run.
+    if (!isUnreturnable(e && e.message)) throw e;
+    console.log('[daemon] Result could not be returned by value — reading it back as JSON');
+    const json = await client.eval(RECOVER_RESULT_EXPR);
+    return json === undefined ? undefined : JSON.parse(json);
+  }
 }
 
 // ============ PLUGIN MODE (SAFE) ============

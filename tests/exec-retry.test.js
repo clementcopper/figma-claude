@@ -53,3 +53,10 @@ test('a compile error from Figma carries its location in the same shape as a run
   client.send = async () => ({ result: { exceptionDetails: { lineNumber: 0, columnNumber: 0, exception: { description: 'TypeError: x\n    at f (<anonymous>:4:17)' } } } });
   await assert.rejects(client.eval('1'), (e) => e.message === 'TypeError: x\n    at f (<anonymous>:4:17)');
 });
+
+test('a value CDP cannot return by value counts as raised inside Figma: the code ran', async () => {
+  const client = new FigmaClient();
+  client.ws = { readyState: 1 };
+  client.send = async () => ({ error: { message: "Object couldn't be returned by value", code: -32000 } });
+  await assert.rejects(client.eval('1'), (e) => e.fromFigma === true && /returned by value/.test(e.message));
+});

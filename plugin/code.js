@@ -76,6 +76,15 @@ function errorText(error) {
   return String(error);
 }
 
+// A value postMessage cannot clone, made plain: Symbols become text, `figma.mixed` "mixed".
+// Keep in step with RECOVER_RESULT_EXPR in src/lib/eval-wrap.js — the parity test compares both.
+function plainResult(value) {
+  const r = (k, x) => typeof x === 'symbol'
+    ? (x === figma.mixed ? 'mixed' : String(x))
+    : (typeof x === 'bigint' ? String(x) : x);
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value, r));
+}
+
 // Handle messages from UI (WebSocket bridge)
 const TOKEN_KEY = 'daemonToken';
 
@@ -93,11 +102,23 @@ figma.ui.onmessage = async (msg) => {
 
   // Single eval
   if (msg.type === 'eval') {
+    let result;
     try {
-      const result = await executeCode(msg.code, msg.timeoutMs);
-      figma.ui.postMessage({ type: 'result', id: msg.id, result: result });
+      result = await executeCode(msg.code, msg.timeoutMs);
     } catch (error) {
       figma.ui.postMessage({ type: 'result', id: msg.id, error: errorText(error) });
+      return;
+    }
+    try {
+      figma.ui.postMessage({ type: 'result', id: msg.id, result: result });
+    } catch (error) {
+      // postMessage cannot clone a Symbol (`figma.mixed`) — same answer as the CDP path
+      // (src/lib/eval-wrap.js): the value through JSON, `figma.mixed` as "mixed".
+      try {
+        figma.ui.postMessage({ type: 'result', id: msg.id, result: plainResult(result) });
+      } catch (again) {
+        figma.ui.postMessage({ type: 'result', id: msg.id, error: errorText(again) });
+      }
     }
   }
 

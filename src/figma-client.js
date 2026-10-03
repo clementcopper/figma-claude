@@ -8,6 +8,7 @@
 import WebSocket from 'ws';
 import { getCdpPort } from './figma-patch.js';
 import { designTargets, pipeCandidates } from './lib/figma-pipe.js';
+import { isUnreturnable } from './lib/eval-wrap.js';
 import { resolveParentCode } from './lib/parent-snippet.js';
 import { resolveLeafSizing, resolveRootFill } from './lib/fill-sizing.js';
 import { normalizeWeight, weightKey, buildStyleIndex, matchTextStyle, suggestStyleNames } from './lib/text-styles.js';
@@ -625,7 +626,11 @@ export class FigmaClient {
     // A protocol-level error (stale execution context after navigation, bad params) comes
     // as { id, error } with no `result`; it used to fall through as a successful undefined.
     if (result.error) {
-      throw new Error(result.error.message || 'CDP error ' + result.error.code);
+      const message = result.error.message || 'CDP error ' + result.error.code;
+      // "Object couldn't be returned by value": the code ran to its `return`, only the value
+      // could not cross — never run it again (src/lib/exec-retry.js); the daemon recovers the
+      // value through JSON (src/lib/eval-wrap.js).
+      throw Object.assign(new Error(message), isUnreturnable(message) ? { fromFigma: true } : {});
     }
 
     if (result.result?.exceptionDetails) {
