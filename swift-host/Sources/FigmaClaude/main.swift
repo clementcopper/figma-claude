@@ -155,6 +155,7 @@ final class PanelTerminalView: LocalProcessTerminalView {
     /// ⌘⌫ from the Edit menu: what Terminal.app sends for it, ⌃U — Claude Code deletes to the
     /// line start and keeps the text for ⌃Y.
     @objc func deleteToLineStart(_ sender: Any?) {
+        keyLog("menu: ⌘⌫ → ^U")
         send(data: [controlUByte][...])
     }
 }
