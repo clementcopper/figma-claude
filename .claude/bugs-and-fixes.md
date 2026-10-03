@@ -386,3 +386,29 @@ Auto-Layout bedeutet und dass die Wurzel `<Frame>` sein muss.
 
 **Tests:** `tests/render-root-absolute.test.js`, `tests/parent-snippet.test.js`,
 `tests/instantiate-cmd.test.js`, `tests/duplicate-cmd.test.js`.
+
+## Ein Wort im Fehlertext entschied über den Hinweis (2026-10-03, panel feedback)
+
+**Symptom:** `figma-cli run _run.js` mit einer halbierten Zeile antwortete `✗ SyntaxError: Invalid
+or unexpected token`, darunter `Token file: …/.daemon-token` und `Try: daemon restart` — nichts
+zur Datei, keine Zeile. Daneben, vom 18.09.: ein Wurf in einem `run`-Skript kam als eine Zeile
+ohne Ort; drei Läufe, um ein `cornerRadius` auf einem Mixed-Knoten in 200 Zeilen zu finden.
+
+**Cause:** zwei Stellen in `daemonExec` (`src/lib/cli-core.js`). Der Auth-Hinweis hing an
+`errObj.error.includes('token')` — „unexpected **token**" passt. Und der Fehlertext wurde für alle
+Befehle auf die erste Zeile gekürzt (`split('\n')[0]`), obwohl der Daemon V8s Frames
+(`at get_visible (<anonymous>:4:17)`) komplett weiterreicht; `daemon.log` hatte den Stack die ganze
+Zeit. Die Zeilennummer darin ist um die eine Wrapper-Zeile aus `src/lib/eval-wrap.js` verschoben.
+
+**Fix (3195cba):** `src/lib/daemon-error.js` entscheidet am HTTP-Status (403 = Auth, 500 = Code);
+die Meldung bleibt einzeilig für die zwanzig Befehle, die `e.message` drucken, die Frames reisen als
+`figmaStack` mit. `src/lib/eval-error.js` bildet `<anonymous>:L:C` auf die eingereichte Datei ab
+(`lineOffsetFor` fragt dieselbe `wrapCodeIfNeeded`, die der Daemon benutzt — zwei Enden, eine
+Funktion). `src/lib/syntax-check.js` parst vor dem Senden mit `vm.Script` auf dem Statement-Wrapper:
+dort sind `return`/`await` legal, also ist der erste Fehler der echte und nicht „Illegal return";
+V8 liefert Datei, Zeile, Quellzeile und Caret wie `node --check`. `figma-client.js` gibt einem
+Compile-Fehler aus Figma (nur `lineNumber`/`columnNumber`, keine Frames) einen Frame derselben
+Form.
+
+**Tests:** `tests/daemon-error.test.js`, `tests/eval-error.test.js`, `tests/syntax-check.test.js`,
+`tests/exec-retry.test.js` (Compile-Fehler-Frame).

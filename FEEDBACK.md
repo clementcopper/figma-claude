@@ -47,12 +47,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Context:** figma-cli d5993ab, 18.09.2026.
   Daniel 18.09.: build it only when the next Mac gets set up.
 
-- [ ] `cli` · **A script that throws inside `run` reports only the message — no stack, no line number in the submitted file**
-  **Repro:** `figma-cli run /tmp/.../build-cert-request.js` with a helper that walks a tree and touches a node removed by an earlier `detachInstance()`.
-  **Observed:** `✗ Error: in get_visible: The node (instance sublayer or table cell) with id "I16614:159373;10544:223986" does not exist` and nothing else. A second throw the same day came back as `✗ TypeError: Cannot convert a Symbol value to a string` with no location at all — that one was a `cornerRadius` read on a mixed-radius node, which took three extra runs to find in a 200-line script.
-  **Expected:** the stack, or at least the line number in the submitted file, so the failing statement can be located without bisecting the script.
-  **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 18 Sep 2026.
-
 - [ ] `cli` · **A file-wide `figma.root.findAll` inside `eval` hit the 90-s timeout and the pipe connection was gone afterwards**
   **Repro:** `figma-cli eval '… figma.root.findAll(function(n){return n.type==="COMPONENT_SET"&&/List-Item/i.test(n.name);}) …'` on the m2trust file (all pages), plus two cheap lookups in the same call.
   **Observed:** `✗ Execution timeout (90s): the daemon did not answer. Try: node src/index.js daemon restart`. The next `figma-cli status` said `⚠ Not connected to Figma` with `✓ Daemon running`; every following `eval`/`find` returned `✗ Not connected to Figma` until Daniel reconnected from the panel (Figma menu → Connect). The advertised `daemon restart` is not what the panel rule allows and would not have been the fix.
@@ -78,12 +72,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Expected:** the section's bounds enclose its children (min/max of their boxes plus a margin), as the Figma UI does when you wrap a selection.
   **Context:** figma-cli 2.1.2, FigmaClaude.app, file m2trust, page Website, 2026-10-01.
 
-- [ ] `cli` · **A `SyntaxError` inside a `run` script is reported with a daemon-token hint**
-  **Repro:** `figma-cli run _run.js` where the concatenated file had a line cut in half by my own text replace (`section: 4const TIERS = {`).
-  **Observed:** `✗ SyntaxError: Invalid or unexpected token` followed by `Token file: /Users/danielmartin/.figma-ds-cli/.daemon-token` and `Try: node src/index.js daemon restart` — nothing about the script, no line number. `node --check _run.js` found it at once.
-  **Expected:** when the submitted file does not parse, say so and give the file and line; the daemon hint belongs to connection errors.
-  **Context:** figma-cli 2.1.2, FigmaClaude.app, 2026-10-02.
-
 ## Done
 
 - [x] `loop` · **fig-feedback-setup section 3 replaces the guarded PostToolUse hook with the bare path**
@@ -94,6 +82,31 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   → fixed in d5993ab: section 3 compares only the path the command runs (resolved through `$HOME`/`~`/links). This checkout means PRESENT and no write; a moved checkout gets its path swapped inside the guard; a fresh install writes the guarded form. Four cases in `tests/fig-feedback-setup.test.js`, three red before. A note on `HOME_BAK=1`: the script never knew that variable, it was an invented name in an ad-hoc command, not an override the script ignored. The dry run is its own entry under Open.
 
 <!-- triaged entries, each with a → line naming where it went -->
+
+- [x] `cli` · **A `SyntaxError` inside a `run` script is reported with a daemon-token hint**
+  **Repro:** `figma-cli run _run.js` where the concatenated file had a line cut in half by my own text replace (`section: 4const TIERS = {`).
+  **Observed:** `✗ SyntaxError: Invalid or unexpected token` followed by `Token file: /Users/danielmartin/.figma-ds-cli/.daemon-token` and `Try: node src/index.js daemon restart` — nothing about the script, no line number. `node --check _run.js` found it at once.
+  **Expected:** when the submitted file does not parse, say so and give the file and line; the daemon hint belongs to connection errors.
+  **Context:** figma-cli 2.1.2, FigmaClaude.app, 2026-10-02.
+  → fixed in 3195cba, two faults: the hint was keyed on the word `token` in the error text
+    (`Invalid or unexpected **token**`), now on the daemon's HTTP 403
+    (`src/lib/daemon-error.js`); and the file is parsed before it is sent — `vm.Script` on the
+    same wrapper the daemon uses — so the answer is `✗ SyntaxError in _run.js:3:12: Invalid or
+    unexpected token` with the source line and a caret, like `node --check`
+    (`src/lib/syntax-check.js`). Your `section: 4const TIERS = {` is the regression case
+
+- [x] `cli` · **A script that throws inside `run` reports only the message — no stack, no line number in the submitted file**
+  **Repro:** `figma-cli run /tmp/.../build-cert-request.js` with a helper that walks a tree and touches a node removed by an earlier `detachInstance()`.
+  **Observed:** `✗ Error: in get_visible: The node (instance sublayer or table cell) with id "I16614:159373;10544:223986" does not exist` and nothing else. A second throw the same day came back as `✗ TypeError: Cannot convert a Symbol value to a string` with no location at all — that one was a `cornerRadius` read on a mixed-radius node, which took three extra runs to find in a 200-line script.
+  **Expected:** the stack, or at least the line number in the submitted file, so the failing statement can be located without bisecting the script.
+  **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 18 Sep 2026.
+  → fixed in 3195cba: the stack was never missing, the CLI cut the daemon's answer at the
+    first newline (`daemon.log` carried `at get_visible (<anonymous>:4:17)` for your case).
+    Frames now print under the red line against the submitted file, with the wrapper's one
+    line subtracted — `at get_visible (build.js:3:17)` (`src/lib/eval-error.js`,
+    `tests/eval-error.test.js`). Your second throw (`Cannot convert a Symbol value to a
+    string`) is the same path; the Symbol itself is the next entry's fix. Verified live with a
+    five-line script: line 3 reported as line 3
 
 - [x] `cli` · **One `render` right after a 21 s render answered `✗ Not connected to Figma`; 5 s later everything worked without any action**
   **Repro:** the two renders above back to back in one shell loop; the second started ~1 s after the first returned.
