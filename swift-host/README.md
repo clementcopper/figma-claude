@@ -52,7 +52,7 @@ terminal session does not see Framelink unless it passes the same flag — on th
 off by default, on in the panel. A project that disabled `framelink` via `/mcp` stays disabled
 here too, the name is the same.
 
-## Clipboard
+## Clipboard and editing
 
 ⌘C copies the terminal selection (drag in the terminal; ⇧-drag when a program has turned mouse
 reporting on), ⌘V pastes text into the prompt, ⌘A selects all. The Edit menu is what makes those
@@ -60,6 +60,21 @@ chords reach SwiftTerm's own `copy:`/`paste:`/`selectAll:` — an AppKit app wit
 key equivalents for them. ⌘V with an **image** on the clipboard (and no text) sends Ctrl+V to
 Claude Code, which reads the image from the clipboard itself; Ctrl+V does the same directly.
 `FigmaClaude --print-mainmenu` prints the menu bar with every selector and key.
+
+A mouse selection is for copying; Backspace does not delete it, as in every terminal. Editing
+the prompt is Claude Code's job, and the host passes its keys through — SwiftTerm sends Option
+as Meta by default, so nothing needs switching on:
+
+| Keys | Claude Code does |
+|---|---|
+| ⌥⌫ | delete the word before the cursor |
+| ⌥D | delete to the end of the word |
+| ⌃W | delete back to the previous whitespace (a whole path in one press) |
+| ⌃U, ⌘⌫ | delete to the line start (⌘⌫ is the host's own mapping, as in Terminal.app) |
+| ⌃K | delete to the line end |
+| ⌃C once | clear the whole prompt (twice quits Claude Code); or ⌃E then ⌃U, repeated per line |
+| ⌃Y | bring deleted text back |
+| ⌥←, ⌥→, ⌥B, ⌥F | move by word |
 
 ## Checks
 

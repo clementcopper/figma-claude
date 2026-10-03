@@ -34,6 +34,7 @@ Distilled from `LEARNINGS.md` § Swift host. Stories and measurements there.
 - **SwiftTerm reports the raw `waitpid` status:** exit 1 arrives as 256. Decode with `WIFEXITED`/`WIFSIGNALED` before comparing; every `code == 1` branch was dead.
 - **SwiftTerm's key handling is closed** (`public override`, not `open`); `send(source:data:)` is `open` and is where keystrokes leave for the PTY.
 - **An AppKit app without an Edit menu has no ⌘C/⌘V/⌘A;** SwiftTerm brings the responders, `editMenuEntries` (Core) is the wiring, `--print-mainmenu` shows it. ⌘V with an image and no text sends Ctrl+V (`pasteRoute`), Claude Code reads the image itself.
+- **SwiftTerm sends Option as Meta by default;** a prompt-editing complaint is a README gap before it is a host bug. ⌘⌫ is the one chord the host maps itself (→ ⌃U, `deleteToLineStart:` in `editMenuEntries`); a mouse selection is never deleted by ⌫.
 - **A `timeout` parameter nobody reads is a hang with a name.** `readOutput(_:from:timeout:)` in `ProcessOutput.swift` is the one place a child's deadline is enforced; `runCli` and `LoginShellPath.resolve` go through it.
 - **Scan the transcript's bytes, never split it into lines.** `countCompactions` runs on every status line render: 1 320 ms at 17 MB as a String split, 14 ms as a `Data.range(of:)` scan.
 - **⌘Q never sends `windowWillClose`.** Exit work lives in `applicationWillTerminate`; closing the window arrives there too.

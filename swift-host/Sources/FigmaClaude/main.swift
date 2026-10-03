@@ -73,6 +73,12 @@ final class PanelTerminalView: LocalProcessTerminalView {
         case .nothing: break
         }
     }
+
+    /// ⌘⌫ from the Edit menu: what Terminal.app sends for it, ⌃U — Claude Code deletes to the
+    /// line start and keeps the text for ⌃Y.
+    @objc func deleteToLineStart(_ sender: Any?) {
+        send(data: [controlUByte][...])
+    }
 }
 
 /// The column the terminal sits in: padding around it, and the column painted in the terminal's
@@ -1369,7 +1375,8 @@ if CommandLine.arguments.contains("--print-mainmenu") {
             let mods = item.keyEquivalentModifierMask
             let glyphs = (mods.contains(.control) ? "⌃" : "") + (mods.contains(.option) ? "⌥" : "")
                 + (mods.contains(.shift) ? "⇧" : "") + (mods.contains(.command) ? "⌘" : "")
-            let key = item.keyEquivalent.isEmpty ? "" : "  " + glyphs + (item.keyEquivalent == "\u{0009}" ? "⇥" : item.keyEquivalent.uppercased())
+            let glyph = item.keyEquivalent == "\u{0009}" ? "⇥" : item.keyEquivalent == "\u{08}" ? "⌫" : item.keyEquivalent.uppercased()
+            let key = item.keyEquivalent.isEmpty ? "" : "  " + glyphs + glyph
             print("  \(item.title)  →  \(action)\(key)")
         }
     }

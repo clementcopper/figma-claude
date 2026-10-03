@@ -29,6 +29,10 @@ public let editMenuEntries: [EditMenuEntry] = [
     EditMenuEntry(title: "Copy", selector: "copy:", key: "c"),
     EditMenuEntry(title: "Paste", selector: "paste:", key: "v"),
     EditMenuEntry(title: "Select All", selector: "selectAll:", key: "a", separatorBefore: true),
+    // ⌘⌫: SwiftTerm sends nothing for it (no `.command` branch; AppKit's
+    // `deleteToBeginningOfLine:` ends at "Unhandle selector"). Terminal.app and iTerm2 turn it
+    // into ⌃U, which Claude Code reads as "delete to line start" — so does the host.
+    EditMenuEntry(title: "Delete to Line Start", selector: "deleteToLineStart:", key: "\u{08}", separatorBefore: true),
 ]
 
 /// What ⌘V does with the clipboard. SwiftTerm's own `paste(_:)` reads the string only, so an
@@ -48,3 +52,6 @@ public func pasteRoute(hasString: Bool, hasImage: Bool) -> PasteRoute {
 
 /// The byte Ctrl+V sends — what Claude Code listens for before it looks at the clipboard.
 public let controlVByte: UInt8 = 0x16
+
+/// The byte Ctrl+U sends — Claude Code's "delete from cursor to line start"; ⌘⌫ maps to it.
+public let controlUByte: UInt8 = 0x15
