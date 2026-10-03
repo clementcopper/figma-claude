@@ -79,7 +79,9 @@ as Meta by default, so nothing needs switching on:
 **⌫ on a mouse selection** is an experiment: a selection on the cursor's row, released by the
 ⌫ itself, is acted out as cursor-lefts to its end and one ⌫ per selected character. One row only,
 columns are cells but ⌫ deletes characters, so an emoji inside the selection costs one ⌫ too
-many; a wrapped prompt or a selection on another row gets the plain ⌫.
+many; a wrapped prompt or a selection on another row gets the plain ⌫. Double-click + ⌫ deletes
+the word (confirmed 2026-10-03); triple-click selects the whole row past the cursor, so ⌫ stays
+a plain ⌫ there — ⌘⌫ is the key for the whole line.
 
 **Kitty keyboard protocol is kept out.** Claude Code asks for it (`ESC[?u`), SwiftTerm answers
 and then encodes keys the kitty way — ⌃C arrived as `ESC[99;5u` and showed up as a "c". The host
