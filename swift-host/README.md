@@ -52,6 +52,15 @@ terminal session does not see Framelink unless it passes the same flag — on th
 off by default, on in the panel. A project that disabled `framelink` via `/mcp` stays disabled
 here too, the name is the same.
 
+## Clipboard
+
+⌘C copies the terminal selection (drag in the terminal; ⇧-drag when a program has turned mouse
+reporting on), ⌘V pastes text into the prompt, ⌘A selects all. The Edit menu is what makes those
+chords reach SwiftTerm's own `copy:`/`paste:`/`selectAll:` — an AppKit app without one has no
+key equivalents for them. ⌘V with an **image** on the clipboard (and no text) sends Ctrl+V to
+Claude Code, which reads the image from the clipboard itself; Ctrl+V does the same directly.
+`FigmaClaude --print-mainmenu` prints the menu bar with every selector and key.
+
 ## Checks
 
 ```bash

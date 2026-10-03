@@ -31,8 +31,8 @@ let appDisplayName: String = {
 ///
 /// `Unhandle selector noop:` on stdout comes from SwiftTerm's own `doCommand(by:)` default branch
 /// and means AppKit had no binding for a chord. Control keys are not affected — `keyDown` handles
-/// those before `interpretKeyEvents`. ⌘-chords reached `noop:` while there was no menu bar for
-/// them to hit; there is one now.
+/// those before `interpretKeyEvents`. ⌘-chords reach `noop:` whenever no menu item carries their
+/// selector: ⌘Q/⌘T/⌘W had items early, ⌘C/⌘V/⌘A got theirs with the Edit menu (2026-10-03).
 ///
 /// Worth knowing either way: `keyDown`, `flagsChanged` and `doCommand` are all `public override`
 /// rather than `open`, so none of SwiftTerm's key handling can be corrected from outside the
@@ -59,6 +59,19 @@ final class PanelTerminalView: LocalProcessTerminalView {
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
         onInput?()
         super.send(source: source, data: data)
+    }
+
+    /// ⌘V with an image on the clipboard: SwiftTerm's `paste` would insert `""`. Claude Code reads
+    /// the image itself once it sees Ctrl+V, so that is what goes down the PTY (`pasteRoute`).
+    override func paste(_ sender: Any) {
+        let clipboard = NSPasteboard.general
+        let hasString = clipboard.string(forType: .string) != nil
+        let hasImage = clipboard.canReadObject(forClasses: [NSImage.self], options: nil)
+        switch pasteRoute(hasString: hasString, hasImage: hasImage) {
+        case .text: super.paste(sender)
+        case .imageKey: send(data: [controlVByte][...])
+        case .nothing: break
+        }
     }
 }
 
@@ -1123,31 +1136,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// Without a menu every ⌘-chord falls through the responder chain to `noop:`, which SwiftTerm
-    /// drops with a line on stdout. The menu is what gives them somewhere to go.
+    /// A ⌘-chord without a menu item carrying its selector falls through the responder chain to
+    /// `noop:`, which SwiftTerm drops with a line on stdout. Each menu item is what gives one
+    /// chord somewhere to go — the Edit menu (`editMenuEntries`, FigmaClaudeCore) is what makes
+    /// ⌘C/⌘V/⌘A reach SwiftTerm's own `copy:`/`paste:`/`selectAll:`.
     private func buildMenu() {
+        NSApp.mainMenu = Self.makeMainMenu(owner: self)
+    }
+
+    /// Built as a function of its owner so `--print-mainmenu` can print the same menu without a window.
+    static func makeMainMenu(owner: AppDelegate?) -> NSMenu {
         let main = NSMenu()
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Figma Claude", action: #selector(showAbout), keyEquivalent: "")
-            .target = self
+            .target = owner
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 
+        // The standard Edit menu, target nil: the responder chain ends at the terminal view, and
+        // SwiftTerm validates each item itself (Copy only with a selection).
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        for entry in editMenuEntries {
+            if entry.separatorBefore { editMenu.addItem(.separator()) }
+            editMenu.addItem(withTitle: entry.title, action: NSSelectorFromString(entry.selector), keyEquivalent: entry.key)
+        }
+        editItem.submenu = editMenu
+        main.addItem(editItem)
+
         let tabItem = NSMenuItem()
         let tabMenu = NSMenu(title: "Tabs")
-        tabMenu.addItem(withTitle: "New Tab", action: #selector(newTab), keyEquivalent: "t").target = self
-        tabMenu.addItem(withTitle: "Close Tab", action: #selector(closeTab), keyEquivalent: "w").target = self
+        tabMenu.addItem(withTitle: "New Tab", action: #selector(newTab), keyEquivalent: "t").target = owner
+        tabMenu.addItem(withTitle: "Close Tab", action: #selector(closeTab), keyEquivalent: "w").target = owner
         tabMenu.addItem(.separator())
         let next = tabMenu.addItem(withTitle: "Next Tab", action: #selector(nextTab), keyEquivalent: "\u{0009}")
         next.keyEquivalentModifierMask = [.control]
-        next.target = self
+        next.target = owner
         let prev = tabMenu.addItem(withTitle: "Previous Tab", action: #selector(previousTab), keyEquivalent: "\u{0009}")
         prev.keyEquivalentModifierMask = [.control, .shift]
-        prev.target = self
+        prev.target = owner
         tabItem.submenu = tabMenu
         main.addItem(tabItem)
 
@@ -1156,19 +1187,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let viewItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
         let appearance = NSMenu(title: "Appearance")
-        appearance.delegate = self
+        appearance.delegate = owner
         for choice in appearanceChoices {
             let item = appearance.addItem(withTitle: choice.label,
                                           action: #selector(pickAppearance(_:)), keyEquivalent: "")
             item.representedObject = choice.setting
-            item.target = self
+            item.target = owner
         }
         let appearanceItem = viewMenu.addItem(withTitle: "Appearance", action: nil, keyEquivalent: "")
         appearanceItem.submenu = appearance
         viewItem.submenu = viewMenu
         main.addItem(viewItem)
 
-        NSApp.mainMenu = main
+        return main
     }
 
     /// The tick is read from the config each time the submenu opens: the Figma menu writes the
@@ -1323,6 +1354,25 @@ if CommandLine.arguments.contains("--probe-selection") {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
     RenderProbe.selectionGrowth()
+    exit(0)
+}
+
+// The menu bar as text: every item with the selector it sends and its key equivalent. The one way
+// to see, without a window, that ⌘C/⌘V/⌘A have somewhere to go.
+if CommandLine.arguments.contains("--print-mainmenu") {
+    _ = NSApplication.shared
+    for top in AppDelegate.makeMainMenu(owner: nil).items {
+        guard let submenu = top.submenu else { continue }
+        print(submenu.title.isEmpty ? "(app)" : submenu.title)
+        for item in submenu.items where !item.isSeparatorItem {
+            let action = item.action.map { NSStringFromSelector($0) } ?? "-"
+            let mods = item.keyEquivalentModifierMask
+            let glyphs = (mods.contains(.control) ? "⌃" : "") + (mods.contains(.option) ? "⌥" : "")
+                + (mods.contains(.shift) ? "⇧" : "") + (mods.contains(.command) ? "⌘" : "")
+            let key = item.keyEquivalent.isEmpty ? "" : "  " + glyphs + (item.keyEquivalent == "\u{0009}" ? "⇥" : item.keyEquivalent.uppercased())
+            print("  \(item.title)  →  \(action)\(key)")
+        }
+    }
     exit(0)
 }
 
