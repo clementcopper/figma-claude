@@ -77,6 +77,8 @@ Per-bug detail with symptom/cause/fix: `.claude/bugs-and-fixes.md`. Why a behavi
 
 - **Ein Client-Timeout, das kürzer ist als die Probe des Servers, meldet einen beschäftigten Server als abwesend.** 1 s curl gegen 2 s Probe: der Daemon wartete, die CLI gab auf, der Ausweichpfad lief gegen einen Port, den Pipe Mode nie öffnet, und der Text sagte „never reached Figma". Dazu die Probe selbst: wer die eigene laufende Arbeit probt, misst die Arbeit, nicht die Verbindung — ein laufender Eval ist der Beweis, dass die Verbindung steht. Zwei Enden eines Pfads bekommen einen Test, der beide Konstanten vergleicht (2026-10-03).
 
+- **Eine Erfolgszeile, die nur zählt, versteckt die Geometrie.** `section create` meldete sechs Kinder und ließ die Box am Ursprung; sichtbar wurde es erst, als jemand die Section ausmaß. Ein Befehl, der etwas platziert, nennt Position, Größe und Seite — dann fällt die 496-Box beim ersten Aufruf auf, nicht beim Auflösen (2026-10-03).
+
 - **A fix that lands on one of two twin commands is not a fix.** `eval` learned to name an empty result in August; `run` — its own copy of the same three decisions — did not, and `REFERENCE.md` documented the behavior as if it covered both. The same friction was reported from the panel a second time, six weeks later, against a doc line that was already there and already wrong. When two commands share a decision, give them one function, not two copies that pass review separately.
 - **`docs <topic>` is what a panel session reads; `REFERENCE.md` is not.** Three of four entries in this round asked for something REFERENCE.md either said or did not need to say. Documentation that only exists there does not reach the reader who files the report.
 

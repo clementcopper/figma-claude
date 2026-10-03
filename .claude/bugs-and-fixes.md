@@ -484,3 +484,24 @@ Ordnung). In Pipe Mode entfällt der Port-Ausweg: `directRouteAdvice` nennt das 
 beschäftigt. Nach dem Fix: `/health/force` 21 ms, `cdp:true, busy:1`.
 
 **Tests:** `tests/cdp-health.test.js`, `tests/health-timing.test.js`, `tests/connection-help.test.js`.
+
+## `section create` setzte weder Position noch Größe (2026-10-03, panel feedback)
+
+**Symptom:** `section create "…" id1,…,id6` meldete `✓ … with 6 child(ren)`, die SECTION stand
+bei 0/0 mit 496 × 496, die Kinder behielten ihre Canvas-Koordinaten (x −31610) — die Box
+tausende px vom Inhalt entfernt. `section add` dasselbe.
+
+**Cause:** `src/commands/misc.js` erzeugte `figma.createSection()`, hängte die Knoten an und gab
+`count` zurück. Kein `x`/`y`, kein `resizeWithoutConstraints`, keine Min/Max-Rechnung; die
+Erfolgszeile nannte nur die Anzahl, also war die Geometrie nie sichtbar. Figma behält beim
+`appendChild` in eine Section die **absolute** Position des Kindes (gemessen: Kind bei 9178/0
+blieb bei 9178/0, relativ wie absolut, Section bei 0/0).
+
+**Fix (1d668f6):** `src/lib/section-bounds.js` (`enclosingBox`, `relativeTo`, per `.toString()`
+eingebettet wie `text-styles.js`): absolute Boxen zuerst lesen, Section auf Min/Max + `--padding`
+(Default 40, gewählt, nicht gemessen) setzen, dann anhängen und jedes Kind aus seiner absoluten Box
+neu positionieren — robust, egal welche Semantik `appendChild` hat. `add` vereinigt die bisherige
+Box mit den neuen Knoten und schrumpft nie. Beide Befehle drucken Box und Seite. Live geprüft:
+9138/−40 680 × 480 um Frames bei 9178/0 und 9578/300; `add` wuchs auf 1480 × 780.
+
+**Tests:** `tests/section-bounds.test.js`.

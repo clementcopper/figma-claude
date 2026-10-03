@@ -47,12 +47,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Context:** figma-cli d5993ab, 18.09.2026.
   Daniel 18.09.: build it only when the next Mac gets set up.
 
-- [ ] `cli` · **`section create` draws a 496 × 496 section near the canvas origin instead of around the nodes it was given**
-  **Repro:** `figma-cli section create "Top Menu bar — responsive (Entwurf 2026-10-01)" 16803:423001,16803:423009,…` (six frames at x ≈ −31610, y ≈ 38519) and later `section create "…" 16803:424077` (one 390 × 17050 frame).
-  **Observed:** `✓ Created section … with 6 child(ren)`, but the SECTION node reported `x 0 / y 0 / w 496 / h 496` (second time `x 8598 / y 30`), while its children kept coordinates like `x −40208, y 38489` relative to it — the box sat thousands of px away from its content. Moving the section by `.y` moved the children with it, so a later dissolve via `absoluteTransform` placed them where the box had been dragged.
-  **Expected:** the section's bounds enclose its children (min/max of their boxes plus a margin), as the Figma UI does when you wrap a selection.
-  **Context:** figma-cli 2.1.2, FigmaClaude.app, file m2trust, page Website, 2026-10-01.
-
 ## Done
 
 - [x] `loop` · **fig-feedback-setup section 3 replaces the guarded PostToolUse hook with the bare path**
@@ -63,6 +57,21 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   → fixed in d5993ab: section 3 compares only the path the command runs (resolved through `$HOME`/`~`/links). This checkout means PRESENT and no write; a moved checkout gets its path swapped inside the guard; a fresh install writes the guarded form. Four cases in `tests/fig-feedback-setup.test.js`, three red before. A note on `HOME_BAK=1`: the script never knew that variable, it was an invented name in an ad-hoc command, not an override the script ignored. The dry run is its own entry under Open.
 
 <!-- triaged entries, each with a → line naming where it went -->
+
+- [x] `cli` · **`section create` draws a 496 × 496 section near the canvas origin instead of around the nodes it was given**
+  **Repro:** `figma-cli section create "Top Menu bar — responsive (Entwurf 2026-10-01)" 16803:423001,16803:423009,…` (six frames at x ≈ −31610, y ≈ 38519) and later `section create "…" 16803:424077` (one 390 × 17050 frame).
+  **Observed:** `✓ Created section … with 6 child(ren)`, but the SECTION node reported `x 0 / y 0 / w 496 / h 496` (second time `x 8598 / y 30`), while its children kept coordinates like `x −40208, y 38489` relative to it — the box sat thousands of px away from its content. Moving the section by `.y` moved the children with it, so a later dissolve via `absoluteTransform` placed them where the box had been dragged.
+  **Expected:** the section's bounds enclose its children (min/max of their boxes plus a margin), as the Figma UI does when you wrap a selection.
+  **Context:** figma-cli 2.1.2, FigmaClaude.app, file m2trust, page Website, 2026-10-01.
+  → fixed in 1d668f6: the command never positioned or sized the section — `createSection()` plus
+    `appendChild`, nothing else, and `section add` the same. Reproduced on two scratch frames
+    (section 0/0 496 × 496, children at 9178/0 and 9578/300). Now the box is the min/max of the
+    children's canvas boxes plus `--padding` (default 40 — chosen, not measured from Figma's
+    own "Create section"), the children keep their canvas positions, `add` grows the box and
+    never shrinks it, and both print the result: `… at 9138,-40 680×480 on page "Website"`
+    (`src/lib/section-bounds.js`, `tests/section-bounds.test.js` with your six-frame numbers).
+    Your observation that moving the section moved the children was right, and it is why the
+    children are re-placed from their absolute boxes after the move
 
 - [x] `cli` · **`eval` intermittently answers "The request never reached Figma" while `status` says Connected, and the identical call succeeds seconds later**
   **Repro:** `figma-cli eval 'const c=(await figma.variables.getLocalVariableCollectionsAsync())[0]; …return out'` (read-only variable dump, ~90 variables) — twice in one session (09:0x and 09:11), each time the immediate retry of the same script succeeded
