@@ -47,13 +47,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Context:** figma-cli d5993ab, 18.09.2026.
   Daniel 18.09.: build it only when the next Mac gets set up.
 
-- [ ] `cli` · **`eval` intermittently answers "The request never reached Figma" while `status` says Connected, and the identical call succeeds seconds later**
-  **Repro:** `figma-cli eval 'const c=(await figma.variables.getLocalVariableCollectionsAsync())[0]; …return out'` (read-only variable dump, ~90 variables) — twice in one session (09:0x and 09:11), each time the immediate retry of the same script succeeded
-  **Observed:** `✗ The request never reached Figma.` / `Connect from the panel: the Figma menu in the toolbar → Connect.`; `figma-cli status` right after: `Connected to Figma (pipe)`, `Daemon running (port 3456)`; `eval 'return typeof figma'` → `object`
-  **Expected:** either the request reaches Figma, or status reports the same disconnect the eval saw
-  **Context:** 2.1.2, FigmaClaude.app panel session, file m2trust, 2026-09-28
-  2026-10-01, FigmaClaude (figma-cli 2.1.2): reproduced as concurrency — two `eval`s started in the same moment from one session; the one that had to wait behind a running `await figma.loadAllPagesAsync()` + `findAllWithCriteria` over all pages got exactly this error with the Connect hint, `status` said Connected throughout, and the same command alone a minute later worked. Looks like a timeout on a busy daemon, not a lost connection.
-
 - [ ] `cli` · **`section create` draws a 496 × 496 section near the canvas origin instead of around the nodes it was given**
   **Repro:** `figma-cli section create "Top Menu bar — responsive (Entwurf 2026-10-01)" 16803:423001,16803:423009,…` (six frames at x ≈ −31610, y ≈ 38519) and later `section create "…" 16803:424077` (one 390 × 17050 frame).
   **Observed:** `✓ Created section … with 6 child(ren)`, but the SECTION node reported `x 0 / y 0 / w 496 / h 496` (second time `x 8598 / y 30`), while its children kept coordinates like `x −40208, y 38489` relative to it — the box sat thousands of px away from its content. Moving the section by `.y` moved the children with it, so a later dissolve via `absoluteTransform` placed them where the box had been dragged.
@@ -70,6 +63,26 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   → fixed in d5993ab: section 3 compares only the path the command runs (resolved through `$HOME`/`~`/links). This checkout means PRESENT and no write; a moved checkout gets its path swapped inside the guard; a fresh install writes the guarded form. Four cases in `tests/fig-feedback-setup.test.js`, three red before. A note on `HOME_BAK=1`: the script never knew that variable, it was an invented name in an ad-hoc command, not an override the script ignored. The dry run is its own entry under Open.
 
 <!-- triaged entries, each with a → line naming where it went -->
+
+- [x] `cli` · **`eval` intermittently answers "The request never reached Figma" while `status` says Connected, and the identical call succeeds seconds later**
+  **Repro:** `figma-cli eval 'const c=(await figma.variables.getLocalVariableCollectionsAsync())[0]; …return out'` (read-only variable dump, ~90 variables) — twice in one session (09:0x and 09:11), each time the immediate retry of the same script succeeded
+  **Observed:** `✗ The request never reached Figma.` / `Connect from the panel: the Figma menu in the toolbar → Connect.`; `figma-cli status` right after: `Connected to Figma (pipe)`, `Daemon running (port 3456)`; `eval 'return typeof figma'` → `object`
+  **Expected:** either the request reaches Figma, or status reports the same disconnect the eval saw
+  **Context:** 2.1.2, FigmaClaude.app panel session, file m2trust, 2026-09-28
+  2026-10-01, FigmaClaude (figma-cli 2.1.2): reproduced as concurrency — two `eval`s started in the same moment from one session; the one that had to wait behind a running `await figma.loadAllPagesAsync()` + `findAllWithCriteria` over all pages got exactly this error with the Connect hint, `status` said Connected throughout, and the same command alone a minute later worked. Looks like a timeout on a busy daemon, not a lost connection.
+  → fixed the mechanism the code shows, in 78887fd; your exact minute was not reproduced. What the
+    text proves: "never reached Figma" is printed for `fetch failed`, and that comes from the
+    sync path's last resort, a direct CDP connection over the debug port — which Pipe Mode never
+    opens. The CLI gets there when its 1 s `/health` call times out, and that happened whenever
+    the daemon's own probe (2 s) waited behind a running eval: measured with an 8 s loop,
+    `/health/force` took 2.0 s and said `cdp:false`, `status` said "Not connected". Your
+    2026-10-01 reading was right. Now the daemon counts evals in flight and answers `/health`
+    at once with `busy` (21 ms, `cdp:true`), `status` says "running code (1 call in flight)", the
+    CLI waits longer than the probe may take (`tests/health-timing.test.js`), and in Pipe Mode
+    the port fallback is gone: a daemon that stays silent is named as busy, never as unreached.
+    Not proven: that your two 09:xx calls took exactly this route — the daemon log had no
+    timestamps (next commit). If it comes back, keep stderr too (`⚠ Daemon unreachable, trying
+    sync path…` is the tell) and the log lines around the minute
 
 - [x] `cli` · **A file-wide `figma.root.findAll` inside `eval` hit the 90-s timeout and the pipe connection was gone afterwards**
   **Repro:** `figma-cli eval '… figma.root.findAll(function(n){return n.type==="COMPONENT_SET"&&/List-Item/i.test(n.name);}) …'` on the m2trust file (all pages), plus two cheap lookups in the same call.

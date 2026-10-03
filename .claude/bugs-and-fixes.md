@@ -459,3 +459,28 @@ Schleife: zwei Log-Zeilen, `status` grün, der nächste `eval` antwortete, sobal
 Ende war. Nicht gebaut: das Skript abbrechen (`Runtime.terminateExecution`).
 
 **Tests:** `tests/exec-retry.test.js`, `tests/timeout-message.test.js`.
+
+## Die Health-Probe wartete hinter dem eigenen Eval und las „tot" (2026-10-03, panel feedback)
+
+**Symptom:** `eval` antwortete zweimal `✗ The request never reached Figma.` mit Connect-Hinweis,
+`status` sagte daneben `Connected`, dieselbe Zeile Sekunden später lief. Am 1.10. vom Melder als
+Nebenläufigkeit erkannt: zwei `eval`s im selben Moment, der hinter `loadAllPagesAsync` +
+`findAllWithCriteria` wartende bekam den Fehler.
+
+**Cause (Code, nicht Minute):** „never reached Figma" ist der Text für `fetch failed`
+(`REFUSED` in `connection-help.js`), und `fetch failed` kommt aus dem letzten Ausweg von
+`figmaEvalSync`: eine direkte CDP-Verbindung über den Debug-Port, den Pipe Mode nie öffnet.
+Dorthin gelangt die CLI, wenn `isDaemonRunning()` (curl, 1 s) an `/health` scheitert — und
+`/health` dauerte 2 s, sobald die Daemon-Probe (`probeCdpClient`, 2 s) hinter einem laufenden
+Eval wartete; gemessen mit 8-s-Schleife: `/health/force` 2,0 s, `cdp:false`, `status` „Not
+connected". Die Verbindung war in Benutzung, nicht in Zweifel. Dass die beiden 09:xx-Aufrufe
+exakt diesen Weg nahmen, bleibt Vermutung — `daemon.log` hatte keine Zeitstempel.
+
+**Fix (78887fd):** der Daemon zählt laufende Evals (`rendererBusy`, am Eval selbst, nicht am
+Timeout-Race des Requests) und beantwortet `/health` ohne Probe, solange eines läuft
+(`probeWhileBusy` in `src/lib/cdp-health.js`; `/health.busy`, `status` nennt es). Die CLI wartet
+`PROBE_TIMEOUT_MS + 1500` auf `/health` (`tests/health-timing.test.js` hält beide Enden in
+Ordnung). In Pipe Mode entfällt der Port-Ausweg: `directRouteAdvice` nennt das Schweigen als
+beschäftigt. Nach dem Fix: `/health/force` 21 ms, `cdp:true, busy:1`.
+
+**Tests:** `tests/cdp-health.test.js`, `tests/health-timing.test.js`, `tests/connection-help.test.js`.
