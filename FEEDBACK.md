@@ -53,12 +53,6 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Expected:** either the eval is cancelled and the connection survives, or the timeout message says that a reconnect from the panel is needed instead of pointing at `daemon restart`. The findAll itself was my mistake (too broad), the lost connection was the surprise.
   **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 21 Sep 2026.
 
-- [ ] `cli` · **`eval` fails with "Object couldn't be returned by value" and does not say which field**
-  **Repro:** `figma-cli eval '… return {text:{style:t.textStyleId, size:t.fontSize, …}, …}'` on a TEXT node with mixed styles (`9747:168902` Terms text) — `textStyleId` and `fontSize` are `figma.mixed` (a Symbol).
-  **Observed:** `✗ Object couldn't be returned by value` for the whole call; nothing else. Took a second call with every field wrapped in `String()` to find that two of ~15 fields were Symbols.
-  **Expected:** name the offending path (`text.style`) or serialise `figma.mixed` as the string `"mixed"`, as the rest of the CLI output already does.
-  **Context:** figma-cli 2.1.2, Pipe Mode, file m2trust, 21 Sep 2026.
-
 - [ ] `cli` · **`eval` intermittently answers "The request never reached Figma" while `status` says Connected, and the identical call succeeds seconds later**
   **Repro:** `figma-cli eval 'const c=(await figma.variables.getLocalVariableCollectionsAsync())[0]; …return out'` (read-only variable dump, ~90 variables) — twice in one session (09:0x and 09:11), each time the immediate retry of the same script succeeded
   **Observed:** `✗ The request never reached Figma.` / `Connect from the panel: the Figma menu in the toolbar → Connect.`; `figma-cli status` right after: `Connected to Figma (pipe)`, `Daemon running (port 3456)`; `eval 'return typeof figma'` → `object`
@@ -82,6 +76,20 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   → fixed in d5993ab: section 3 compares only the path the command runs (resolved through `$HOME`/`~`/links). This checkout means PRESENT and no write; a moved checkout gets its path swapped inside the guard; a fresh install writes the guarded form. Four cases in `tests/fig-feedback-setup.test.js`, three red before. A note on `HOME_BAK=1`: the script never knew that variable, it was an invented name in an ad-hoc command, not an override the script ignored. The dry run is its own entry under Open.
 
 <!-- triaged entries, each with a → line naming where it went -->
+
+- [x] `cli` · **`eval` fails with "Object couldn't be returned by value" and does not say which field**
+  **Repro:** `figma-cli eval '… return {text:{style:t.textStyleId, size:t.fontSize, …}, …}'` on a TEXT node with mixed styles (`9747:168902` Terms text) — `textStyleId` and `fontSize` are `figma.mixed` (a Symbol).
+  **Observed:** `✗ Object couldn't be returned by value` for the whole call; nothing else. Took a second call with every field wrapped in `String()` to find that two of ~15 fields were Symbols.
+  **Expected:** name the offending path (`text.style`) or serialise `figma.mixed` as the string `"mixed"`, as the rest of the CLI output already does.
+  **Context:** figma-cli 2.1.2, Pipe Mode, file m2trust, 21 Sep 2026.
+  → built, the second of your two options, in abed8a6: `figma.mixed` comes back as the string
+    `"mixed"` (other Symbols as their text), at any depth. The code had already run when CDP
+    refused the value, so the wrapper now parks the result in the page and the daemon reads it
+    back through JSON on exactly that error — a read, never a second run (`captureResult` /
+    `RECOVER_RESULT_EXPR` in `src/lib/eval-wrap.js`). Safe Mode answers the same from
+    `plugin/code.js`. Naming the path was the other option; with the value delivered there is
+    nothing left to name. Verified live on m2trust: `{style: figma.mixed, nested: {list: [1,
+    figma.mixed]}}` → `"mixed"` in all three places
 
 - [x] `cli` · **A `SyntaxError` inside a `run` script is reported with a daemon-token hint**
   **Repro:** `figma-cli run _run.js` where the concatenated file had a line cut in half by my own text replace (`section: 4const TIERS = {`).

@@ -412,3 +412,26 @@ Form.
 
 **Tests:** `tests/daemon-error.test.js`, `tests/eval-error.test.js`, `tests/syntax-check.test.js`,
 `tests/exec-retry.test.js` (Compile-Fehler-Frame).
+
+## Ein Symbol im Rückgabewert warf das ganze Ergebnis weg (2026-10-03, panel feedback)
+
+**Symptom:** `eval '… return {text: {style: t.textStyleId, size: t.fontSize}}'` auf einem
+TEXT-Knoten mit zwei Stilen: `✗ Object couldn't be returned by value`, sonst nichts. Zwei von
+~15 Feldern waren `figma.mixed`, ein Symbol; welche, verriet erst ein zweiter Aufruf mit
+`String()` um jedes Feld.
+
+**Cause:** `Runtime.evaluate` mit `returnByValue: true` (`src/figma-client.js`) verweigert einen
+Wert, der irgendwo ein Symbol enthält, als Protokollfehler — nicht als `exceptionDetails`. Der Code
+war gelaufen, der Wert verloren; und weil der Fehler kein `fromFigma` trug, hätte `retryVerdict`
+ihn erneut laufen lassen, nur die Health-Probe stand dazwischen.
+
+**Fix (abed8a6):** der Wrapper parkt den Wert vor dem `return` in `globalThis.__figmaCliResult`
+(`captureResult` in `src/lib/eval-wrap.js`, auf derselben Zeile wie die Wrapper-Öffnung, damit
+die Zeilennummern aus `eval-error.js` stimmen bleiben). Auf genau diesen Fehler liest der Daemon
+den Wert mit `RECOVER_RESULT_EXPR` per JSON zurück — `figma.mixed` als `"mixed"`, andere Symbole
+als Text — und löscht den Slot. Der Protokollfehler trägt jetzt `fromFigma`. Safe Mode:
+`plainResult` in `plugin/code.js`, wenn `postMessage` nicht klonen kann; der Stub im Test wirft
+bei Symbolen wie Figma.
+
+**Tests:** `tests/eval-wrap.test.js` (Zeilen bleiben, Recovery, Slot leer), `tests/plugin-executor.test.js`,
+`tests/exec-retry.test.js` (Flag).
