@@ -53,6 +53,37 @@ Append new entries at the end of **Open**; never rewrite one that is already the
   **Expected:** the stack, or at least the line number in the submitted file, so the failing statement can be located without bisecting the script.
   **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 18 Sep 2026.
 
+- [ ] `cli` · **A file-wide `figma.root.findAll` inside `eval` hit the 90-s timeout and the pipe connection was gone afterwards**
+  **Repro:** `figma-cli eval '… figma.root.findAll(function(n){return n.type==="COMPONENT_SET"&&/List-Item/i.test(n.name);}) …'` on the m2trust file (all pages), plus two cheap lookups in the same call.
+  **Observed:** `✗ Execution timeout (90s): the daemon did not answer. Try: node src/index.js daemon restart`. The next `figma-cli status` said `⚠ Not connected to Figma` with `✓ Daemon running`; every following `eval`/`find` returned `✗ Not connected to Figma` until Daniel reconnected from the panel (Figma menu → Connect). The advertised `daemon restart` is not what the panel rule allows and would not have been the fix.
+  **Expected:** either the eval is cancelled and the connection survives, or the timeout message says that a reconnect from the panel is needed instead of pointing at `daemon restart`. The findAll itself was my mistake (too broad), the lost connection was the surprise.
+  **Context:** figma-cli 2.1.2 (`/Users/danielmartin/.figma-ds-cli/bin/figma-cli`), Pipe Mode, file m2trust, page „Mobile layouts", 21 Sep 2026.
+
+- [ ] `cli` · **`eval` fails with "Object couldn't be returned by value" and does not say which field**
+  **Repro:** `figma-cli eval '… return {text:{style:t.textStyleId, size:t.fontSize, …}, …}'` on a TEXT node with mixed styles (`9747:168902` Terms text) — `textStyleId` and `fontSize` are `figma.mixed` (a Symbol).
+  **Observed:** `✗ Object couldn't be returned by value` for the whole call; nothing else. Took a second call with every field wrapped in `String()` to find that two of ~15 fields were Symbols.
+  **Expected:** name the offending path (`text.style`) or serialise `figma.mixed` as the string `"mixed"`, as the rest of the CLI output already does.
+  **Context:** figma-cli 2.1.2, Pipe Mode, file m2trust, 21 Sep 2026.
+
+- [ ] `cli` · **`eval` intermittently answers "The request never reached Figma" while `status` says Connected, and the identical call succeeds seconds later**
+  **Repro:** `figma-cli eval 'const c=(await figma.variables.getLocalVariableCollectionsAsync())[0]; …return out'` (read-only variable dump, ~90 variables) — twice in one session (09:0x and 09:11), each time the immediate retry of the same script succeeded
+  **Observed:** `✗ The request never reached Figma.` / `Connect from the panel: the Figma menu in the toolbar → Connect.`; `figma-cli status` right after: `Connected to Figma (pipe)`, `Daemon running (port 3456)`; `eval 'return typeof figma'` → `object`
+  **Expected:** either the request reaches Figma, or status reports the same disconnect the eval saw
+  **Context:** 2.1.2, FigmaClaude.app panel session, file m2trust, 2026-09-28
+  2026-10-01, FigmaClaude (figma-cli 2.1.2): reproduced as concurrency — two `eval`s started in the same moment from one session; the one that had to wait behind a running `await figma.loadAllPagesAsync()` + `findAllWithCriteria` over all pages got exactly this error with the Connect hint, `status` said Connected throughout, and the same command alone a minute later worked. Looks like a timeout on a busy daemon, not a lost connection.
+
+- [ ] `cli` · **`section create` draws a 496 × 496 section near the canvas origin instead of around the nodes it was given**
+  **Repro:** `figma-cli section create "Top Menu bar — responsive (Entwurf 2026-10-01)" 16803:423001,16803:423009,…` (six frames at x ≈ −31610, y ≈ 38519) and later `section create "…" 16803:424077` (one 390 × 17050 frame).
+  **Observed:** `✓ Created section … with 6 child(ren)`, but the SECTION node reported `x 0 / y 0 / w 496 / h 496` (second time `x 8598 / y 30`), while its children kept coordinates like `x −40208, y 38489` relative to it — the box sat thousands of px away from its content. Moving the section by `.y` moved the children with it, so a later dissolve via `absoluteTransform` placed them where the box had been dragged.
+  **Expected:** the section's bounds enclose its children (min/max of their boxes plus a margin), as the Figma UI does when you wrap a selection.
+  **Context:** figma-cli 2.1.2, FigmaClaude.app, file m2trust, page Website, 2026-10-01.
+
+- [ ] `cli` · **A `SyntaxError` inside a `run` script is reported with a daemon-token hint**
+  **Repro:** `figma-cli run _run.js` where the concatenated file had a line cut in half by my own text replace (`section: 4const TIERS = {`).
+  **Observed:** `✗ SyntaxError: Invalid or unexpected token` followed by `Token file: /Users/danielmartin/.figma-ds-cli/.daemon-token` and `Try: node src/index.js daemon restart` — nothing about the script, no line number. `node --check _run.js` found it at once.
+  **Expected:** when the submitted file does not parse, say so and give the file and line; the daemon hint belongs to connection errors.
+  **Context:** figma-cli 2.1.2, FigmaClaude.app, 2026-10-02.
+
 ## Done
 
 - [x] `loop` · **fig-feedback-setup section 3 replaces the guarded PostToolUse hook with the bare path**
