@@ -43,3 +43,13 @@ test('serveCachedHealth takes its own ttls and refuses a nonsense age', () => {
   assert.equal(serveCachedHealth(true, -1), false);
   assert.equal(serveCachedHealth(true, NaN), false);
 });
+
+test('while Figma runs code for this daemon, /health does not probe: a probe would wait behind it', async () => {
+  // 2026-10-03: during a busy eval every /health took 2 s and answered cdp:false; the CLI's
+  // 1 s curl timed out, `status` said "Not connected", and `eval` fell to the port path.
+  const { probeWhileBusy, PROBE_TIMEOUT_MS } = await import('../src/lib/cdp-health.js');
+  assert.equal(probeWhileBusy(1), 'healthy');
+  assert.equal(probeWhileBusy(3), 'healthy');
+  assert.equal(probeWhileBusy(0), null);
+  assert.equal(PROBE_TIMEOUT_MS, 2000);
+});

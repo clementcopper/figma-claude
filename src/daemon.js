@@ -30,7 +30,7 @@ import { validateHttpRequest, validateUpgrade } from './lib/daemon-auth.js';
 import { spawnFigmaWithPipe, inheritedPipe, successorEnv, designTargets, reloadTarget } from './lib/figma-pipe.js';
 import { getFigmaBinaryPath, getCdpPort } from './figma-patch.js';
 import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
-import { probeCdpClient, serveCachedHealth } from './lib/cdp-health.js';
+import { probeCdpClient, serveCachedHealth, probeWhileBusy, PROBE_TIMEOUT_MS } from './lib/cdp-health.js';
 import { retryVerdict, failureLine } from './lib/exec-retry.js';
 
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
@@ -185,7 +185,10 @@ async function isCdpHealthy(forceCheck = false) {
   // plugin realm mid-session still read as Connected while every command failed. A client whose
   // context lost `figma` is released here, so the next request (and the pipe loop) attach anew
   // instead of evaluating into a realm without the Plugin API. See src/lib/cdp-health.js.
-  const verdict = await probeCdpClient(cdpClient, { timeoutMs: 2000 });
+  // Code in flight for this daemon: the link is in use, not in doubt. A probe now would wait
+  // behind that code and read "dead" (src/lib/cdp-health.js, probeWhileBusy).
+  const busyVerdict = probeWhileBusy(rendererBusy);
+  const verdict = busyVerdict || await probeCdpClient(cdpClient, { timeoutMs: PROBE_TIMEOUT_MS });
   lastHealthCheck = now;
   lastHealthResult = verdict === 'healthy';
   if (verdict === 'no-figma' && !isCdpConnecting) {
@@ -250,10 +253,18 @@ async function getCdpClient() {
   return cdpClient;
 }
 
+// Evals Figma is still working on for this daemon. Counted on the eval itself, not on the
+// request's timeout race (/exec): a budget that runs out cancels nothing, Figma keeps going,
+// and /health must know that for as long as it does.
+let rendererBusy = 0;
+
 async function evalViaCdp(code) {
   const client = await getCdpClient();
+  rendererBusy++;
+  const run = client.eval(captureResult(code));
+  run.then(() => { rendererBusy--; }, () => { rendererBusy--; });
   try {
-    return await client.eval(captureResult(code));
+    return await run;
   } catch (e) {
     // The code ran, only the value could not cross by value (a Symbol such as `figma.mixed`
     // in it). Read the parked value back through JSON — a read, never a second run.
@@ -388,6 +399,8 @@ async function handleRequest(req, res) {
       mode: mode,
       plugin: pluginConnected,
       cdp: cdpHealthy,
+      // Evals Figma is still running for this daemon; a command sent now waits behind them.
+      busy: rendererBusy,
       // Pipe Mode: this daemon holds Figma's debugging pipe. `cdp` says whether a file is
       // attached; `pipe` says Figma is ours even while it is still loading.
       pipe: MODE === 'pipe' && !!pipe && !pipe.transport.closed,

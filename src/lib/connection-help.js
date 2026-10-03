@@ -111,3 +111,26 @@ export function timeoutMessage(timeoutMs, daemonHealthy, opts = {}) {
 export function inPanel(env = process.env) {
   return env.FIGMACLAUDE === '1';
 }
+
+/**
+ * Pipe Mode has no route around the daemon. When /health does not answer in time, the sync
+ * path used to fall through to a direct CDP connection over the debug port — which Pipe Mode
+ * never opens — and reported `fetch failed` as "The request never reached Figma" (FEEDBACK.md,
+ * 28 Sep 2026). A daemon that holds the pipe and does not answer is almost always waiting on a
+ * Figma that is busy with another call.
+ *
+ * @param {string} mode `config.mode` as `connect` wrote it
+ * @param {{ panel?: boolean }} [opts]
+ * @returns {string | null} the message, or null where a port fallback exists (Yolo, Browser)
+ */
+export function directRouteAdvice(mode, opts = {}) {
+  if (mode !== 'pipe') return null;
+  const last = opts.panel
+    ? 'If it stays that way, reconnect from the panel: the Figma menu in the toolbar → Reconnect.'
+    : 'If it stays that way: `figma-cli daemon restart`.';
+  return [
+    'The daemon did not answer in time, and Pipe Mode has no route around it.',
+    'Figma is probably busy with another call — try again in a moment, then `figma-cli status`.',
+    last
+  ].join('\n');
+}

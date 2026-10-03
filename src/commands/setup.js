@@ -466,7 +466,8 @@ program
       const via = health.mode && health.mode !== 'disconnected'
         ? health.mode
         : (health.plugin && !health.cdp ? 'plugin' : 'CDP');
-      console.log(`Connected to Figma (${via})\n  File: ${health.file || 'unknown'}`);
+      const busy = health.busy > 0 ? ` — running code (${health.busy} call${health.busy === 1 ? '' : 's'} in flight)` : '';
+      console.log(`Connected to Figma (${via})${busy}\n  File: ${health.file || 'unknown'}`);
     } else if (figmaUse('status', { silent: true }) === 'Not connected') {
       // figmaUse prints the connected case itself and used to return this one in silence.
       console.log(chalk.yellow('  ⚠ Not connected to Figma'));

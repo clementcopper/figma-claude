@@ -16,7 +16,8 @@ import * as apiDocs from '../api-docs.js';
 import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, parseCdpPort, getFigmaBinaryPath } from '../figma-patch.js';
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
-import { connectAdvice, inPanel, timeoutMessage } from './connection-help.js';
+import { connectAdvice, inPanel, timeoutMessage, directRouteAdvice } from './connection-help.js';
+import { PROBE_TIMEOUT_MS } from './cdp-health.js';
 import { classifyDaemonError } from './daemon-error.js';
 import { connectionVerdict } from './connection-gate.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
@@ -266,6 +267,9 @@ function curlDaemon(path, { method, dataFile, output, writeOut, timeout = 2000, 
 
 let _daemonHealthCache = { time: 0, value: null };
 const DAEMON_HEALTH_TTL_MS = 2000;
+// Longer than the daemon may spend probing Figma for /health (tests/health-timing.test.js): at
+// 1000 ms a daemon waiting on a busy renderer read as absent (FEEDBACK.md, 28 Sep 2026).
+const HEALTH_CURL_TIMEOUT_MS = PROBE_TIMEOUT_MS + 1500;
 function invalidateDaemonHealthCache() { _daemonHealthCache = { time: 0, value: null }; }
 
 // Check if daemon is running (returns object with details, or false)
@@ -276,7 +280,7 @@ function isDaemonRunning(returnDetails = false, force = false) {
   }
   try {
     const token = getDaemonToken();
-    const response = curlDaemon('/health', { output: nullDevice, writeOut: '%{http_code}', timeout: 1000, host: 'localhost' });
+    const response = curlDaemon('/health', { output: nullDevice, writeOut: '%{http_code}', timeout: HEALTH_CURL_TIMEOUT_MS, host: 'localhost' });
     const statusCode = response.trim();
 
     if (returnDetails) {
@@ -738,6 +742,10 @@ function figmaEvalSync(code) {
     }
   }
 
+  // Pipe Mode has no port to fall through to either; say what the silence most likely is.
+  const noRoute = directRouteAdvice(configuredMode(), { panel: inPanel() });
+  if (noRoute) throw new Error(noRoute);
+
   // Fallback: direct connection via a temp script. Same private directory as above: the
   // script is executed, so a guessable path in a shared temp dir was a way to run code as
   // this user.
@@ -1061,6 +1069,7 @@ function isInSafeMode() {
 }
 
 export {
+  HEALTH_CURL_TIMEOUT_MS,
   writeTempJson,
   curlDaemon,
   shouldFallBackToDirect,

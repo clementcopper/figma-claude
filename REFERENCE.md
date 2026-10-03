@@ -288,6 +288,12 @@ node src/index.js daemon reconnect         # Reconnect to Figma
 node src/index.js files                    # List open Figma files (JSON)
 ```
 
+**`status` while Figma is running code** says `Connected to Figma (pipe) — running code (1 call
+in flight)`: `/health` reports `busy` instead of probing a renderer that could only answer
+after the running call, and a command sent now simply waits behind it. In Pipe Mode there is no
+route around the daemon; a daemon that does not answer in time is named as such ("Figma is
+probably busy with another call") rather than tried over a debug port that Pipe Mode never opens.
+
 ### Troubleshooting Auth Errors
 
 If you see "Unauthorized: Invalid or missing token":

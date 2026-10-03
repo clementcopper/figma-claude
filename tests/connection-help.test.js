@@ -85,3 +85,22 @@ describe('inPanel', () => {
     assert.strictEqual(inPanel({ FIGMACLAUDE: '' }), false);
   });
 });
+
+// ---- Pipe Mode has no route around the daemon (FEEDBACK.md, 28 Sep 2026) ----
+import { directRouteAdvice } from '../src/lib/connection-help.js';
+
+describe('directRouteAdvice', () => {
+it('in Pipe Mode a silent daemon is named as such instead of trying a port that never opens', () => {
+  const msg = directRouteAdvice('pipe', { panel: false });
+  assert.match(msg, /did not answer/);
+  assert.match(msg, /busy/);
+  assert.match(msg, /figma-cli status/);
+  assert.equal(explainEvalError(msg).connection, false, 'must not be re-dressed as "never reached Figma"');
+});
+
+it('inside the panel the advice never names daemon restart; other modes keep the port fallback', () => {
+  assert.doesNotMatch(directRouteAdvice('pipe', { panel: true }), /daemon restart/);
+  assert.equal(directRouteAdvice('yolo', {}), null);
+  assert.equal(directRouteAdvice('', {}), null);
+});
+});

@@ -11,6 +11,22 @@
 
 export const FIGMA_PROBE = 'typeof figma !== "undefined"';
 
+/** How long a probe may wait for Figma. The CLI's own wait for /health must exceed it (tests/health-timing.test.js). */
+export const PROBE_TIMEOUT_MS = 2000;
+
+/**
+ * While Figma is running code for this daemon, a probe would only wait behind that code and
+ * read "dead" after PROBE_TIMEOUT_MS — measured 2026-10-03: during an 8 s eval every /health
+ * took 2 s and said cdp:false, `status` said "Not connected", and the CLI's 1 s curl gave up
+ * and sent `eval` down a port path Pipe Mode never opens. The link was fine; it was in use.
+ *
+ * @param {number} rendererBusy evals in flight for this daemon
+ * @returns {'healthy' | null} the verdict to serve without probing, or null to probe
+ */
+export function probeWhileBusy(rendererBusy) {
+  return rendererBusy > 0 ? 'healthy' : null;
+}
+
 /**
  * @param {{ ws?: { readyState: number } | null, eval: (expr: string) => Promise<unknown> } | null} client
  * @param {{ timeoutMs?: number }} [opts]
@@ -19,7 +35,7 @@ export const FIGMA_PROBE = 'typeof figma !== "undefined"';
  *   no-figma — the socket is open but `figma` is gone from the context (Figma dropped its realm)
  *   dead     — no client, socket not open, eval threw or timed out
  */
-export async function probeCdpClient(client, { timeoutMs = 2000 } = {}) {
+export async function probeCdpClient(client, { timeoutMs = PROBE_TIMEOUT_MS } = {}) {
   if (!client || !client.ws || client.ws.readyState !== 1) return 'dead';
   try {
     const value = await Promise.race([
