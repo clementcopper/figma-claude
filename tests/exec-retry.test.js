@@ -41,3 +41,15 @@ test('the log line names a first failure without counting attempts', () => {
   assert.equal(failureLine(1, new Error('x')), '[daemon] Retry 1 failed: x');
   assert.equal(failureLine(0, 'plain'), '[daemon] Failed: plain');
 });
+
+test('a compile error from Figma carries its location in the same shape as a runtime stack', async () => {
+  // Runtime errors arrive with V8 frames inside exception.description; a SyntaxError has none,
+  // only exceptionDetails.lineNumber/columnNumber (0-based). Both must read the same downstream.
+  const client = new FigmaClient();
+  client.ws = { readyState: 1 };
+  client.send = async () => ({ result: { exceptionDetails: { lineNumber: 2, columnNumber: 13, exception: { description: 'SyntaxError: Invalid or unexpected token' } } } });
+  await assert.rejects(client.eval('1'), (e) => e.fromFigma === true && e.message === 'SyntaxError: Invalid or unexpected token\n    at <anonymous>:3:14');
+
+  client.send = async () => ({ result: { exceptionDetails: { lineNumber: 0, columnNumber: 0, exception: { description: 'TypeError: x\n    at f (<anonymous>:4:17)' } } } });
+  await assert.rejects(client.eval('1'), (e) => e.message === 'TypeError: x\n    at f (<anonymous>:4:17)');
+});

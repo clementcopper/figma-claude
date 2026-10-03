@@ -353,6 +353,11 @@ return the value instead (`return JSON.stringify(x)`).
 A walk over every page can outlast the default budget. `--timeout <seconds>` raises it; there is
 no partial output, so a long walk either answers or is killed.
 
+**Errors name the line.** A throw inside the script prints V8's frames against the submitted
+file (`at get_visible (build.js:3:17)`), the wrapper's own line is already subtracted. A file
+that does not parse never leaves the machine: `✗ SyntaxError in build.js:3:12: Invalid or
+unexpected token`, with the source line and a caret, exit 1.
+
 ## Configuration
 
 ```bash

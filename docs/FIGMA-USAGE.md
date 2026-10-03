@@ -154,8 +154,9 @@ That one line is correct, atomic, and produces 4 independent buttons whose `var:
 **If you accidentally did it:** `figma-cli unwrap <wrapperId>` rescues the children to the parent and deletes the wrapper. Use it.
 
 **eval / run print the RETURN value, not `console.log`.** A logging script prints nothing and
-exits 0, which looks exactly like a broken connection. `return JSON.stringify(x)` instead, and
-wrap risky code in `try { … } catch (e) { return e.stack }` so a throw is visible too.
+exits 0, which looks exactly like a broken connection. `return JSON.stringify(x)` instead. A
+throw prints the stack with the file's own line numbers (`at get_visible (build.js:3:17)`), and
+a file that does not parse is refused before it is sent, with line, column and caret.
 
 **eval is allowed for:**
 - Single-node operations that don't have a CLI command (e.g. setting an obscure Plugin API property)

@@ -631,7 +631,13 @@ export class FigmaClient {
     if (result.result?.exceptionDetails) {
       const error = result.result.exceptionDetails;
       // Get the actual error message - Figma puts detailed errors in exception.value
-      const errorValue = error.exception?.value || error.exception?.description || error.text || 'Evaluation error';
+      let errorValue = error.exception?.value || error.exception?.description || error.text || 'Evaluation error';
+      // A runtime error carries V8's frames inside `description`; a compile error has none and
+      // only `lineNumber`/`columnNumber` (0-based) say where. Give it a frame of the same shape,
+      // so the CLI relocates both onto the submitted file alike (src/lib/eval-error.js).
+      if (typeof error.lineNumber === 'number' && !/\n\s+at /.test(String(errorValue))) {
+        errorValue = `${errorValue}\n    at <anonymous>:${error.lineNumber + 1}:${(error.columnNumber || 0) + 1}`;
+      }
       // Raised by the code inside Figma, so the code ran — the daemon must not run it again
       // (src/lib/exec-retry.js). Transport and protocol errors above carry no flag.
       throw Object.assign(new Error(errorValue), { fromFigma: true });

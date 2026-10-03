@@ -17,6 +17,7 @@ import { isPatched, patchFigma, unpatchFigma, getFigmaCommand, getCdpPort, parse
 import { listComponents, getComponent, getAllComponents, VISUAL_COMPONENTS } from '../shadcn.js';
 import { listBlocks, getBlock } from '../blocks/index.js';
 import { connectAdvice, inPanel, timeoutMessage } from './connection-help.js';
+import { classifyDaemonError } from './daemon-error.js';
 import { connectionVerdict } from './connection-gate.js';
 import { curlConfig, CURL_ARGS } from './daemon-curl.js';
 import { isOurDaemon } from './daemon-owner.js';
@@ -341,25 +342,11 @@ async function daemonExec(action, data = {}, timeoutMs = 90000) {
       try {
         const errObj = JSON.parse(text);
         if (errObj.error) {
-          // Enhance auth errors with helpful info
-          if (errObj.error.includes('Unauthorized') || errObj.error.includes('token')) {
-            throw reported(
-              `${errObj.error}\n` +
-              `Token file: ${DAEMON_TOKEN_FILE}\n` +
-              `Try: node src/index.js daemon restart`
-            );
-          }
-          // Safe Mode: plugin tab was closed → guide the user back to it
-          // instead of just dumping the raw error.
-          if (/Plugin not connected/i.test(errObj.error)) {
-            throw reported(
-              'Plugin not connected.\n' +
-              'In Figma: Plugins → Development → FigCli (keep that tab open).\n' +
-              'Or switch to Yolo Mode: node src/index.js connect'
-            );
-          }
-          // Clean up error: remove stack trace line numbers for cleaner output
-          throw reported(errObj.error.split('\n')[0]);
+          // The status decides between an auth failure (403) and a code error (500); the
+          // message stays one line, V8's frames ride along as `figmaStack` for eval/run
+          // (src/lib/daemon-error.js).
+          const classified = classifyDaemonError({ status: response.status, error: errObj.error, tokenFile: DAEMON_TOKEN_FILE });
+          throw Object.assign(reported(classified.message), { figmaStack: classified.figmaStack });
         }
       } catch (parseErr) {
         // Our own throws carry the flag; anything else here is JSON.parse on a non-JSON body.

@@ -18,6 +18,8 @@ import { exportScaleSnippet } from '../lib/verify-export.js';
 import { formatEvalOutput } from '../lib/eval-output.js';
 import { exportSizeLabel } from '../lib/export-line.js';
 import { explainEvalError, inPanel } from '../lib/connection-help.js';
+import { relocateFrames, lineOffsetFor } from '../lib/eval-error.js';
+import { syntaxError } from '../lib/syntax-check.js';
 
 // ============ EXPORT ============
 
@@ -317,12 +319,29 @@ function printEvalResult(code, result) {
   console.log(out.dim ? chalk.gray(out.text) : out.text);
 }
 
-/** A lost connection reached the terminal as `spawnSync /bin/sh ETIMEDOUT` — a shell, not a state. */
-function printEvalError(error) {
+/**
+ * A lost connection reached the terminal as `spawnSync /bin/sh ETIMEDOUT` — a shell, not a
+ * state. A throw inside the script reached it as one line without a location (FEEDBACK.md,
+ * 18 Sep 2026); the frames the daemon forwards are printed against the submitted file.
+ */
+function printEvalError(error, { code = '', file = '<eval>' } = {}) {
   process.exitCode = 1;
-  const { lines } = explainEvalError(error && error.message, { panel: inPanel() });
+  const [first, ...rest] = String(error && error.message || '').split('\n');
+  const { lines, connection } = explainEvalError(first, { panel: inPanel() });
   console.log(chalk.red('✗ ' + lines[0])); process.exitCode = 1;
   for (const line of lines.slice(1)) console.log(chalk.gray('  ' + line));
+  if (connection) return;
+  const frames = [...rest, ...((error && error.figmaStack) || [])];
+  if (!frames.length) return;
+  const relocated = relocateFrames(frames, { file, lineOffset: lineOffsetFor(code), lineCount: code.split('\n').length });
+  for (const line of relocated) console.log(chalk.gray(line));
+}
+
+/** A file that does not parse never leaves the machine: the error names the file and line. */
+function printSyntaxError(se, file) {
+  const where = se.line ? `${file}:${se.line}${se.column ? ':' + se.column : ''}` : file;
+  console.log(chalk.red(`✗ SyntaxError in ${where}: ${se.message}`)); process.exitCode = 1;
+  for (const line of se.excerpt) console.log(chalk.gray(line));
 }
 
 
@@ -350,6 +369,9 @@ program
     }
 
     const timeoutMs = evalTimeoutMs(options.timeout);
+    const sourceName = options.file || '<eval>';
+    const se = syntaxError(jsCode, sourceName);
+    if (se) { printSyntaxError(se, sourceName); return; }
 
     // Always prefer async daemon (more reliable, no shell timeout issues)
     if (isDaemonRunning()) {
@@ -364,7 +386,7 @@ program
         // may already have run: print it, never run it again. A message-based classifier
         // used to send "Execution timeout (2s)" down the sync path, which re-ran the code.
         if (!shouldFallBackToDirect(e)) {
-          printEvalError(e);
+          printEvalError(e, { code: jsCode, file: sourceName });
           return;
         }
         // The daemon never answered (down, refused): the sync path may retry.
@@ -376,7 +398,7 @@ program
     try {
       printEvalResult(jsCode, figmaEvalSync(jsCode));
     } catch (error) {
-      printEvalError(error);
+      printEvalError(error, { code: jsCode, file: sourceName });
     }
   });
 
@@ -392,6 +414,8 @@ program
       return;
     }
     const code = readFileSync(file, 'utf8');
+    const se = syntaxError(code, file);
+    if (se) { printSyntaxError(se, file); return; }
     try {
       // Use async daemon path for better performance with long scripts
       if (isDaemonRunning()) {
@@ -403,7 +427,7 @@ program
         figmaUse(evalArg(code));
       }
     } catch (e) {
-      printEvalError(e);
+      printEvalError(e, { code, file });
     }
   });
 
