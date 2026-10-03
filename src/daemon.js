@@ -33,6 +33,14 @@ import { staleClientCopies, processExists } from './lib/hot-reload-copies.js';
 import { probeCdpClient, serveCachedHealth, probeWhileBusy, PROBE_TIMEOUT_MS } from './lib/cdp-health.js';
 import { retryVerdict, failureLine } from './lib/exec-retry.js';
 
+// Every log line carries the time of day. Two panel reports (21 and 28 Sep 2026) could not be
+// matched against this log because nothing in it said when; the log is the only place the
+// daemon's side of a minute survives.
+for (const level of ['log', 'error', 'warn']) {
+  const plain = console[level].bind(console);
+  console[level] = (...args) => plain(`[${new Date().toTimeString().slice(0, 8)}]`, ...args);  // local time, as the reports quote it
+}
+
 // Hot-reload FigmaClient: copy to temp file and import (Node.js ES modules don't support cache busting)
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const figmaClientPath = join(__dirname, 'figma-client.js');

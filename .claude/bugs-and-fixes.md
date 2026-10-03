@@ -312,6 +312,11 @@ log file had `'ignore'` there, and every later handoff inherited that.
 **Fix:** the successor opens `daemon.log` itself in append mode (`src/daemon.js`, /handoff);
 the handoff test checks the file in a temp HOME.
 
+**Addendum (2026-10-03):** the log had no timestamps, so two panel reports naming a minute
+(21 and 28 Sep) could not be matched against it. Every `console.log/error/warn` in the daemon
+now carries `[HH:MM:SS]` local time; the handoff test asserts the prefix. The file is still
+truncated on every `daemon start` — only a handoff successor appends.
+
 ## `figma` Gone While `status` Said Connected (2026-09-16, panel feedback)
 
 **Symptom:** after hours of normal Pipe Mode work, every command failed with

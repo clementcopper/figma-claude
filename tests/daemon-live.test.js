@@ -307,6 +307,9 @@ describe('daemon in pipe mode', () => {
       const log = join(d.home, '.figma-ds-cli', 'daemon.log');
       assert.ok(await until(() => existsSync(log) && /Took over Figma's debugging pipe/.test(readFileSync(log, 'utf8')), 5000),
         `successor did not write its own daemon.log: ${existsSync(log) ? readFileSync(log, 'utf8') : '(no file)'}`);
+      // Every line carries the time of day; two panel reports could not be matched against a
+      // log that had none (2026-10-03).
+      assert.match(readFileSync(log, 'utf8'), /^\[\d\d:\d\d:\d\d\] \[daemon\]/m, 'log lines carry a timestamp');
     } finally {
       if (successorPid) { try { process.kill(successorPid, 'SIGTERM'); } catch {} }
       d.stop();
