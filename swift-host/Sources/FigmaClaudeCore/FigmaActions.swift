@@ -33,13 +33,19 @@ public func resolveCli(appRoot: String, configured: String? = nil) -> CliInvocat
     let path = LoginShellPath.resolve() ?? ProcessInfo.processInfo.environment["PATH"] ?? ""
     let dirs = path.split(separator: ":").map(String.init)
 
-    // FigmaClaude ships inside the CLI repo, so the app's own parent is a candidate.
+    return resolveCliInvocation(pathDirs: dirs, configured: configured,
+                                checkoutDirs: checkoutDirs(appRoot: appRoot))
+}
+
+/// Where a checkout of the repo may be: the configured one, the app's own parent (FigmaClaude
+/// ships inside the CLI repo), and the conventional place. Shared by the CLI lookup and the mod
+/// lookup, so both try the same places in the same order.
+public func checkoutDirs(appRoot: String) -> [String] {
     var checkouts: [String] = []
     if let repo = repoPathFromConfig() { checkouts.append(repo) }
     checkouts.append((appRoot as NSString).deletingLastPathComponent)
     checkouts.append(NSHomeDirectory() + "/figma-cli")
-
-    return resolveCliInvocation(pathDirs: dirs, configured: configured, checkoutDirs: checkouts)
+    return checkouts
 }
 
 /// Runs the CLI once and captures what it said. Arguments as an array, never a shell string:

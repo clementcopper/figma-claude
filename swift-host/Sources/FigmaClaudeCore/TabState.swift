@@ -10,7 +10,8 @@ import Foundation
 public struct TabState<Tab>: CustomStringConvertible {
     public private(set) var tabs: [Tab] = []
     public private(set) var activeIndex: Int?
-    private var counter = 0
+    /// Highest number ever handed out; saved with the layout so a restart keeps counting.
+    public private(set) var counter = 0
 
     public init() {}
 
@@ -33,6 +34,14 @@ public struct TabState<Tab>: CustomStringConvertible {
         tabs.append(tab)
         activeIndex = tabs.count - 1
         return tabs.count - 1
+    }
+
+    /// Puts a saved set back as it was: order, front tab and counter, without the activation
+    /// cascade `append` has. An index that points nowhere lands on the first tab.
+    public mutating func restore(_ saved: [Tab], activeIndex: Int, counter: Int) {
+        tabs = saved
+        self.counter = counter
+        self.activeIndex = tabs.isEmpty ? nil : (tabs.indices.contains(activeIndex) ? activeIndex : 0)
     }
 
     /// Swaps a tab for another in place — a respawn keeps its position and its neighbours.

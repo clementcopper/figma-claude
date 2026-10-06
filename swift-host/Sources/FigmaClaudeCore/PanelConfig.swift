@@ -131,8 +131,20 @@ public func shimDir(home: String = NSHomeDirectory()) -> String {
 }
 
 /// Everything a panel terminal's process should see, assembled the way `buildEnvironment` does.
+/// Where the panel-bridge mod sits: inside the app bundle when `make-app.sh` built it, else in
+/// a checkout beside the app (the same candidates `resolveCli` tries). Nil when neither has it,
+/// and the tab then runs without live figures — the producer's file still draws the row.
+public func panelModDir(appRoot: String, checkoutDirs: [String],
+                        exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> String? {
+    let candidates = ["\(appRoot)/Contents/Resources/mods/panel-bridge"]
+        + checkoutDirs.filter { !$0.isEmpty }.map { "\($0)/swift-host/mods/panel-bridge" }
+    return candidates.first(where: exists)
+}
+
+public let pluginDirsKey = "CLAUDE_CODE_PLUGIN_DIRS"
+
 public func panelEnvironment(config: PanelConfig, home: String = NSHomeDirectory(),
-                             tabId: String? = nil) -> [String: String] {
+                             tabId: String? = nil, modDir: String? = nil) -> [String: String] {
     var env = ProcessInfo.processInfo.environment
 
     env["TERM"] = "xterm-256color"
@@ -164,6 +176,13 @@ public func panelEnvironment(config: PanelConfig, home: String = NSHomeDirectory
     if config.statusLine, let tabId, !tabId.isEmpty {
         env[statusTabKey] = tabId
         env[statusDirKey] = statusLineDir()
+        // The mod that writes the live half of the row, loaded on top of whatever the user
+        // loads already. It reads the two variables above and stays silent without them.
+        if let modDir, !modDir.isEmpty {
+            let theirs = (env[pluginDirsKey] ?? "").split(separator: ":").map(String.init)
+                .filter { !$0.isEmpty && $0 != modDir }
+            env[pluginDirsKey] = (theirs + [modDir]).joined(separator: ":")
+        }
     } else {
         env.removeValue(forKey: statusTabKey)
         env.removeValue(forKey: statusDirKey)

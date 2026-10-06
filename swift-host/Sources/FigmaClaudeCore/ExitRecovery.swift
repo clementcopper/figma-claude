@@ -32,6 +32,14 @@ public func resumeRecoveryPlan() -> [RecoveryStep] {
     ]
 }
 
+/// The plan for a tab restored with `--resume <sessionId>` after a restart. Claude Code exits
+/// with code 1 when it no longer has the session (archived, expired, deleted); the tab then
+/// starts a fresh session in the same folder — `[]` is what `startsANewSession` reads as fresh,
+/// so the respawn mints a name and an id again.
+public func restoreRecoveryPlan() -> [RecoveryStep] {
+    [RecoveryStep(args: [], note: "[Session not found — starting a new one in this folder]")]
+}
+
 /// Holds one plan per tab and hands out its steps.
 ///
 /// Every step is consumed exactly once. Without that this turns into a restart carousel: the

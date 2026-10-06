@@ -66,6 +66,7 @@ public final class StatusLineWatcher {
             self.seen.removeValue(forKey: tabId)
             self.snapshots.removeValue(forKey: tabId)
             try? FileManager.default.removeItem(atPath: "\(self.dir)/\(tabId).json")
+            try? FileManager.default.removeItem(atPath: "\(self.dir)/\(tabId)\(liveSuffix)")
         }
     }
 
@@ -97,23 +98,34 @@ public final class StatusLineWatcher {
         try? data.write(to: URL(fileURLWithPath: "\(lastDir)/\(name)"), options: .atomic)
     }
 
+    private func modified(_ path: String) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+    }
+
     private func scan() {
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
-        for entry in entries where entry.hasSuffix(".json") {
+        // Two files per tab: the producer's `<id>.json` and the mod's `<id>.live.json`. The tab
+        // is the producer's file; the live one rides along and is never a tab of its own.
+        for entry in entries where entry.hasSuffix(".json") && !entry.hasSuffix(liveSuffix) {
             let tabId = String(entry.dropLast(5))
-            let path = "\(dir)/\(entry)"
-            guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-                  let modified = attributes[.modificationDate] as? Date else { continue }
-            if let last = seen[tabId], last >= modified { continue }
+            guard let producerModified = modified("\(dir)/\(entry)") else { continue }
+            let liveModified = modified("\(dir)/\(tabId)\(liveSuffix)")
+            let newest = max(producerModified, liveModified ?? .distantPast)
+            if let last = seen[tabId], last >= newest { continue }
             guard let written = readSnapshot(dir: dir, tabId: tabId) else { continue }
 
             // What the producer could not know is filled in here: Claude Code omits the rate
             // limits until a request has been made, so the first snapshot after `--continue`
-            // would otherwise blank the Session and Week row it had a moment ago.
-            let snapshot = resolvedSnapshot(written, dir: dir)
-            seen[tabId] = modified
+            // would otherwise blank the Session and Week row it had a moment ago. Then the live
+            // file, whose count is the newer one inside a turn.
+            let snapshot = applyingLive(readLive(dir: dir, tabId: tabId),
+                                        to: resolvedSnapshot(written, dir: dir))
+            seen[tabId] = newest
             snapshots[tabId] = snapshot
-            remember(written)
+            // The merged one: the live file's buckets and count are the newer account state.
+            // Its activity never reaches a file (no coding key), and the remembered limits it
+            // carries are the ones already on disk.
+            remember(snapshot)
             DispatchQueue.main.async { self.onChange(tabId, snapshot) }
         }
     }

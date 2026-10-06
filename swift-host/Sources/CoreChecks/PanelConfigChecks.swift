@@ -92,5 +92,38 @@ enum PanelConfigTests {
         config.directMode = false
         Checks.expect(panelArguments(config: config, sessionName: "fc-x-7f3a1c2d"), [])
     }
-}
+
+    // The panel-bridge mod rides along per tab through CLAUDE_CODE_PLUGIN_DIRS: appended to
+    // whatever the user already loads, only with a status line tab, and found first in the app
+    // bundle, then in a checkout.
+    // testLoadsThePanelBridgeModPerStatusLineTab
+    do {
+        let bundle = "/Applications/FigmaClaude.app"
+        let inBundle = "\(bundle)/Contents/Resources/mods/panel-bridge"
+        let inCheckout = "/Users/x/figma-cli/swift-host/mods/panel-bridge"
+        Checks.expect(panelModDir(appRoot: bundle, checkoutDirs: ["/Users/x/figma-cli"],
+                                  exists: { $0 == inBundle || $0 == inCheckout }), inBundle)
+        Checks.expect(panelModDir(appRoot: bundle, checkoutDirs: ["/none", "/Users/x/figma-cli"],
+                                  exists: { $0 == inCheckout }), inCheckout)
+        Checks.expectNil(panelModDir(appRoot: bundle, checkoutDirs: ["/Users/x/figma-cli"],
+                                     exists: { _ in false }))
+
+        var config = PanelConfig()
+        unsetenv("CLAUDE_CODE_PLUGIN_DIRS")
+        Checks.expect(panelEnvironment(config: config, home: "/Users/x", tabId: "tab-1", modDir: "/m")["CLAUDE_CODE_PLUGIN_DIRS"], "/m")
+        // No tab, no status line: the mod would have nowhere to write.
+        Checks.expectNil(panelEnvironment(config: config, home: "/Users/x", modDir: "/m")["CLAUDE_CODE_PLUGIN_DIRS"])
+        config.statusLine = false
+        Checks.expectNil(panelEnvironment(config: config, home: "/Users/x", tabId: "tab-1", modDir: "/m")["CLAUDE_CODE_PLUGIN_DIRS"])
+        config.statusLine = true
+        // Appended, never replacing what the user loads already.
+        setenv("CLAUDE_CODE_PLUGIN_DIRS", "/theirs", 1)
+        Checks.expect(panelEnvironment(config: config, home: "/Users/x", tabId: "tab-1", modDir: "/m")["CLAUDE_CODE_PLUGIN_DIRS"], "/theirs:/m")
+        Checks.expect(panelEnvironment(config: config, home: "/Users/x", tabId: "tab-1", modDir: nil)["CLAUDE_CODE_PLUGIN_DIRS"], "/theirs")
+        unsetenv("CLAUDE_CODE_PLUGIN_DIRS")
+        // panel.json's env still has the last word.
+        config.env["CLAUDE_CODE_PLUGIN_DIRS"] = "/mine"
+        Checks.expect(panelEnvironment(config: config, home: "/Users/x", tabId: "tab-1", modDir: "/m")["CLAUDE_CODE_PLUGIN_DIRS"], "/mine")
+    }
+    }
 }

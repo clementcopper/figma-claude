@@ -128,6 +128,20 @@
   that runs `figma-developer-mcp`; the panel passes `--mcp-config` on every tab
   (`panelArguments`, CoreChecks), a terminal opts in with the same flag. Nothing lands in
   `~/.claude.json`.
+- **Figma Claude (Swift host) 1.2.0.** The status bar gets a second producer: the `panel-bridge`
+  mod (`swift-host/mods/`, loaded per tab through `CLAUDE_CODE_PLUGIN_DIRS`) runs inside the
+  Claude process and writes `<tab>.live.json` on every model request, tool call and subagent, so
+  the Ctx ring moves during a turn and the directory line shows the tool at work and the
+  subagent count while they last. The Week ring shows the per-model weekly bucket in a Fable
+  session ("Current week (Fable)" in `/usage`), fetched by the mod from `GET /api/oauth/usage`
+  through the engine's credential handle — the status line's own JSON carries `model_scoped`
+  only on a fresh fetch, measured absent twice; tooltip `Fable weekly limit resets on … / All
+  models: N%`. The status bar's top edge no longer crosses the tab strip (`--render-chrome`
+  measures it). Tabs survive a restart: `~/.figma-ds-cli/panel-tabs.json` holds id, folder,
+  session and name per tab, the front tab resumes at once with `claude --resume <sessionId>`,
+  the others resume when clicked; a session Claude no longer has falls back to a fresh one in
+  the same folder (`restoreRecoveryPlan`). `--print-tabs` shows what the next launch restores.
+  1.1.2 (unlisted here) was the Reconnect entry in the Figma menu.
 - **Figma Claude (Swift host) 1.1.1.** Toolbar and tab strip were invisible on the first Apple
   Silicon build (macOS 26, SDK 26.5): `TerminalColumn.draw` filled `dirtyRect`, which the
   14+ SDK lets exceed the view, so the terminal column painted white over every band below it in

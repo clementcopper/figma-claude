@@ -15,6 +15,14 @@ enum StatusLineTests {
         remembered()
         watcherRemembers()
         compactions()
+        modelScoped()
+        modelWeekChoice()
+        rememberedModelWeeks()
+        liveMerge()
+        cwdLine()
+        watcherLive()
+        liveBuckets()
+        sessionIdentity()
     }
 
     /// The whole path through the file system, because that is where the fault was: a tab whose
@@ -303,5 +311,273 @@ enum StatusLineTests {
         try? (transcript + "\n{\"isCompactSummary\":true}").write(toFile: file, atomically: true, encoding: .utf8)
         Checks.expect(countCompactions(file).total, 4)
         Checks.expect(countCompactions(file + ".missing").total, 0)
+    }
+
+    /// `rate_limits.model_scoped` is the per-model weekly bucket (`/usage` shows it as "Current
+    /// week (Fable)"). Its `resets_at` is an ISO string, unlike the epoch next to it.
+    static func modelScoped() {
+        let payload: [String: Any] = [
+            "model": ["display_name": "Fable 5.1"],
+            "rate_limits": [
+                "seven_day": ["used_percentage": 41, "resets_at": 1_791_568_800],
+                "model_scoped": [
+                    ["display_name": "Fable", "utilization": 38, "resets_at": "2026-10-09T18:00:00.000Z"],
+                    // A bucket without a reading is not a bucket at 0%.
+                    ["display_name": "Opus", "utilization": NSNull(), "resets_at": NSNull()],
+                    ["display_name": "Sonnet", "utilization": 7.5, "resets_at": NSNull()]
+                ]
+            ]
+        ]
+        let snap = buildSnapshot(payload)
+        Checks.expect(snap.weekPercent, 41)
+        Checks.expect(snap.modelWeeks, [
+            ModelWeek(label: "Fable", percent: 38, resetsAt: 1_791_568_800),
+            ModelWeek(label: "Sonnet", percent: 7.5, resetsAt: nil)
+        ])
+
+        // Absent: nothing known, not an empty list — a remembered one may fill it.
+        Checks.expectNil(buildSnapshot(["rate_limits": ["seven_day": ["used_percentage": 1]]]).modelWeeks)
+        // Present but empty: the endpoint answered and listed none. Kept as empty.
+        Checks.expect(buildSnapshot(["rate_limits": ["model_scoped": [] as [Any]]]).modelWeeks, [])
+
+        // Round trip through the file, as the watcher reads it.
+        let data = try! JSONEncoder().encode(snap)
+        Checks.expect(try? JSONDecoder().decode(StatusLineSnapshot.self, from: data).modelWeeks,
+                      snap.modelWeeks)
+        // A snapshot written before the field existed still decodes.
+        let old = Data(#"{"model":"Opus 5","usedTokens":1,"totalTokens":2,"usedPercent":50,"updatedAt":1}"#.utf8)
+        Checks.expectNil(try? JSONDecoder().decode(StatusLineSnapshot.self, from: old).modelWeeks)
+    }
+
+    /// The bucket the session's model falls into: label is a prefix of the display name, case
+    /// aside. No match, no bucket — the Week ring then shows the all-models limit as before.
+    static func modelWeekChoice() {
+        var snap = StatusLineSnapshot()
+        snap.modelWeeks = [ModelWeek(label: "Fable", percent: 38, resetsAt: nil),
+                           ModelWeek(label: "Sonnet", percent: 7, resetsAt: nil)]
+        snap.model = "Fable 5.1"
+        Checks.expect(modelWeek(for: snap)?.label, "Fable")
+        snap.model = "sonnet 5.5"
+        Checks.expect(modelWeek(for: snap)?.label, "Sonnet")
+        snap.model = "Opus 5"
+        Checks.expectNil(modelWeek(for: snap))
+        snap.model = ""
+        Checks.expectNil(modelWeek(for: snap))
+        snap.model = "Fable 5.1"
+        snap.modelWeeks = nil
+        Checks.expectNil(modelWeek(for: snap))
+    }
+
+    /// The per-model buckets are account state like the other limits: remembered, filled into a
+    /// thin snapshot, never overwriting a live reading — and an old `limits.json` without them
+    /// still decodes.
+    static func rememberedModelWeeks() {
+        var full = StatusLineSnapshot()
+        full.modelWeeks = [ModelWeek(label: "Fable", percent: 38, resetsAt: 1_791_568_800)]
+        full.updatedAt = 5
+        let kept = limitFields(of: full)
+        Checks.expect(kept?.modelWeeks, full.modelWeeks)
+
+        var thin = StatusLineSnapshot()
+        thin.model = "Fable 5.1"
+        Checks.expect(applyingLimits(kept, to: thin).modelWeeks, full.modelWeeks)
+
+        var live = StatusLineSnapshot()
+        live.modelWeeks = []
+        Checks.expect(applyingLimits(kept, to: live).modelWeeks, [])
+
+        let old = Data(#"{"weekPercent":40,"weekResetsAt":"Fri 8:00 PM","updatedAt":1}"#.utf8)
+        let decoded = try? JSONDecoder().decode(RememberedLimits.self, from: old)
+        Checks.expect(decoded?.weekPercent, 40)
+        Checks.expectNil(decoded?.modelWeeks)
+    }
+
+    /// What the panel-bridge mod writes beside the producer's file, merged into the snapshot:
+    /// the mod sees every model request, so inside a turn its token count is the live one.
+    static func liveMerge() {
+        let json = #"{"v":1,"updatedAt":1791271305925,"resetAt":0,"cwd":"/Users/x/figma-cli","usedTokens":123157,"totalTokens":1000000,"usedPercent":12.3,"stepIndex":18,"modelId":"claude-fable-5-1","effort":"high","state":"busy","stateAt":1791270893391,"tool":{"name":"Bash","summary":"Read schema grep output"},"agents":2,"compacted":0,"compactAuto":0,"sessionPercent":50,"weekPercent":40,"costUsd":3.72}"#
+        guard let live = try? JSONDecoder().decode(LiveStatus.self, from: Data(json.utf8)) else {
+            Checks.expect("decoded", "LiveStatus"); return
+        }
+        Checks.expect(live.usedTokens, 123_157)
+        Checks.expect(live.tool?.name, "Bash")
+        Checks.expect(live.agents, 2)
+
+        // The producer rendered a moment earlier; the mod's newer count wins and the percent
+        // follows the same arithmetic as the producer's.
+        var snap = StatusLineSnapshot()
+        snap.cwd = "~/figma-cli"
+        snap.usedTokens = 100_000
+        snap.totalTokens = 1_000_000
+        snap.usedPercent = 10
+        snap.updatedAt = 1_791_271_300
+        let merged = applyingLive(live, to: snap)
+        Checks.expect(merged.usedTokens, 123_157)
+        Checks.expect(merged.usedPercent, 12.3)
+        Checks.expect(merged.totalTokens, 1_000_000)
+        Checks.expect(merged.activity, StatusActivity(tool: "Bash", summary: "Read schema grep output", agents: 2))
+
+        // A producer render after the mod's last write is the newer truth.
+        snap.updatedAt = 1_791_271_306
+        let later = applyingLive(live, to: snap)
+        Checks.expect(later.usedTokens, 100_000)
+        Checks.expect(later.usedPercent, 10)
+        Checks.expectNil(later.activity)
+
+        // No live file: nothing changes.
+        Checks.expect(applyingLive(nil, to: snap), snap)
+
+        // After `/clear` the mod drops its count; the producer's stands. The window comes from
+        // the live file only when the producer has none yet.
+        var cleared = live
+        cleared.usedTokens = nil
+        cleared.state = "idle"
+        cleared.tool = nil
+        cleared.agents = 0
+        var fresh = StatusLineSnapshot()
+        fresh.updatedAt = 1_791_271_300
+        let seeded = applyingLive(cleared, to: fresh)
+        Checks.expect(seeded.usedTokens, 0)
+        Checks.expect(seeded.totalTokens, 1_000_000)
+        Checks.expect(seeded.usedPercent, 0)
+        Checks.expectNil(seeded.activity)
+
+        // Idle with a tool still named is a stale entry, not activity.
+        snap.updatedAt = 1_791_271_300
+        var idle = live
+        idle.state = "idle"
+        Checks.expectNil(applyingLive(idle, to: snap).activity)
+        // Agents alone are activity.
+        var agentsOnly = live
+        agentsOnly.tool = nil
+        Checks.expect(applyingLive(agentsOnly, to: snap).activity, StatusActivity(tool: nil, summary: nil, agents: 2))
+    }
+
+    /// The working-directory line doubles as the activity line: the tool at work and the
+    /// subagents running, and the path again the moment both are gone.
+    static func cwdLine() {
+        var snap = StatusLineSnapshot()
+        snap.cwd = "~/work/clients/acme/services/api"
+        Checks.expect(cwdLineText(snap).text, "~/services/api")
+        Checks.expect(cwdLineText(snap).tooltip, "~/work/clients/acme/services/api")
+
+        snap.activity = StatusActivity(tool: "Bash", summary: "Install deps", agents: 0)
+        Checks.expect(cwdLineText(snap).text, "Bash: Install deps")
+        Checks.expect(cwdLineText(snap).tooltip, "~/work/clients/acme/services/api\nBash: Install deps")
+
+        snap.activity = StatusActivity(tool: "Read", summary: "/Users/x/a.swift", agents: 2)
+        Checks.expect(cwdLineText(snap).text, "Read: /Users/x/a.swift · 2 agents")
+
+        snap.activity = StatusActivity(tool: nil, summary: nil, agents: 1)
+        Checks.expect(cwdLineText(snap).text, "1 agent")
+        Checks.expect(cwdLineText(snap).tooltip, "~/work/clients/acme/services/api")
+
+        // A long summary is cut for the line and whole in the tooltip.
+        let long = String(repeating: "x", count: 80)
+        snap.activity = StatusActivity(tool: "Bash", summary: long, agents: 0)
+        Checks.expect(cwdLineText(snap).text, "Bash: " + String(repeating: "x", count: 59) + "…")
+        Checks.expect(cwdLineText(snap).tooltip, "~/work/clients/acme/services/api\nBash: " + long)
+
+        // A tool without a summary is still named.
+        snap.activity = StatusActivity(tool: "Glob", summary: "", agents: 0)
+        Checks.expect(cwdLineText(snap).text, "Glob")
+
+        // No path at all: the activity alone, or nothing.
+        snap.cwd = nil
+        Checks.expect(cwdLineText(snap).text, "Glob")
+        snap.activity = nil
+        Checks.expect(cwdLineText(snap).text, "")
+    }
+
+    /// The watcher reads both files per tab and never mistakes `<id>.live.json` for a tab of its
+    /// own; a live write alone re-renders, and forgetting a tab removes both.
+    static func watcherLive() {
+        let dir = NSTemporaryDirectory() + "figmaclaude-live-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        var seenTabs: [String] = []
+        let watcher = StatusLineWatcher(dir: dir, interval: 0.05) { tabId, _ in seenTabs.append(tabId) }
+        watcher.start()
+        defer { watcher.stop() }
+
+        var written = StatusLineSnapshot()
+        written.model = "Fable 5.1"
+        written.cwd = "~/p"
+        written.usedTokens = 100_000
+        written.totalTokens = 1_000_000
+        written.usedPercent = 10
+        written.updatedAt = Date().timeIntervalSince1970.rounded(.down)
+        try? writeSnapshot(written, dir: dir, tabId: "tab-9")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        Checks.expect(watcher.snapshot(for: "tab-9")?.usedTokens, 100_000)
+
+        let liveMs = (written.updatedAt + 2) * 1000
+        let live = "{\"v\":1,\"updatedAt\":\(Int(liveMs)),\"usedTokens\":150000,\"totalTokens\":1000000,\"state\":\"busy\",\"tool\":{\"name\":\"Bash\",\"summary\":\"ls\"},\"agents\":0}"
+        try? Data(live.utf8).write(to: URL(fileURLWithPath: "\(dir)/tab-9.live.json"))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        Checks.expect(watcher.snapshot(for: "tab-9")?.usedTokens, 150_000)
+        Checks.expect(watcher.snapshot(for: "tab-9")?.activity?.tool, "Bash")
+        Checks.expectNil(watcher.snapshot(for: "tab-9.live"))
+        Checks.expect(Set(seenTabs), ["tab-9"])
+        Checks.expect(seenTabs.count, 2)
+
+        watcher.forget("tab-9")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        Checks.expect(FileManager.default.fileExists(atPath: "\(dir)/tab-9.json"), false)
+        Checks.expect(FileManager.default.fileExists(atPath: "\(dir)/tab-9.live.json"), false)
+    }
+
+    /// The mod asks the usage endpoint for the per-model buckets, so the live file carries them
+    /// too: newer than the producer's snapshot they win, including over a remembered set, and
+    /// the merged snapshot is what gets remembered — without the activity, which is now.
+    static func liveBuckets() {
+        let fable = ModelWeek(label: "Fable", percent: 79, resetsAt: 1_791_568_800)
+        let json = #"{"v":1,"updatedAt":1791271305925,"usedTokens":5,"totalTokens":100,"state":"busy","tool":{"name":"Bash","summary":"ls"},"agents":0,"modelWeeks":[{"label":"Fable","percent":79,"resetsAt":1791568800}]}"#
+        guard let live = try? JSONDecoder().decode(LiveStatus.self, from: Data(json.utf8)) else {
+            Checks.expect("decoded", "LiveStatus"); return
+        }
+        Checks.expect(live.modelWeeks, [fable])
+
+        var snap = StatusLineSnapshot()
+        snap.model = "Fable 5.1"
+        snap.updatedAt = 1_791_271_300
+        snap.modelWeeks = [ModelWeek(label: "Fable", percent: 70, resetsAt: nil)]   // older, remembered
+        let merged = applyingLive(live, to: snap)
+        Checks.expect(merged.modelWeeks, [fable])
+        // The snapshot now stands for the live file's moment, so remembering it is never a step back.
+        Checks.expect(merged.updatedAt, 1_791_271_305)
+        Checks.expect(limitFields(of: merged)?.modelWeeks, [fable])
+
+        // Older live file: the snapshot's buckets stay.
+        snap.updatedAt = 1_791_271_310
+        Checks.expect(applyingLive(live, to: snap).modelWeeks?.first?.percent, 70)
+        Checks.expect(applyingLive(live, to: snap).updatedAt, 1_791_271_310)
+
+        // A live file without buckets leaves the snapshot's alone.
+        var bare = live
+        bare.modelWeeks = nil
+        snap.updatedAt = 1_791_271_300
+        Checks.expect(applyingLive(bare, to: snap).modelWeeks?.first?.percent, 70)
+
+        // Activity never reaches a file: a remembered snapshot must not revive a tool.
+        var busy = StatusLineSnapshot()
+        busy.activity = StatusActivity(tool: "Bash", summary: "ls", agents: 1)
+        let data = try! JSONEncoder().encode(busy)
+        Checks.expect(String(decoding: data, as: UTF8.self).contains("activity"), false)
+        Checks.expectNil(try? JSONDecoder().decode(StatusLineSnapshot.self, from: data).activity)
+    }
+
+    /// The payload names the session: the one thing the host cannot know after `--continue`
+    /// or `--resume`, and what a restart needs to bring the tab back.
+    static func sessionIdentity() {
+        let snap = buildSnapshot(["session_id": "ae15e934-dffb-4b7d-b36e-8d9f9956850c",
+                                  "session_name": "fc-design-7f3a"])
+        Checks.expect(snap.sessionId, "ae15e934-dffb-4b7d-b36e-8d9f9956850c")
+        Checks.expect(snap.sessionName, "fc-design-7f3a")
+        Checks.expectNil(buildSnapshot([:]).sessionId)
+        Checks.expectNil(buildSnapshot(["session_name": ""]).sessionName)
+        let data = try! JSONEncoder().encode(snap)
+        Checks.expect(try? JSONDecoder().decode(StatusLineSnapshot.self, from: data).sessionId, snap.sessionId)
     }
 }

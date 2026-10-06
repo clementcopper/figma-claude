@@ -13,3 +13,6 @@ docs/figma-api/
 # Local DESIGN.md extraction examples (Primer test) — never commit
 Primer-Web/
 *.markdown-preview.html
+
+# Laid by the engine when a mod loads (claude --plugin-dir …); regenerated, never committed.
+swift-host/mods/*/.claude-plugin/types/

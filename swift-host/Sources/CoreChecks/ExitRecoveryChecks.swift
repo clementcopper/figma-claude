@@ -74,5 +74,19 @@ enum ExitRecoveryTests {
         // Continue and Restart clear it: there is nothing to catch there.
         recovery.clear(for: "tab-1")
         Checks.expect(recovery.next(for: "tab-1", exitCode: 1) == nil, true)
+
+    // A restored tab whose session Claude no longer has: one step, a fresh start in the same
+    // folder, said so in the terminal. `[]` is what `startsANewSession` reads as fresh.
+    // testARestoredTabFallsBackToAFreshStartOnce
+    do {
+        let plan = restoreRecoveryPlan()
+        Checks.expect(plan.map(\.args), [[]])
+        Checks.expect(plan[0].note, "[Session not found — starting a new one in this folder]")
+        Checks.expect(startsANewSession(extraArgs: plan[0].args), true)
+        var recovery = ExitRecovery()
+        recovery.register(plan, for: "tab-r")
+        Checks.expect(recovery.next(for: "tab-r", exitCode: 1)?.args, [])
+        Checks.expectNil(recovery.next(for: "tab-r", exitCode: 1))
+    }
     }
 }

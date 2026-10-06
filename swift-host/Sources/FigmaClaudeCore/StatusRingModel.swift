@@ -103,7 +103,23 @@ public func statusRings(_ snapshot: StatusLineSnapshot,
             tooltip: "Session limit: \(Int(session.rounded()))% used"))
     }
 
-    if let week = snapshot.weekPercent {
+    // The Week ring is the bucket the session's model falls into when the account has one —
+    // Fable has its own weekly limit, and in a Fable session that is the number that runs out.
+    // Same ring, the bucket's figures; the tooltip keeps the all-models limit on a second line.
+    if let bucket = modelWeek(for: snapshot) {
+        let fraction = bucket.percent / 100
+        let percent = Int(bucket.percent.rounded())
+        let reset = bucket.resetsAt.map(formatWeekReset)
+        var tooltip = reset.map { "\(bucket.label) weekly limit resets on \($0)" }
+            ?? "\(bucket.label) weekly limit: \(percent)% used"
+        if let week = snapshot.weekPercent {
+            tooltip += "\nAll models: \(Int(week.rounded()))%"
+        }
+        items.append(StatusRingItem(
+            name: "Week", value: "\(percent)%", sub: reset ?? "",
+            fill: .fraction(fraction), level: RingGeometry.fillLevel(fraction: fraction),
+            tooltip: tooltip))
+    } else if let week = snapshot.weekPercent {
         let fraction = week / 100
         items.append(StatusRingItem(
             name: "Week", value: "\(Int(week.rounded()))%",

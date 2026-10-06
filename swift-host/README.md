@@ -52,6 +52,60 @@ terminal session does not see Framelink unless it passes the same flag — on th
 off by default, on in the panel. A project that disabled `framelink` via `/mcp` stays disabled
 here too, the name is the same.
 
+## Status line
+
+Two producers write one directory, `~/.figma-ds-cli/statusline/`, and `StatusLineWatcher` polls it
+once a second and merges per tab:
+
+- **`<tab id>.json`** — Claude Code's own status line. Every tab runs with
+  `--settings '{"statusLine":{"command":"FigmaClaude --statusline"}}'` and the two variables
+  `CLAUDE_PANEL_TAB_ID` / `CLAUDE_PANEL_STATUS_DIR`; the producer parses the JSON Claude Code hands
+  it on stdin (`buildSnapshot`). Claude Code renders it at turn end, so inside a turn this file
+  stands still.
+- **`<tab id>.live.json`** — the `panel-bridge` mod in [`mods/`](mods/PORTED-FROM.md), loaded into
+  the same tab through `CLAUDE_CODE_PLUGIN_DIRS` (`panelModDir`: the app bundle first, then a
+  checkout). It runs inside the Claude process and writes per model request, tool call and
+  subagent. `applyingLive` takes its token count whenever it is newer than the producer's, so the
+  Ctx ring moves during a turn, and its tool and subagent count replace the directory line while
+  they last (`cwdLineText`: `Bash: Install deps · 2 agents`, then the path again).
+
+The Week ring shows the per-model weekly bucket when the account has one for the session's model
+— the window `/usage` lists as "Current week (Fable)". In a Fable session the ring is that bucket,
+and the tooltip says both — `Fable weekly limit resets on Fri 8:00 PM` / `All models: 41%`. Any
+other model keeps the all-models limit. The bucket comes from the mod: the engine's `rateLimits`
+has no per-model window, and the producer's JSON carries `rate_limits.model_scoped[]` only on a
+fresh usage fetch, which measured absent in two captures. So the mod asks
+`GET /api/oauth/usage` itself (the endpoint `/usage` reads), through `$.session.authorize()` and
+`$.http.fetch` — the credential stays in the engine — at start, after a turn (at most once a
+minute, the endpoint's own cache) and every five minutes idle, and writes `modelWeeks` into the
+live file. `model_scoped` is still parsed when it does arrive. Buckets are remembered in
+`last/limits.json` like the other limits.
+
+`--print-statusline [tabId]` prints what was written, what is remembered, what the live file
+says, and the merged result. To see the raw JSON once, put `"env": {"CLAUDE_PANEL_DELEGATE":
+"cat > /tmp/sl.json"}` into `panel.json`; the delegate runs after the producer with the same stdin.
+
+Checking the mod: `claude plugin validate mods/panel-bridge`, `claude plugin test mods/panel-bridge`;
+for types, `claude --plugin-dir "$PWD/mods/panel-bridge" -p ok` lays `.claude-plugin/types/`
+(ignored by git), then `tsc -p mods/panel-bridge`.
+
+## Tabs across restarts
+
+Every change to the tabs is written to `~/.figma-ds-cli/panel-tabs.json` (`persistTabs`:
+id, name, folder, session id and session name per tab, the front tab, the name counter). The
+next launch reads it back (`restorableTabs`: folders that still exist, at most 16) and puts the
+tabs up **cold** — the one that was in front starts at once, every other one starts the first
+time it is clicked, each with `claude --resume <sessionId>` in its folder, no `-n`, no
+`--session-id`. A Claude start costs 12–22 s and a process, so a row of six restored tabs costs
+one, not six. The session id comes from the status line payload (`session_id`), so a tab that
+went through `--continue` or the resume picker is restorable too once Claude has rendered.
+
+When Claude no longer has the session it exits with code 1; `restoreRecoveryPlan` then starts a
+fresh session in the same folder and says so in the terminal. A tab whose session the host
+never learned starts fresh as well. Closing the last tab with ⌘W writes an empty list on
+purpose: the next launch opens one fresh tab, as before. `--print-tabs` prints what the next
+launch would restore and which tab comes up warm.
+
 ## Clipboard and editing
 
 ⌘C copies the terminal selection (drag in the terminal; ⇧-drag when a program has turned mouse
@@ -137,6 +191,7 @@ $B --render-menurows                                            # the Figma menu
 
 $B --print-menu                # the Figma menu as text, the same rows `fig-status` prints
 $B --print-statusline [tabId]  # what the status row would draw, and what it was built from
+$B --print-tabs [file]         # the saved tabs, and which the next launch restores warm or cold
 $B --print-about               # the About panel as text, with the real CLI lookup
 
 $B --probe-selection           # does the status band grow when a selection lands (real window)

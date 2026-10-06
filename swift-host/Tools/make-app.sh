@@ -29,6 +29,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BINARY" "$APP/Contents/MacOS/FigmaClaude"
+# The panel-bridge mod, loaded into every status line tab through CLAUDE_CODE_PLUGIN_DIRS
+# (`panelModDir` looks here first, then in a checkout). The engine's own `.claude-plugin/types/`
+# is a build product and stays out.
+mkdir -p "$APP/Contents/Resources/mods"
+rsync -a --exclude '.claude-plugin/types' "$ROOT/mods/panel-bridge" "$APP/Contents/Resources/mods/"
 # The binary carries debug symbols the app does not need; stripping is most of the size.
 strip -no_code_signature_warning "$APP/Contents/MacOS/FigmaClaude" 2>/dev/null || true
 

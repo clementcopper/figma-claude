@@ -165,8 +165,10 @@ final class StatusRingLineView: NSView {
         }
         row.setItems(items)
 
-        cwdLabel.stringValue = snapshot.cwd.map { shortenPath($0) } ?? ""
-        cwdLabel.toolTip = snapshot.cwd
+        // The path, or the tool at work and the subagents running while there are any.
+        let line = cwdLineText(snapshot)
+        cwdLabel.stringValue = line.text
+        cwdLabel.toolTip = line.tooltip.isEmpty ? nil : line.tooltip
         cwdLabel.isHidden = cwdLabel.stringValue.isEmpty
         invalidateLayout()
     }

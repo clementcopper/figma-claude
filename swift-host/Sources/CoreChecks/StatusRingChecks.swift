@@ -12,6 +12,7 @@ enum StatusRingTests {
         wrapSteps()
         wrapEdges()
         ringModel()
+        modelWeekRing()
         contextWindow()
         weekReset()
         weekResetLegacy()
@@ -294,5 +295,52 @@ enum StatusRingTests {
         } else {
             Checks.expect("zero threshold", "fraction")
         }
+    }
+
+    /// In a Fable session the Week ring shows the Fable bucket — same ring, other numbers — and
+    /// its tooltip names both: the bucket's reset on the first line, the all-models figure on
+    /// the second. Any other model keeps the ring as it was.
+    static func modelWeekRing() {
+        let reset: Double = 1_791_568_800
+        var snap = StatusLineSnapshot()
+        snap.model = "Fable 5.1"
+        snap.usedTokens = 1
+        snap.totalTokens = 1000
+        snap.weekPercent = 41
+        snap.weekResetsAt = formatWeekReset(reset)
+        snap.modelWeeks = [ModelWeek(label: "Fable", percent: 38, resetsAt: reset)]
+
+        let week = statusRings(snap).first { $0.name == "Week" }
+        Checks.expect(week?.value, "38%")
+        Checks.expect(week?.sub, formatWeekReset(reset))
+        if case .fraction(let f)? = week?.fill { Checks.expect(f, 0.38) } else { Checks.expect("fill", "fraction") }
+        Checks.expect(week?.tooltip,
+                      "Fable weekly limit resets on \(formatWeekReset(reset))\nAll models: 41%")
+
+        // A bucket without a reset date still says whose limit it is.
+        snap.modelWeeks = [ModelWeek(label: "Fable", percent: 38, resetsAt: nil)]
+        let undated = statusRings(snap).first { $0.name == "Week" }
+        Checks.expect(undated?.sub, "")
+        Checks.expect(undated?.tooltip, "Fable weekly limit: 38% used\nAll models: 41%")
+
+        // The bucket alone, before the all-models limit has a reading, is still a Week ring.
+        snap.weekPercent = nil
+        snap.weekResetsAt = nil
+        let alone = statusRings(snap).first { $0.name == "Week" }
+        Checks.expect(alone?.value, "38%")
+        Checks.expect(alone?.tooltip, "Fable weekly limit: 38% used")
+
+        // Another model: the ring is the all-models limit, worded as before.
+        snap.weekPercent = 41
+        snap.model = "Opus 5"
+        let plain = statusRings(snap).first { $0.name == "Week" }
+        Checks.expect(plain?.value, "41%")
+        Checks.expect(plain?.tooltip, "Weekly limit: 41% used")
+
+        // The printed row names the bucket too.
+        snap.model = "Fable 5.1"
+        snap.weekResetsAt = "Fri 8:00 PM"
+        snap.modelWeeks = [ModelWeek(label: "Fable", percent: 38, resetsAt: reset)]
+        Checks.expect(secondaryRowText(snap)?.week, "Week 38% (Fable) · \(formatWeekReset(reset))")
     }
 }

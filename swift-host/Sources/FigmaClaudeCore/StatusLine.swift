@@ -19,6 +19,21 @@ public func statusLineDir() -> String {
     NSHomeDirectory() + "/.figma-ds-cli/statusline"
 }
 
+/// One per-model weekly bucket from `rate_limits.model_scoped` — what `/usage` lists as
+/// "Current week (Fable)". The label is the server's, the percent its utilization, the reset an
+/// epoch like `seven_day`'s even though the payload spells this one as an ISO string.
+public struct ModelWeek: Codable, Equatable {
+    public var label: String
+    public var percent: Double
+    public var resetsAt: Double?
+
+    public init(label: String, percent: Double, resetsAt: Double?) {
+        self.label = label
+        self.percent = percent
+        self.resetsAt = resetsAt
+    }
+}
+
 public struct StatusLineSnapshot: Codable, Equatable {
     public var model: String = ""
     public var effort: String?
@@ -31,10 +46,26 @@ public struct StatusLineSnapshot: Codable, Equatable {
     public var sessionResetsInMin: Int?
     public var weekPercent: Double?
     public var weekResetsAt: String?
+    /// Nil when the payload said nothing about per-model buckets; empty when it listed none.
+    public var modelWeeks: [ModelWeek]?
     public var compacted: Int?
     public var compactBudget: Int?
     public var compactAuto: Int?
     public var updatedAt: Double = 0
+    /// The session Claude Code says it runs — the one thing the host cannot know after
+    /// `--continue`/`--resume`, and what a restart needs to bring the tab back.
+    public var sessionId: String?
+    public var sessionName: String?
+    /// What is going on right now, from the live file only — never written by the producer and
+    /// never remembered: a tool at work and the subagents running. Kept out of the file on
+    /// purpose (no coding key): a remembered snapshot must not revive a tool that finished.
+    public var activity: StatusActivity?
+
+    enum CodingKeys: String, CodingKey {
+        case model, effort, cwd, usedTokens, totalTokens, usedPercent
+        case sessionPercent, sessionResetsAt, sessionResetsInMin, weekPercent, weekResetsAt
+        case modelWeeks, compacted, compactBudget, compactAuto, updatedAt, sessionId, sessionName
+    }
 
     public init() {}
 
@@ -97,6 +128,7 @@ public func buildSnapshot(_ payload: [String: Any], budget: Int = 0,
     snapshot.sessionResetsAt = number(fiveHour["resets_at"])
     snapshot.weekPercent = number(sevenDay["used_percentage"])
     snapshot.weekResetsAt = number(sevenDay["resets_at"]).map { formatWeekReset($0) }
+    snapshot.modelWeeks = (rateLimits["model_scoped"] as? [Any]).map(parseModelWeeks)
 
     // The reset-window rule is already ported and is used rather than restated: it decides when
     // the percentage falls and why the absolute point stays.
@@ -111,6 +143,8 @@ public func buildSnapshot(_ payload: [String: Any], budget: Int = 0,
         snapshot.model = name
     }
     snapshot.effort = buildEffort(payload)
+    if let id = payload["session_id"] as? String, !id.isEmpty { snapshot.sessionId = id }
+    if let name = payload["session_name"] as? String, !name.isEmpty { snapshot.sessionName = name }
 
     let workspace = payload["workspace"] as? [String: Any] ?? [:]
     let rawCwd = (payload["cwd"] as? String) ?? (workspace["current_dir"] as? String) ?? ""
@@ -125,6 +159,36 @@ public func buildSnapshot(_ payload: [String: Any], budget: Int = 0,
     snapshot.updatedAt = now.timeIntervalSince1970.rounded(.down)
 
     return snapshot
+}
+
+/// The per-model buckets as the payload lists them, skipping any without a reading: a bucket the
+/// server has no number for is unknown, not empty.
+func parseModelWeeks(_ entries: [Any]) -> [ModelWeek] {
+    entries.compactMap { entry in
+        guard let bucket = entry as? [String: Any],
+              let label = bucket["display_name"] as? String, !label.isEmpty,
+              let percent = number(bucket["utilization"]) else { return nil }
+        return ModelWeek(label: label, percent: percent,
+                         resetsAt: (bucket["resets_at"] as? String).flatMap(isoEpoch))
+    }
+}
+
+/// `2026-10-09T18:00:00.000Z` to epoch seconds; nil for anything that is not an ISO 8601 instant.
+public func isoEpoch(_ text: String) -> Double? {
+    let withFraction = ISO8601DateFormatter()
+    withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let plain = ISO8601DateFormatter()
+    plain.formatOptions = [.withInternetDateTime]
+    return (withFraction.date(from: text) ?? plain.date(from: text))?.timeIntervalSince1970
+}
+
+/// The bucket the session's model falls into: the bucket's label is a prefix of the model's
+/// display name ("Fable" of "Fable 5.1"), case aside. Nil when there is none, and the Week ring
+/// then shows the all-models limit as it always has.
+public func modelWeek(for snapshot: StatusLineSnapshot) -> ModelWeek? {
+    guard !snapshot.model.isEmpty, let buckets = snapshot.modelWeeks else { return nil }
+    let model = snapshot.model.lowercased()
+    return buckets.first { model.hasPrefix($0.label.lowercased()) }
 }
 
 /// How often this session has been compacted, and how many of those were automatic. Read from
@@ -290,13 +354,121 @@ public func secondaryRowText(_ snapshot: StatusLineSnapshot,
     }
 
     var weekText = ""
-    if let week = snapshot.weekPercent {
+    if let bucket = modelWeek(for: snapshot) {
+        let resets = bucket.resetsAt.map { " · \(formatWeekReset($0))" } ?? ""
+        weekText = "Week \(Int(bucket.percent.rounded()))% (\(bucket.label))\(resets)"
+    } else if let week = snapshot.weekPercent {
         let resets = snapshot.weekResetsAt.map { " · \($0)" } ?? ""
         weekText = "Week \(Int(week.rounded()))%\(resets)"
     }
 
     if left.isEmpty && compactedText.isEmpty && weekText.isEmpty { return nil }
     return (left, compactedText, weekText)
+}
+
+// MARK: - The live file the panel-bridge mod writes
+
+/// A tool at work on the main thread and the subagents running. Shown on the directory line while
+/// it lasts.
+public struct StatusActivity: Codable, Equatable {
+    public var tool: String?
+    public var summary: String?
+    public var agents: Int
+
+    public init(tool: String?, summary: String?, agents: Int) {
+        self.tool = tool
+        self.summary = summary
+        self.agents = agents
+    }
+}
+
+/// `<tab id>.live.json`, as the panel-bridge mod writes it from inside the Claude process on every
+/// model request, tool call and subagent — see `mods/panel-bridge/hooks/register.ts`. Every field
+/// is optional for this reader; `updatedAt` is in milliseconds, unlike the producer's seconds.
+public struct LiveStatus: Decodable, Equatable {
+    public struct Tool: Decodable, Equatable {
+        public var name: String
+        public var summary: String?
+    }
+
+    public var usedTokens: Int?
+    public var totalTokens: Int?
+    public var state: String?
+    public var tool: Tool?
+    public var agents: Int?
+    public var updatedAt: Double = 0
+    /// The per-model weekly buckets the mod fetched from the usage endpoint.
+    public var modelWeeks: [ModelWeek]?
+}
+
+public let liveSuffix = ".live.json"
+
+public func readLive(dir: String, tabId: String) -> LiveStatus? {
+    guard let data = FileManager.default.contents(atPath: "\(dir)/\(tabId)\(liveSuffix)") else { return nil }
+    return try? JSONDecoder().decode(LiveStatus.self, from: data)
+}
+
+/// The live file's count beats the producer's while it is the newer of the two: Claude Code runs
+/// the producer at turn end, the mod writes per request, so inside a turn only the mod moves.
+/// Nothing is taken from a live file older than the snapshot — a stale entry must not revive.
+public func applyingLive(_ live: LiveStatus?, to snapshot: StatusLineSnapshot) -> StatusLineSnapshot {
+    guard let live else { return snapshot }
+    let liveAt = (live.updatedAt / 1000).rounded(.down)
+    guard liveAt >= snapshot.updatedAt else { return snapshot }
+    var merged = snapshot
+    // The merged snapshot stands for the live file's moment: what is remembered from it must
+    // never lose to the producer's older file on the "never backwards" rule.
+    merged.updatedAt = liveAt
+    if let weeks = live.modelWeeks { merged.modelWeeks = weeks }
+    if merged.totalTokens <= 0, let window = live.totalTokens, window > 0 {
+        merged.totalTokens = window
+    }
+    if let used = live.usedTokens {
+        merged.usedTokens = used
+        merged.usedPercent = merged.totalTokens > 0
+            ? (Double(used) / Double(merged.totalTokens) * 1000).rounded() / 10
+            : 0
+    }
+    let busy = live.state != "idle"
+    let agents = live.agents ?? 0
+    if busy, live.tool != nil || agents > 0 {
+        merged.activity = StatusActivity(tool: live.tool?.name, summary: live.tool?.summary, agents: agents)
+    } else {
+        merged.activity = nil
+    }
+    return merged
+}
+
+/// Longest a tool summary gets on the line itself; the tooltip keeps it whole.
+public let activitySummaryMax = 60
+
+/// The directory line: the path, or — while something runs — the tool and the subagent count.
+/// The tooltip always holds the full path, plus the full tool summary when one is cut.
+public func cwdLineText(_ snapshot: StatusLineSnapshot) -> (text: String, tooltip: String) {
+    let cwd = snapshot.cwd ?? ""
+    guard let activity = snapshot.activity else {
+        return (cwd.isEmpty ? "" : shortenPath(cwd), cwd)
+    }
+    var parts: [String] = []
+    var toolLine: String?
+    if let tool = activity.tool {
+        let summary = (activity.summary ?? "").trimmingCharacters(in: .whitespaces)
+        if summary.isEmpty {
+            parts.append(tool)
+        } else {
+            toolLine = "\(tool): \(summary)"
+            let cut = summary.count > activitySummaryMax
+                ? String(summary.prefix(activitySummaryMax - 1)) + "…"
+                : summary
+            parts.append("\(tool): \(cut)")
+        }
+    }
+    if activity.agents > 0 {
+        parts.append(activity.agents == 1 ? "1 agent" : "\(activity.agents) agents")
+    }
+    let text = parts.joined(separator: " · ")
+    let tooltip = [cwd, toolLine].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+    return (text.isEmpty && cwd.isEmpty ? "" : (text.isEmpty ? shortenPath(cwd) : text), tooltip)
 }
 
 // MARK: - What is remembered between sessions
@@ -312,6 +484,7 @@ public struct RememberedLimits: Codable, Equatable {
     public var sessionResetsInMin: Int?
     public var weekPercent: Double?
     public var weekResetsAt: String?
+    public var modelWeeks: [ModelWeek]?
     public var updatedAt: Double = 0
 
     public init() {}
@@ -320,13 +493,15 @@ public struct RememberedLimits: Codable, Equatable {
 /// The limit fields worth keeping, or nil when the snapshot has none — a snapshot without them
 /// must never erase what another one already knew.
 public func limitFields(of snapshot: StatusLineSnapshot) -> RememberedLimits? {
-    guard snapshot.sessionPercent != nil || snapshot.weekPercent != nil else { return nil }
+    guard snapshot.sessionPercent != nil || snapshot.weekPercent != nil
+            || snapshot.modelWeeks != nil else { return nil }
     var limits = RememberedLimits()
     limits.sessionPercent = snapshot.sessionPercent
     limits.sessionResetsAt = snapshot.sessionResetsAt
     limits.sessionResetsInMin = snapshot.sessionResetsInMin
     limits.weekPercent = snapshot.weekPercent
     limits.weekResetsAt = snapshot.weekResetsAt
+    limits.modelWeeks = snapshot.modelWeeks
     limits.updatedAt = snapshot.updatedAt
     return limits
 }
@@ -351,6 +526,7 @@ public func applyingLimits(_ limits: RememberedLimits?, to snapshot: StatusLineS
     }
     if merged.weekPercent == nil { merged.weekPercent = limits.weekPercent }
     if merged.weekResetsAt == nil { merged.weekResetsAt = limits.weekResetsAt }
+    if merged.modelWeeks == nil { merged.modelWeeks = limits.modelWeeks }
 
     let windowed = applyResetWindow(
         LimitFields(sessionPercent: merged.sessionPercent,

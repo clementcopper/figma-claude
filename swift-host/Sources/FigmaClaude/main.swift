@@ -255,9 +255,10 @@ final class PanelContentView: NSView {
     /// more things to keep in step with the bands they divide.
     private let lineWidth: CGFloat = 1
 
-    /// The status bar's top edge is the exception: it has to run the full window width, and
-    /// `draw(_:)` happens *under* the subviews, so the tab strip painted over it — measured, the
-    /// line stopped dead at the strip's edge. A view added last sits on top of the strip.
+    /// The status bar's top edge is the exception: `draw(_:)` happens *under* the subviews and in
+    /// the system colour, while this one has to match the hairline inside the bar. A view added
+    /// last. It runs the width of the status line only: the strip goes down to the bottom edge
+    /// in one piece, and a line crossing it read as a seam in the tab column.
     let topEdge = Hairline()
 
     override var isFlipped: Bool { false }
@@ -294,7 +295,7 @@ final class PanelContentView: NSView {
                                 height: max(0, middleTop - statusHeight - lineWidth))
 
         if topEdge.superview !== self { addSubview(topEdge) }
-        topEdge.frame = NSRect(x: 0, y: statusHeight, width: width, height: lineWidth)
+        topEdge.frame = NSRect(x: 0, y: statusHeight, width: leftWidth, height: lineWidth)
 
         // The status card floats top-right of the terminal band, inset from the edges. Sized to
         // its content, clamped to the band; only positioned while shown.
@@ -333,22 +334,30 @@ final class TerminalTab {
     /// with the counter, and a file left behind would reappear under a later tab.
     let id: String
     let spawnedAt = Date()
-    /// The `--session-id` this tab's conversation runs under; empty for `--resume`/`--continue`,
-    /// which adopt a session the host did not mint.
-    let sessionId: String
+    /// The `--session-id` this tab's conversation runs under. Empty for `--resume`/`--continue`,
+    /// which adopt a session the host did not mint — until the status line names it
+    /// (`session_id` in the payload), which is what a restart resumes.
+    var sessionId: String
     /// What Claude Code calls the session: the start name, then the task name once renamed.
     var sessionName: String
+    /// A restored tab that has not started its process: it starts the first time it is shown.
+    var cold: Bool
 
     /// `id` is carried over when a tab is respawned: the status line is keyed on it, and a new
     /// one would point the row at a tab that no longer exists.
     init(view: PanelTerminalView, name: String, cwd: String, id: String? = nil,
-         sessionId: String = "", sessionName: String = "") {
+         sessionId: String = "", sessionName: String = "", cold: Bool = false) {
         self.view = view
         self.name = name
         self.cwd = cwd
         self.id = id ?? "tab-\(UUID().uuidString.prefix(8))"
         self.sessionId = sessionId
         self.sessionName = sessionName
+        self.cold = cold
+    }
+
+    var saved: SavedTab {
+        SavedTab(id: id, name: name, cwd: cwd, sessionId: sessionId, sessionName: sessionName)
     }
 }
 
@@ -366,7 +375,16 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
     /// the clear marker — not on every poll: the ring's colour already tells the story, the toast
     /// is the nudge. Reset when the fill dips back under the marker.
     private lazy var statusWatcher = StatusLineWatcher { [weak self] tabId, snapshot in
-        guard let self, self.state.active?.id == tabId else { return }
+        guard let self else { return }
+        // The payload names the session: after `--continue`/`--resume` this is the only way
+        // the host learns which one the tab runs, and a restart resumes exactly that.
+        if let tab = self.state.tabs.first(where: { $0.id == tabId }) {
+            var learned = false
+            if tab.sessionId.isEmpty, let id = snapshot.sessionId { tab.sessionId = id; learned = true }
+            if let name = snapshot.sessionName, name != tab.sessionName { tab.sessionName = name; learned = true }
+            if learned { self.persistTabs() }
+        }
+        guard self.state.active?.id == tabId else { return }
         self.statusLine.render(snapshot)
         let marker = self.statusLine.contextThreshold
         let danger = contextFillLevel(snapshot.usedPercent, marker: marker) == .danger
@@ -394,6 +412,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             },
             onRenamed: { [weak self] tabId, name in
                 self?.state.tabs.first(where: { $0.id == tabId })?.sessionName = name
+                self?.persistTabs()
             })
     }()
     /// An action that touches the daemon or Figma is running; the menu is read-only until it ends.
@@ -545,6 +564,11 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         shellPath(Bundle.main.executablePath ?? CommandLine.arguments[0]) + " --statusline"
     }
 
+    /// The panel-bridge mod for this app: in the bundle, or in the checkout the app sits in.
+    static var modDir: String? {
+        panelModDir(appRoot: Bundle.main.bundlePath, checkoutDirs: checkoutDirs(appRoot: Bundle.main.bundlePath))
+    }
+
     // MARK: - Tabs
 
     func newTab() {
@@ -566,7 +590,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let tab = TerminalTab(view: makeTerminalView(), name: name, cwd: cwd,
                               sessionId: sessionId, sessionName: sessionName)
         let view = tab.view
-        let environment = panelEnvironment(config: config, tabId: tab.id)
+        let environment = panelEnvironment(config: config, tabId: tab.id, modDir: Self.modDir)
         view.onOutput = { [weak self] text in self?.prompts.onData(tab.id, text) }
         view.onInput = { [weak self] in self?.prompts.onUserInput(tab.id) }
 
@@ -589,6 +613,71 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
               command: config.command)
         renamer.watch(tabId: tab.id, sessionId: sessionId, cwd: cwd)
         refreshTabBar()
+        persistTabs()
+    }
+
+    // MARK: - Tabs across restarts
+
+    /// Writes the tabs down after every change, so a quit — or a crash — finds them on disk.
+    /// Zero tabs after ⌘W on the last one is written as zero: that was a decision, and the next
+    /// launch opens one fresh tab as it always did.
+    func persistTabs() {
+        saveTabLayout(TabLayout(tabs: state.tabs.map(\.saved),
+                                activeIndex: state.activeIndex ?? 0,
+                                counter: state.counter))
+    }
+
+    /// Puts the saved tabs back, cold, and shows the one that was in front — which starts it.
+    /// Called instead of `newTab()` at launch when there is something to restore.
+    func restore(_ saved: [SavedTab], activeIndex: Int, counter: Int) {
+        let tabs = saved.map { entry -> TerminalTab in
+            let tab = TerminalTab(view: makeTerminalView(), name: entry.name, cwd: entry.cwd,
+                                  id: entry.id, sessionId: entry.sessionId,
+                                  sessionName: entry.sessionName, cold: true)
+            tab.view.onOutput = { [weak self] text in self?.prompts.onData(entry.id, text) }
+            tab.view.onInput = { [weak self] in self?.prompts.onUserInput(entry.id) }
+            // The mod's live file is the old process's last word — a tool mid-flight, "busy".
+            // The producer's file stays: its window and limits are the right opening figures.
+            try? FileManager.default.removeItem(atPath: "\(statusLineDir())/\(entry.id)\(liveSuffix)")
+            return tab
+        }
+        state.restore(tabs, activeIndex: activeIndex, counter: counter)
+        if let tab = state.active { show(tab) }
+        refreshTabBar()
+        persistTabs()
+    }
+
+    /// A cold tab's first showing: `claude --resume <sessionId>` in its folder, with no name
+    /// and no id of its own — both belong to the session already. A tab whose session the host
+    /// never learned starts fresh instead. When Claude no longer has the session it exits 1,
+    /// and the recovery plan starts a fresh one in the same folder.
+    private func startRestored(_ tab: TerminalTab) {
+        tab.cold = false
+        let config = PanelConfig.load()
+        let environment = panelEnvironment(config: config, tabId: tab.id, modDir: Self.modDir)
+        let executable = whichOnPath(config.command, path: environment["PATH"] ?? "")
+
+        var args: [String]
+        if tab.sessionId.isEmpty {
+            let snapshot = watcher.snapshot
+            let file = snapshot.file.isEmpty ? config.figmaFile : snapshot.file
+            tab.sessionId = UUID().uuidString.lowercased()
+            tab.sessionName = mintSessionName(file: file, page: snapshot.page, cwd: tab.cwd)
+            args = panelArguments(config: config, sessionName: tab.sessionName,
+                                  sessionId: tab.sessionId,
+                                  statusLineCommand: Self.statusLineCommand,
+                                  mcpConfig: Self.panelMcpConfig)
+            renamer.watch(tabId: tab.id, sessionId: tab.sessionId, cwd: tab.cwd)
+        } else {
+            exitRecovery.register(restoreRecoveryPlan(), for: tab.id)
+            args = panelArguments(config: config, sessionName: "", sessionId: "",
+                                  statusLineCommand: Self.statusLineCommand,
+                                  mcpConfig: Self.panelMcpConfig)
+            args.append(contentsOf: ["--resume", tab.sessionId])
+        }
+        start(tab.view, executable: executable, args: args, environment: environment,
+              cwd: tab.cwd, command: config.command)
+        persistTabs()
     }
 
     /// A start name nobody has had: `fc-<file>-<page>`, made unique against the running sessions
@@ -633,12 +722,16 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         statusLine.render(statusWatcher.snapshot(for: tab.id)
             ?? statusWatcher.initialSnapshot(cwd: tab.cwd))
         toolbar.setDirectory(tab.cwd)
+        // A restored tab starts the first time it is looked at — one process per tab the user
+        // actually opens, not one per tab the last run had.
+        if tab.cold { startRestored(tab) }
     }
 
     func activate(_ index: Int) {
         state.activate(index)
         if let tab = state.active { show(tab) }
         refreshTabBar()
+        persistTabs()
     }
 
     func closeTab(at index: Int) {
@@ -649,6 +742,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         removed.view.terminate()
         removed.view.removeFromSuperview()
 
+        persistTabs()
         if let tab = state.active {
             show(tab)
             refreshTabBar()
@@ -668,6 +762,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         state.cycle(by: offset)
         if let tab = state.active { show(tab) }
         refreshTabBar()
+        persistTabs()
     }
 
     /// A terminal view the way every tab wants it. `onOutput`/`onInput` are set by the caller,
@@ -684,7 +779,9 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
             .filter { prompts.isWaiting($0.element.id) }
             .map(\.offset))
         tabStrip.render(titles: state.tabs.map(\.name),
-                        tooltips: state.tabs.map { "\($0.name) — \(shortenPath($0.cwd))" },
+                        tooltips: state.tabs.map {
+                            "\($0.name) — \(shortenPath($0.cwd))" + ($0.cold ? " — not started yet" : "")
+                        },
                         activeIndex: state.activeIndex,
                         waiting: waiting)
     }
@@ -1009,7 +1106,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
         let old = state.tabs[index]
 
         let config = PanelConfig.load()
-        let environment = panelEnvironment(config: config, tabId: old.id)
+        let environment = panelEnvironment(config: config, tabId: old.id, modDir: Self.modDir)
         let executable = whichOnPath(config.command, path: environment["PATH"] ?? "")
 
         let snapshot = watcher.snapshot
@@ -1045,6 +1142,7 @@ final class PanelWindowController: NSObject, LocalProcessTerminalViewDelegate, N
               command: config.command)
         if fresh { renamer.watch(tabId: old.id, sessionId: sessionId, cwd: old.cwd) }
         refreshTabBar()
+        persistTabs()
     }
 
     /// The status readout and the actions behind it, as a menu rather than the popover the web
@@ -1217,7 +1315,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         buildMenu()
         let controller = PanelWindowController()
         self.controller = controller
-        controller.newTab()
+        // The last run's tabs, resumed; a probe run with a command of its own never restores.
+        let restorable = CommandLine.arguments.count > 1 ? nil
+            : loadTabLayout().map { (restorableTabs($0), $0.counter) }
+        if let (found, counter) = restorable, !found.tabs.isEmpty {
+            controller.restore(found.tabs, activeIndex: found.activeIndex, counter: counter)
+        } else {
+            controller.newTab()
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -1318,6 +1423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         controller?.saveWindowBounds()
+        controller?.persistTabs()
     }
 }
 
@@ -1389,6 +1495,27 @@ func applyProbeAppearance() {
 }
 
 // What the status row would draw for a tab, and what it was built from — the raw snapshot, the
+// What the next launch would restore: the saved tabs, which of them still have a folder, and
+// which one comes up warm. `--print-tabs [file]`, the real file if none.
+if let index = CommandLine.arguments.firstIndex(of: "--print-tabs") {
+    let file = CommandLine.arguments.count > index + 1 && !CommandLine.arguments[index + 1].hasPrefix("--")
+        ? CommandLine.arguments[index + 1] : tabLayoutFile
+    guard let layout = loadTabLayout(from: file) else {
+        print("no layout in \(file)")
+        exit(1)
+    }
+    let found = restorableTabs(layout)
+    print("saved \(layout.tabs.count) tab(s), active \(layout.activeIndex), counter \(layout.counter)")
+    for (index, tab) in layout.tabs.enumerated() {
+        let kept = found.tabs.contains(tab)
+        let mark = !kept ? "dropped (folder gone)"
+            : found.tabs.firstIndex(of: tab) == found.activeIndex ? "warm" : "cold"
+        let session = tab.sessionId.isEmpty ? "fresh start" : "resume \(tab.sessionId)"
+        print("  \(index) \(tab.id) \(tab.name) \(collapseHome(tab.cwd)) — \(session) — \(mark)")
+    }
+    exit(0)
+}
+
 // remembered pieces, and the two lines as text. `--print-statusline [tabId]`, newest tab if none.
 if let index = CommandLine.arguments.firstIndex(of: "--print-statusline") {
     let dir = statusLineDir()
@@ -1410,21 +1537,35 @@ if let index = CommandLine.arguments.firstIndex(of: "--print-statusline") {
         exit(1)
     }
 
-    let merged = resolvedSnapshot(written, dir: dir)
+    let live = readLive(dir: dir, tabId: tabId)
+    let merged = applyingLive(live, to: resolvedSnapshot(written, dir: dir))
+    let buckets: ([ModelWeek]?) -> String = { weeks in
+        weeks.map { $0.map { "\($0.label)=\($0.percent)" }.joined(separator: ",") } ?? "—"
+    }
     print("tab \(tabId)")
     print("written  session=\(written.sessionPercent.map { "\($0)" } ?? "—") "
           + "resetsAt=\(written.sessionResetsAt.map { "\($0)" } ?? "—") "
-          + "week=\(written.weekPercent.map { "\($0)" } ?? "—") total=\(written.totalTokens)")
+          + "week=\(written.weekPercent.map { "\($0)" } ?? "—") total=\(written.totalTokens) "
+          + "used=\(written.usedTokens) buckets=\(buckets(written.modelWeeks))")
     if let limits = readRememberedLimits(dir: dir) {
         print("remembered session=\(limits.sessionPercent.map { "\($0)" } ?? "—") "
               + "resetsAt=\(limits.sessionResetsAt.map { "\($0)" } ?? "—") "
-              + "week=\(limits.weekPercent.map { "\($0)" } ?? "—")")
+              + "week=\(limits.weekPercent.map { "\($0)" } ?? "—") buckets=\(buckets(limits.modelWeeks))")
     } else {
         print("remembered —")
     }
+    if let live {
+        print("live     used=\(live.usedTokens.map { "\($0)" } ?? "—") state=\(live.state ?? "—") "
+              + "tool=\(live.tool?.name ?? "—") agents=\(live.agents ?? 0) "
+              + "age=\(Int(Date().timeIntervalSince1970 - live.updatedAt / 1000))s")
+    } else {
+        print("live     —")
+    }
     print("merged   session=\(merged.sessionPercent.map { "\($0)" } ?? "—") "
           + "inMin=\(merged.sessionResetsInMin.map { "\($0)" } ?? "—") "
-          + "resetsAt=\(merged.sessionResetsAt.map { "\($0)" } ?? "—")")
+          + "resetsAt=\(merged.sessionResetsAt.map { "\($0)" } ?? "—") "
+          + "used=\(merged.usedTokens) bucket=\(modelWeek(for: merged).map { "\($0.label) \($0.percent)" } ?? "—") "
+          + "line=\"\(cwdLineText(merged).text)\"")
     if let rows = secondaryRowText(merged) {
         print("row      \"\(rows.left)\"  \"\(rows.compacted)\"  \"\(rows.week)\"")
     } else {

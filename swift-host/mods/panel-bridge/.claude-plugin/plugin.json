@@ -1,0 +1,8 @@
+{
+  "name": "panel-bridge",
+  "version": "0.1.0",
+  "description": "Feeds FigmaClaude's status bar from inside the Claude process: live context per model request, the tool at work, subagents, compactions.",
+  "author": {
+    "name": "Daniel Martin"
+  }
+}

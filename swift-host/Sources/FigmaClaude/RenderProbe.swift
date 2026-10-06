@@ -180,6 +180,11 @@ enum RenderProbe {
         let underToolbar = sample(width * 0.5, height - ToolbarView.barHeight - 0.5)
         let leftOfStrip = sample(leftWidth + 0.5, height / 2)
         let column = sample(3, height / 2)
+        // The status bar's top edge stops at the strip: inside the strip, level with it, the
+        // pixel is the strip's own ground. A seam across the tab column was the complaint.
+        let statusTop = canvas.statusLine?.frame.maxY ?? 0
+        let inStrip = sample(width - TabStripView.stripWidth / 2, statusTop + 0.5)
+        let stripGround = sample(width - TabStripView.stripWidth / 2, statusTop + 12)
         func same(_ a: NSColor?, _ b: NSColor?) -> Bool {
             guard let a, let b else { return false }
             return abs(a.redComponent - b.redComponent) < 0.01
@@ -187,8 +192,11 @@ enum RenderProbe {
                 && abs(a.blueComponent - b.blueComponent) < 0.01
         }
         let covered = same(underToolbar.1, column.1) || same(leftOfStrip.1, column.1)
+        let seam = !same(inStrip.1, stripGround.1)
         return "under-toolbar=\(underToolbar.0) | left-of-strip=\(leftOfStrip.0) | column=\(column.0) | "
-            + (covered ? "FAIL: a separator matches the column fill — something paints over the lower bands" : "ok")
+            + "in-strip-at-status-top=\(inStrip.0) strip-ground=\(stripGround.0) | "
+            + (covered ? "FAIL: a separator matches the column fill — something paints over the lower bands"
+               : seam ? "FAIL: the status bar's top edge crosses the tab strip" : "ok")
     }
 
     /// Does the status band grow when a Figma selection arrives — in a real window, after a real
