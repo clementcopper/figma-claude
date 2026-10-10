@@ -86,8 +86,13 @@ says, and the merged result. To see the raw JSON once, put `"env": {"CLAUDE_PANE
 "cat > /tmp/sl.json"}` into `panel.json`; the delegate runs after the producer with the same stdin.
 
 Checking the mod: `claude plugin validate mods/panel-bridge`, `claude plugin test mods/panel-bridge`;
-for types, `claude --plugin-dir "$PWD/mods/panel-bridge" -p ok` lays `.claude-plugin/types/`
-(ignored by git), then `tsc -p mods/panel-bridge`.
+for types, an interactive `claude --plugin-dir "$PWD/mods/panel-bridge"` lays `.claude-plugin/types/`
+(ignored by git; `-p` does not, measured on 2.1.296), then `tsc -p mods/panel-bridge` with
+TypeScript ≥ 5.4 — the global 5.1 fails on `es2023`, `../app/node_modules/.bin/tsc` is 5.9.
+
+Start the app from Finder or the Dock, not with `open` from inside a Claude session: it inherits
+that session's `CLAUDE*` variables (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, …), and
+the tab measured on 2026-10-10 saved no transcript, so the next launch could not resume it.
 
 ## Tabs across restarts
 

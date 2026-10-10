@@ -49,6 +49,15 @@
 
 ### Fixed
 
+- **Swift panel: a background subagent stays on the status bar until it ends.** Claude Code
+  runs the Agent tool in the background, so the main turn ends while the agent works; the
+  panel-bridge mod dropped every agent at that turn end and the directory line showed the path,
+  idle, for the agent's whole run (measured 5 s for an Explore agent). The mod now asks
+  `$.agent.list()` at the main turn end and keeps the ones still running until their own
+  `turn.complete`; a new turn keeps them too. The host shows the count while idle and also when
+  the producer rendered the turn end after the mod's last write (`applyingLive`). Measured live:
+  `1 agent` from the turn end at 13:14:30 to the agent's last record at 13:14:39.
+
 - **Pipe Mode: Reconnect takes Connect's place, and reloads the tab when attaching is not
   enough.** With the pipe held, the Figma menu's first Connection item is Reconnect — always
   enabled, also while the daemon still says ok — instead of a greyed Connect with a Reconnect

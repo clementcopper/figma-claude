@@ -410,11 +410,18 @@ public func readLive(dir: String, tabId: String) -> LiveStatus? {
 
 /// The live file's count beats the producer's while it is the newer of the two: Claude Code runs
 /// the producer at turn end, the mod writes per request, so inside a turn only the mod moves.
-/// Nothing is taken from a live file older than the snapshot — a stale entry must not revive.
+/// Nothing is taken from a live file older than the snapshot — a stale entry must not revive —
+/// except the subagent count: only the mod knows it, and a background agent outlives the turn
+/// whose end the producer rendered, so a newer producer file says nothing about it.
 public func applyingLive(_ live: LiveStatus?, to snapshot: StatusLineSnapshot) -> StatusLineSnapshot {
     guard let live else { return snapshot }
+    let agents = live.agents ?? 0
     let liveAt = (live.updatedAt / 1000).rounded(.down)
-    guard liveAt >= snapshot.updatedAt else { return snapshot }
+    guard liveAt >= snapshot.updatedAt else {
+        var merged = snapshot
+        merged.activity = agents > 0 ? StatusActivity(tool: nil, summary: nil, agents: agents) : nil
+        return merged
+    }
     var merged = snapshot
     // The merged snapshot stands for the live file's moment: what is remembered from it must
     // never lose to the producer's older file on the "never backwards" rule.
@@ -429,10 +436,11 @@ public func applyingLive(_ live: LiveStatus?, to snapshot: StatusLineSnapshot) -
             ? (Double(used) / Double(merged.totalTokens) * 1000).rounded() / 10
             : 0
     }
-    let busy = live.state != "idle"
-    let agents = live.agents ?? 0
-    if busy, live.tool != nil || agents > 0 {
-        merged.activity = StatusActivity(tool: live.tool?.name, summary: live.tool?.summary, agents: agents)
+    // A tool named while idle is a stale entry; agents still running while Claude waits for the
+    // person are real — background agents the main turn did not wait for.
+    let tool = live.state != "idle" ? live.tool : nil
+    if tool != nil || agents > 0 {
+        merged.activity = StatusActivity(tool: tool?.name, summary: tool?.summary, agents: agents)
     } else {
         merged.activity = nil
     }

@@ -422,7 +422,8 @@ enum StatusLineTests {
         let later = applyingLive(live, to: snap)
         Checks.expect(later.usedTokens, 100_000)
         Checks.expect(later.usedPercent, 10)
-        Checks.expectNil(later.activity)
+        // The tool goes with it; the subagents do not — the producer never counts them.
+        Checks.expect(later.activity, StatusActivity(tool: nil, summary: nil, agents: 2))
 
         // No live file: nothing changes.
         Checks.expect(applyingLive(nil, to: snap), snap)
@@ -446,7 +447,17 @@ enum StatusLineTests {
         snap.updatedAt = 1_791_271_300
         var idle = live
         idle.state = "idle"
+        idle.agents = 0
         Checks.expectNil(applyingLive(idle, to: snap).activity)
+        // A background agent outlives the main turn: idle, the tool dropped, the agent counted —
+        // also when the producer rendered that turn end after the mod's last write.
+        idle.agents = 1
+        Checks.expect(applyingLive(idle, to: snap).activity, StatusActivity(tool: nil, summary: nil, agents: 1))
+        var turnEnd = snap
+        turnEnd.updatedAt = 1_791_271_306
+        Checks.expect(applyingLive(idle, to: turnEnd).activity, StatusActivity(tool: nil, summary: nil, agents: 1))
+        idle.agents = 0
+        Checks.expectNil(applyingLive(idle, to: turnEnd).activity)
         // Agents alone are activity.
         var agentsOnly = live
         agentsOnly.tool = nil
